@@ -213,7 +213,7 @@ export const SFX_RECIPES: Readonly<Record<SfxName, SfxRecipe>> = {
       note('pulse25', G7, 1.04, 0.12, 0.5, { sustain: 0.5, release: 0.06 }),
     ],
   },
-  // Ball throw: a rising band-passed noise whoosh.
+  // Capsule throw: a rising band-passed noise whoosh.
   ballThrow: {
     voices: [
       {
@@ -231,7 +231,7 @@ export const SFX_RECIPES: Readonly<Record<SfxName, SfxRecipe>> = {
       },
     ],
   },
-  // Ball pop: a dropping pop with a click, then two sparkles.
+  // Capsule pop: a dropping pop with a click, then two sparkles.
   ballPop: {
     voices: [
       {

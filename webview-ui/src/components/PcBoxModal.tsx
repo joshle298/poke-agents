@@ -8,7 +8,7 @@ import { pcBoxPortraitUrl, pcBoxSpecies } from '../conductor/party.js';
 import { archivedSessions } from '../conductor/sessionsView.js';
 import { CONDUCTOR_UI_TICK_MS, PORTRAIT_SOURCE_PX } from '../constants.js';
 import { isBrowserRuntime } from '../runtime.js';
-import { PokeBallIcon, PokemonPortrait } from './PokemonPortrait.js';
+import { CapsuleIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -67,7 +67,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
                     url={pcBoxPortraitUrl(ref, { species: speciesMap }, portraitRoute)}
                     size={PORTRAIT_SOURCE_PX}
                     alt={species?.name ?? ''}
-                    fallback={<PokeBallIcon size={PORTRAIT_SOURCE_PX} />}
+                    fallback={<CapsuleIcon size={PORTRAIT_SOURCE_PX} />}
                   />
                   <div className="flex-1 min-w-0 flex flex-col gap-2">
                     <span className="text-sm truncate">{session.label}</span>

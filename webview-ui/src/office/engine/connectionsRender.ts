@@ -5,7 +5,7 @@
  * Links lie on the floor under everyone: pixel-art dashes between two
  * characters' tiles, marching from sender to receiver — spawned as dashes,
  * messaged as dots, watched faint. Projectiles fly above everyone on an arc
- * from chest to chest: a Poké Ball while themed, an envelope otherwise.
+ * from chest to chest: a capsule while themed, an envelope otherwise.
  */
 
 import {
@@ -14,10 +14,10 @@ import {
   LINK_PATTERNS,
   PROJECTILE_ARC_LIFT_PX,
 } from '../../constants.js';
-import { ENVELOPE_SPRITE, POKEBALL_CLOSED_SPRITE } from '../sprites/pokemonUiSprites.js';
+import { CAPSULE_CLOSED_SPRITE, ENVELOPE_SPRITE } from '../sprites/pokemonUiSprites.js';
 import type { Character, LinkSegment, Projectile } from '../types.js';
+import { drawCenteredSprite } from './capsuleEffect.js';
 import { forEachLinePixel, isDashLit } from './pixelLine.js';
-import { drawCenteredSprite } from './pokeballEffect.js';
 import { characterChest } from './pokemonCharacter.js';
 
 /** What renderFrame needs to draw connections this frame. */
@@ -28,7 +28,7 @@ export interface ConnectionsRenderState {
   characters: Map<number, Character>;
   /** Seconds of simulated time (OfficeState.clock). */
   time: number;
-  /** Fly Poké Balls (themed) or envelopes. */
+  /** Fly capsules (themed) or envelopes. */
   themed: boolean;
 }
 
@@ -60,7 +60,7 @@ export function renderProjectiles(
   offsetY: number,
   zoom: number,
 ): void {
-  const sprite = state.themed ? POKEBALL_CLOSED_SPRITE : ENVELOPE_SPRITE;
+  const sprite = state.themed ? CAPSULE_CLOSED_SPRITE : ENVELOPE_SPRITE;
   for (const p of state.projectiles) {
     const from = state.characters.get(p.fromId);
     const to = state.characters.get(p.toId);
