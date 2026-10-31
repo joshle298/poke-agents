@@ -88,6 +88,22 @@ export function windowLabel(hours: number): string {
 }
 
 /**
+ * The Sessions modal's activity-window choices: the presets (0 = "All", no
+ * limit, kept last) plus the server's current value when it is none of them,
+ * so the control always shows what the server actually applied.
+ */
+export function windowOptions(
+  presets: readonly number[],
+  current: number | undefined,
+): Array<{ value: number; label: string }> {
+  const values = new Set(presets);
+  if (current !== undefined && Number.isFinite(current) && current >= 0) values.add(current);
+  return [...values]
+    .sort((a, b) => (a === 0 ? 1 : b === 0 ? -1 : a - b))
+    .map((value) => ({ value, label: windowLabel(value) }));
+}
+
+/**
  * Only Conductor deep links (conductor://workspace?...) may be handed to
  * openExternal. The URL comes from the server, but the client checks too, so
  * a malformed one never reaches the host's opener.
