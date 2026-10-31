@@ -24,7 +24,7 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 - **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a capsule pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
 - **The town.** A new office opens on a small town in a forest. Working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back.
 - **Browser window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
-- **Jukebox.** Background music from albums you own or play in the Music or Spotify app. See [Music](#music).
+- **Jukebox.** Background music: Poke Agents Radio, a built-in station of freely licensed retro game tracks that plays out of the box, or albums you own or play in the Music or Spotify app. See [Music](#music).
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
 
@@ -225,17 +225,18 @@ Use the names exactly as written. Each file must be an audio file of at most 2 M
 
 ## Music
 
-The Jukebox (♪ in the toolbar, or **Jukebox…** under Settings → Sound) plays background music while you watch the office. It plays only music you already have:
+The Jukebox (♪ in the toolbar, or **Jukebox…** under Settings → Sound) plays background music while you watch the office. It opens on the radio until you pick another source:
 
+- **Radio** (any platform): Poke Agents Radio, 12 original chiptune and retro RPG tracks for a town, a route, indoors, a calm night and a battle. Their authors released them under CC0 or CC BY (see [Radio credits](#radio-credits)); none is a cover or arrangement of game music. **Shuffle all**, **Play**, or pick a track. Each track downloads once, the first time it plays or is queued next, from its author's page on `opengameart.org` or `incompetech.com` into `~/.pixel-agents/cache/music/radio/`, and plays only if it matches the size and SHA-256 pinned in `server/src/music/radioCatalog.ts`. The repository holds no audio. Louder tracks are turned down so the station keeps one volume. `--no-radio` (or `POKE_AGENTS_RADIO=off`) turns the radio off, and so does `--no-sounds`: then nothing is downloaded.
 - **My music** (any platform): audio files you own in `~/.pixel-agents/music/`, one folder per game or album, for example `~/.pixel-agents/music/Pokémon X & Y/03 - Title.m4a`. MP3, M4A/AAC, OGG/Opus, WAV and FLAC play in the office window; Apple Lossless (ALAC) `.m4a` files and copy-protected `.m4p` files don't. Titles and track numbers come from the file names (`03 - Title`, `1-03 Title`), and a `Disc 2` folder joins its album. **Open folder** creates the folder and opens it. Tracks crossfade for 1.5 seconds. Shuffle all, shuffle one game, or pick a track.
 - **Apple Music** (macOS): **Look in my Music library** finds albums whose album or artist name contains "Pokémon", such as Super Music Collections you bought, and plays them in the Music app, in order or shuffled. To queue an album, the Jukebox fills a playlist named "Poke Agents Jukebox" in your library; delete it whenever you like. A pasted `music.apple.com` album or playlist link opens in Music, where you press play.
 - **Spotify** (macOS, with the Spotify app): paste an `open.spotify.com` or `spotify:` album, playlist or track link, then play or shuffle it in Spotify.
 
 The first time the Jukebox controls Music or Spotify, macOS asks whether your terminal (or the Poke Agents app) may control it. If you chose Don't Allow, turn it on in System Settings › Privacy & Security › Automation.
 
-While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Pokémon cries and alerts briefly lower folder music. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so folder music you were playing comes back on your first click, tap or key press after a reload.
+While music plays, a small pill above the toolbar shows the track and album (the artist, for a radio track); click it to open the Jukebox. Pokémon cries and alerts briefly lower radio and folder music. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so radio or folder music you were playing comes back on your first click, tap or key press after a reload; the Jukebox never starts on its own.
 
-**About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
+**About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the radio's freely licensed originals, the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
 
 ## Configuration
 
@@ -250,23 +251,25 @@ While music plays, a small pill above the toolbar shows the track and album; cli
 | `--no-conductor`         | Conductor on | Don't connect to Conductor.                                                                                                                                                                                                                                      |
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                                                                                                          |
 | `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                                                                                                                |
-| `--no-sounds`            | sounds on    | Never download cries or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                                                                                                                 |
+| `--no-sounds`            | sounds on    | Never download cries or radio tracks, or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                                                                                                |
+| `--no-radio`             | radio on     | Turn off [Poke Agents Radio](#music): the Jukebox lists no radio and downloads no tracks.                                                                                                                                                                        |
 | `--demo`                 | off          | Play the scripted [demo](#try-the-demo) with synthetic sessions instead of connecting to Conductor. Not with `--claude`.                                                                                                                                         |
 | `--demo-seed <n>`        | `42`         | Vary the demo's generated history, replies and later rounds. The first round is the same for every seed. Implies `--demo`.                                                                                                                                       |
 | `--demo-speed <x>`       | `1`          | Demo speed factor, from 0.25 to 20. Implies `--demo`.                                                                                                                                                                                                            |
 | `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                               |
 | `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                                                                                                               |
 
-| Environment variable           | Effect                                                                    |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| `CONDUCTOR_API_KEY`            | Conductor API key. Checked first.                                         |
-| `CONDUCTOR_API_TOKEN`          | Used when `CONDUCTOR_API_KEY` is not set.                                 |
-| `CONDUCTOR_API_URL`            | Conductor API base URL. Default `https://api.conductor.build`.            |
-| `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                     |
-| `POKE_AGENTS_SOUNDS`           | `off` disables cry downloads and the sound pack, like `--no-sounds`.      |
-| `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
-| `POKE_AGENTS_DEMO_SPEED`       | The demo's speed factor when `--demo-speed` is not given.                 |
-| `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
+| Environment variable           | Effect                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `CONDUCTOR_API_KEY`            | Conductor API key. Checked first.                                              |
+| `CONDUCTOR_API_TOKEN`          | Used when `CONDUCTOR_API_KEY` is not set.                                      |
+| `CONDUCTOR_API_URL`            | Conductor API base URL. Default `https://api.conductor.build`.                 |
+| `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                          |
+| `POKE_AGENTS_SOUNDS`           | `off` disables cry and radio downloads and the sound pack, like `--no-sounds`. |
+| `POKE_AGENTS_RADIO`            | `off` turns off Poke Agents Radio, like `--no-radio`.                          |
+| `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given.      |
+| `POKE_AGENTS_DEMO_SPEED`       | The demo's speed factor when `--demo-speed` is not given.                      |
+| `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.                   |
 
 Without either token variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
 
@@ -283,16 +286,17 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 | `layout.json`           | The office layout.                                                                                                                                                   |
 | `cache/pmd/`            | Downloaded sprites and portraits.                                                                                                                                    |
 | `cache/cries/`          | Downloaded Pokémon cries.                                                                                                                                            |
+| `cache/music/radio/`    | Downloaded [Poke Agents Radio](#music) tracks, each checked against its pinned SHA-256.                                                                              |
 | `sounds/`               | Your [sound pack](#sounds), if you add one.                                                                                                                          |
 | `music/`                | Your [Jukebox](#music) albums, if you add some.                                                                                                                      |
 | `music.json`            | The Apple Music and Spotify links you saved in the Jukebox.                                                                                                          |
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, for cries to `raw.githubusercontent.com`, and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries. The demo (`--demo`) never contacts Conductor.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, for cries to `raw.githubusercontent.com`, for radio tracks to `opengameart.org` and `incompetech.com` (each track once, when it first plays), and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-radio`, no radio tracks; with `--no-sounds`, neither cries nor radio tracks. The demo (`--demo`) never contacts Conductor.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
-- Saving a Spotify link asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
+- Saving a Spotify link asks `open.spotify.com/oembed` once for its title. Apart from that and the radio's track downloads, the Jukebox makes no requests: radio and folder music stream from your own machine, and the Music and Spotify apps play in their own windows.
 - The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions, and other sites can't make it download sprites.
 - `--open` and `npm start` open a one-time link, so the token never appears on the browser's command line.
 - There is no telemetry or analytics.
@@ -365,7 +369,7 @@ This repository contains no Pokémon artwork. Poke Agents' own pixel art, such a
 
 When sounds are on, the app also downloads Pokémon cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project (collected from Pokémon Showdown, Veekun and The Sounds Resource) to the same cache. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc., fetched at runtime and not redistributed. The other sound effects are original compositions synthesized in the app.
 
-The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork or cries.
+The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork, cries or music.
 
 The town's art (grass, tall grass, paths, trees, the pond, the buildings' fronts and signs, and the Lab and Pokémon Center furniture) is original to Poke Agents and drawn in code by `scripts/generate-world-assets.mjs`. The office, its characters and the rest of the furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
 
@@ -375,6 +379,23 @@ The town's art (grass, tall grass, paths, trees, the pond, the buildings' fronts
 <a href="https://ko-fi.com/pablodelucca">
   <img src="https://img.shields.io/badge/Support-Ko--fi-ff5e5b?logo=ko-fi" alt="Ko-fi">
 </a>
+
+### Radio credits
+
+Poke Agents Radio plays these original tracks, each credited as title — author — license — source. The app shows the same list under **Settings → About & credits**, from `core/src/radioCredits.ts`. CC0 tracks are in the public domain; CC BY tracks are used under their license, unmodified (the station only lowers their playback volume). The files are downloaded from the source pages at runtime and are not in this repository.
+
+- Welcome to the Item Shop — congusbongus — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/welcome-to-the-item-shop)
+- My Street — congusbongus — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/my-street)
+- Exploring Town — Spring Spring — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/exploring-town)
+- Village, 2018 — Loyalty Freak Music (Komiku) — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/village-2018)
+- Flowerbed Fields — Zane Little Music — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/flowerbed-fields-loop)
+- Chill Overworld — ATMANAN — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — [opengameart.org](https://opengameart.org/content/chill-overworld)
+- The road we use to travel when we were kids — Loyalty Freak Music (Komiku) — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/the-road-we-use-to-travel-when-we-were-kids)
+- Stocked Up on Potions — congusbongus — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — [opengameart.org](https://opengameart.org/content/stocked-up-on-potions)
+- Apple Cider — Zane Little Music — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/apple-cider)
+- Remember the time we use to play — Loyalty Freak Music (Komiku) — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/remember-the-time-we-use-to-play)
+- Airship Serenity — Kevin MacLeod (incompetech.com) — [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — [incompetech.com](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600046)
+- 8-Bit RPG Battle/Encounter Theme — Wolfgang_ — [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) — [opengameart.org](https://opengameart.org/content/8-bit-rpg-battleencounter-theme)
 
 ## License
 

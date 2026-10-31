@@ -35,7 +35,12 @@ const ACTIONS: ReadonlySet<string> = new Set<MusicCommandAction>([
   'removeStation',
   'openFolder',
 ]);
-const SOURCES: ReadonlySet<string> = new Set<MusicSourceId>(['folder', 'apple', 'spotify']);
+const SOURCES: ReadonlySet<string> = new Set<MusicSourceId>([
+  'radio',
+  'folder',
+  'apple',
+  'spotify',
+]);
 /** Album and station ids as the server mints them. */
 const STATION_ID_PATTERN = /^[A-Za-z0-9._-]{1,120}$/;
 
@@ -47,11 +52,12 @@ const READ_ONLY_MESSAGE = 'Read-only office: open the tokened URL to use the Juk
 function unavailableLibrary(): MusicLibrary {
   return {
     type: 'musicLibrary',
-    sources: (['folder', 'apple', 'spotify'] as const).map((id) => ({
+    sources: (['radio', 'folder', 'apple', 'spotify'] as const).map((id) => ({
       id,
       available: false,
       reason: NOT_AVAILABLE_MESSAGE,
     })),
+    radioTracks: [],
     folderPath: '',
     albums: [],
     appleAlbums: [],

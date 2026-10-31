@@ -13,7 +13,7 @@
  *
  * Cries play one at a time through a CryQueue (soundLimiter.ts) and duck the
  * effects bus while they sound; a cry cut short fades out. Cries and alerts
- * also lower the Jukebox's folder music for their length (music/duck.ts).
+ * also lower the Jukebox's radio and folder music for their length (music/duck.ts).
  * Cry and sound-pack files are fetched from the local server, decoded once
  * and kept.
  */
@@ -56,8 +56,8 @@ export interface AudioEngineDeps {
   origin: () => string | undefined;
   /** Schedule a synthesized effect into `destination` at audio time `when`. */
   renderSfx: (ctx: AudioContext, destination: AudioNode, name: SfxName, when: number) => void;
-  /** Lower the Jukebox's folder music for `ms`: called as a cry or an alert
-   *  starts, with that sound's length. */
+  /** Lower the Jukebox's radio and folder music for `ms`: called as a cry or
+   *  an alert starts, with that sound's length. */
   duckMusic: (ms: number) => void;
 }
 
@@ -307,8 +307,8 @@ export class AudioEngine {
     });
   }
 
-  /** The Jukebox's folder music dips while a cry or an alert sounds: from
-   *  audio time `when` for `seconds`. A cue scheduled ahead (the faint slide
+  /** The Jukebox's radio and folder music dip while a cry or an alert sounds:
+   *  from audio time `when` for `seconds`. A cue scheduled ahead (the faint slide
    *  after its cry) is already in the audio graph, so stopAll doesn't cancel
    *  its duck either. */
   private duckMusicFor(g: Graph, when: number, seconds: number): void {

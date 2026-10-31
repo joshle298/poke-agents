@@ -56,6 +56,26 @@ describe('activateSource', () => {
     expect(idle.deps.pauseApp).not.toHaveBeenCalled();
   });
 
+  it('pauses the radio when an app starts, and the app when the radio starts', () => {
+    const { store, deps } = setup({ source: 'radio' });
+    activateSource('apple', deps);
+    expect(deps.pauseFolder).toHaveBeenCalledTimes(1);
+    store.apply({ type: 'musicState', source: 'apple', running: true, playing: true });
+    activateSource('radio', deps);
+    expect(deps.pauseApp).toHaveBeenCalledWith('apple');
+    expect(store.getState()).toMatchObject({ activeSource: 'radio', appStarted: false });
+    expect(deps.remember).toHaveBeenLastCalledWith('radio');
+  });
+
+  it('hands the page player between the radio and the folder without pausing it', () => {
+    const { store, deps } = setup({ source: 'radio' });
+    activateSource('folder', deps);
+    activateSource('radio', deps);
+    expect(deps.pauseFolder).not.toHaveBeenCalled();
+    expect(deps.pauseApp).not.toHaveBeenCalled();
+    expect(store.getState().activeSource).toBe('radio');
+  });
+
   it('leaves the source alone when it is started again', () => {
     const { store, deps } = setup({ source: 'apple' });
     store.apply({ type: 'musicState', source: 'apple', running: true, playing: true });

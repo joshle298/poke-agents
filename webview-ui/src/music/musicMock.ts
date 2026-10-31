@@ -1,11 +1,12 @@
 /**
  * Jukebox mock for the Vite dev server (browserMock.ts): a made-up library and
  * app state so the panel and the pill can be developed and screenshotted with
- * no server. Every "track" streams the same few seconds of generated silence;
- * there is no audio and no artwork in the repo.
+ * no server. Every "track", the radio's included, streams the same few seconds
+ * of generated silence; there is no audio and no artwork in the repo.
  *
  * ?music=empty  nothing in the music folder, no saved links (empty states)
- * ?music=linux  only the music folder (no Music or Spotify app)
+ * ?music=linux  only the radio and the music folder (no Music or Spotify app)
+ * ?music=noradio  the radio off (--no-radio)
  */
 
 import type {
@@ -13,11 +14,14 @@ import type {
   MusicAlbum,
   MusicAppleAlbum,
   MusicLibrary,
+  MusicRadioTrack,
   MusicState,
   MusicStation,
   ServerMessage,
 } from '../../../core/src/messages.js';
+import { RADIO_CREDITS } from '../../../core/src/radioCredits.js';
 import { transport } from '../transport/index.js';
+import { isPageSource } from './musicStore.js';
 import { setMusicTrackUrlOverride } from './trackUrl.js';
 
 const SILENCE_SECONDS = 20;
@@ -98,6 +102,15 @@ function mockAlbums(): MusicAlbum[] {
   ];
 }
 
+/** The real station's titles and artists, playing silence. */
+const RADIO_TRACKS: MusicRadioTrack[] = RADIO_CREDITS.map(({ id, title, author }) => ({
+  id,
+  title,
+  artist: author,
+  mimeType: 'audio/wav',
+  gain: 1,
+}));
+
 const APPLE_ALBUMS: MusicAppleAlbum[] = [
   {
     id: 'a'.repeat(24),
@@ -129,6 +142,7 @@ export function installMusicMock(dispatch: (data: unknown) => void): void {
   setMusicTrackUrlOverride(() => silence);
 
   const appsAvailable = mode !== 'linux';
+  const radioOn = mode !== 'noradio';
   let appleScanned = false;
   let stations = mode === 'empty' ? [] : [...STATIONS];
   const albums = mode === 'empty' ? [] : mockAlbums();
@@ -147,6 +161,9 @@ export function installMusicMock(dispatch: (data: unknown) => void): void {
   const library = (): MusicLibrary => ({
     type: 'musicLibrary',
     sources: [
+      radioOn
+        ? { id: 'radio', available: true }
+        : { id: 'radio', available: false, reason: 'The radio is off (--no-radio).' },
       { id: 'folder', available: true },
       appsAvailable
         ? { id: 'apple', available: true }
@@ -155,6 +172,7 @@ export function installMusicMock(dispatch: (data: unknown) => void): void {
         ? { id: 'spotify', available: true }
         : { id: 'spotify', available: false, reason: 'Spotify control needs macOS.' },
     ],
+    radioTracks: radioOn ? RADIO_TRACKS : [],
     folderPath: '~/.pixel-agents/music',
     albums,
     appleAlbums: appleScanned ? APPLE_ALBUMS : [],
@@ -173,7 +191,7 @@ export function installMusicMock(dispatch: (data: unknown) => void): void {
       reply(library());
       return;
     }
-    if (msg.type !== 'musicCommand' || msg.source === 'folder') {
+    if (msg.type !== 'musicCommand' || isPageSource(msg.source)) {
       if (msg.type === 'musicCommand') ok(msg);
       return;
     }

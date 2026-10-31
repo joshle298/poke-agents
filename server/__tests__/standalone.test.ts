@@ -17,6 +17,10 @@ const { displayHostFor, startStandalone } = await import('../src/standalone.js')
 const { requestLaunchUrl } = await import('../src/openAppWindow.js');
 const { areSoundsEnabled, setSoundsEnabled } = await import('../src/audio/sounds.js');
 const { MusicService } = await import('../src/music/musicService.js');
+const { RadioCache } = await import('../src/music/radioCache.js');
+const { radioOffReason, setRadioEnabled } = await import('../src/music/radioSwitch.js');
+const { fakeRadioFetch, forbiddenFetch, radioTrack, syntheticTrackBytes } =
+  await import('./radioTestUtils.js');
 type Office = Awaited<ReturnType<typeof startStandalone>>;
 
 /** The CLI's build output: assets/ and webview/ (built by `npm run build:app`). */
@@ -397,6 +401,80 @@ describe('startStandalone: the Jukebox', () => {
       expect(await res.text()).not.toContain('synthetic bytes');
     } finally {
       await without.stop();
+    }
+  });
+});
+
+describe('startStandalone: Poke Agents Radio', () => {
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-test-'));
+    // vitest.config.ts sets POKE_AGENTS_RADIO=off for every test file.
+    vi.stubEnv('POKE_AGENTS_RADIO', '');
+    setRadioEnabled(true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    setRadioEnabled(false);
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  function musicWith(
+    fetch: ReturnType<typeof forbiddenFetch>,
+    track: ReturnType<typeof radioTrack>,
+  ) {
+    return new MusicService({
+      radio: new RadioCache({
+        root: path.join(tmpBase, 'radio'),
+        tracks: [track],
+        fetch,
+        log: () => {},
+      }),
+      musicDir: path.join(tmpBase, 'music-folder'),
+      stateFile: path.join(tmpBase, 'music.json'),
+      platform: 'linux',
+      home: tmpBase,
+      log: () => {},
+    });
+  }
+
+  it('streams a radio track through the office, and none with radio: false (--no-radio)', async () => {
+    const bytes = syntheticTrackBytes(9);
+    const track = radioTrack('town', bytes);
+    const url = (office: Office) =>
+      `${office.baseUrl}/api/music/track/radio-town?token=${office.token}`;
+
+    const on = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      music: musicWith(fakeRadioFetch({ [track.url]: bytes }), track),
+    });
+    try {
+      expect(radioOffReason()).toBeNull();
+      const res = await fetch(url(on));
+      expect(res.status).toBe(200);
+      expect(Buffer.from(await res.arrayBuffer())).toEqual(bytes);
+    } finally {
+      await on.stop();
+    }
+
+    const noDownloads = forbiddenFetch();
+    const off = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      radio: false,
+      music: musicWith(noDownloads, track),
+    });
+    try {
+      expect(radioOffReason()).toMatch(/--no-radio/);
+      expect((await fetch(url(off))).status).toBe(404);
+      expect(noDownloads).not.toHaveBeenCalled();
+    } finally {
+      await off.stop();
     }
   });
 });

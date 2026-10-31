@@ -41,6 +41,7 @@ import {
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
 import type { MusicService } from './music/musicService.js';
+import { setRadioEnabled } from './music/radioSwitch.js';
 import { openWithSystem } from './openAppWindow.js';
 import { setEvolutionPreloader } from './pokemon/agentLevel.js';
 import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
@@ -85,10 +86,14 @@ export interface StandaloneOptions {
   /** False: never download Pokémon cries or serve the sound pack.
    *  POKE_AGENTS_SOUNDS=off does the same. */
   sounds?: boolean;
+  /** False: Poke Agents Radio is off and downloads nothing (also with sounds
+   *  off). POKE_AGENTS_RADIO=off does the same. */
+  radio?: boolean;
   /** Opens a validated Conductor deep link on the host. Default: the system opener. */
   openExternal?: OpenExternalSideEffect;
-  /** The Jukebox (music folder, Music and Spotify on macOS). Absent: no music
-   *  in this office. Only an office this process serves uses it. */
+  /** The Jukebox (Poke Agents Radio, the music folder, Music and Spotify on
+   *  macOS). Absent: no music in this office. Only an office this process
+   *  serves uses it. */
   music?: MusicService;
   /** Directory whose Claude Code sessions are scanned. Default: process.cwd(). */
   cwd?: string;
@@ -269,6 +274,9 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   }
   if (opts.sounds === false || process.env.POKE_AGENTS_SOUNDS === 'off') {
     setSoundsEnabled(false);
+  }
+  if (opts.radio === false || process.env.POKE_AGENTS_RADIO === 'off') {
+    setRadioEnabled(false);
   }
 
   // ── Load assets on startup (same pipeline as VS Code extension) ──

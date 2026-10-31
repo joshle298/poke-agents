@@ -1,7 +1,8 @@
 /**
- * Ducking: folder music dips while a Pokémon cry or an alert plays, then comes
- * back. Sound effects call `duckMusic(ms)` when they start; the folder player
- * reads `duckFactor()` on its volume ramp. Overlapping ducks extend each other.
+ * Ducking: radio and folder music dip while a Pokémon cry or an alert plays,
+ * then come back. Sound effects call `duckMusic(ms)` when they start; the
+ * folder player reads `duckFactor()` on its volume ramp. Overlapping ducks
+ * extend each other.
  * Music playing in the Music or Spotify app is not ducked (changing an app's
  * volume behind the user's back would be worse than a moment of overlap).
  *
@@ -75,9 +76,10 @@ const ducker = createDucker(() =>
 );
 
 /**
- * Lower folder music for `ms` milliseconds while a cry or alert plays. Safe to
- * call at any time (with no music playing it does nothing audible). Called by
- * the sound engine (audio/audioEngine.ts), not by the Jukebox itself.
+ * Lower radio and folder music for `ms` milliseconds while a cry or alert
+ * plays. Safe to call at any time (with no music playing it does nothing
+ * audible). Called by the sound engine (audio/audioEngine.ts), not by the
+ * Jukebox itself.
  */
 export function duckMusic(ms: number, level?: number): void {
   ducker.duck(ms, level);

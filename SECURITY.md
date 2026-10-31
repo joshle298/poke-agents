@@ -30,3 +30,4 @@ Security issues relevant to this project include:
 - Another web page reading the office's live feed (session names, messages, tool activity), for example through DNS rebinding
 - Any path by which Poke Agents could run agents, edit a repository or change Conductor settings without the user's click
 - Sprite downloads or the sprite route reading or writing outside the sprite cache
+- The Jukebox's track route serving anything but a scanned music-folder file or a Poke Agents Radio track, or the radio keeping or playing a download that doesn't match its pinned SHA-256

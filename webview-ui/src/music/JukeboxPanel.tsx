@@ -7,13 +7,20 @@ import type {
   MusicSourceId,
   MusicStation,
 } from '../../../core/src/messages.js';
+import { RADIO_STATION_NAME } from '../../../core/src/radioCredits.js';
 import { Button } from '../components/ui/Button.js';
 import { Modal } from '../components/ui/Modal.js';
 import { requestMusicLibrary, sendMusicCommand } from './actions.js';
-import { MUSIC_APP_VOLUME_DEBOUNCE_MS, MUSIC_NOTICE_MS, MUSIC_STATION_ALL } from './constants.js';
+import {
+  MUSIC_APP_VOLUME_DEBOUNCE_MS,
+  MUSIC_NOTICE_MS,
+  MUSIC_STATION_ALL,
+  MUSIC_STATION_RADIO,
+} from './constants.js';
 import {
   playApp,
   playFolder,
+  playRadio,
   setAppVolume,
   setFolderVolume,
   setShuffle,
@@ -25,16 +32,24 @@ import {
   appNowPlaying,
   indexTracks,
   isMultiDisc,
-  nowPlayingText,
   SOURCE_LABELS,
   trackCountLabel,
+  trackLine,
   trackNumberLabel,
 } from './format.js';
 import { Marquee } from './Marquee.js';
-import { type AppSource, musicStore, pendingKey, sourceAvailable, useMusic } from './musicStore.js';
+import {
+  type AppSource,
+  isPageSource,
+  musicStore,
+  type PageSource,
+  pendingKey,
+  usableTab,
+  useMusic,
+} from './musicStore.js';
 import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 
-const SOURCES: readonly MusicSourceId[] = ['folder', 'apple', 'spotify'];
+const SOURCES: readonly MusicSourceId[] = ['radio', 'folder', 'apple', 'spotify'];
 const jukeboxAttrs = { [JUKEBOX_UI_ATTRIBUTE]: '' };
 
 function Icon({ name, className = '' }: { name: string; className?: string }) {
@@ -125,6 +140,87 @@ function SourceTabs({ library, tab }: { library: MusicLibrary; tab: MusicSourceI
           {SOURCE_LABELS[id]}
         </Button>
       ))}
+    </div>
+  );
+}
+
+// ── Poke Agents Radio ───────────────────────────────────────────
+
+function RadioTab({ library }: { library: MusicLibrary }) {
+  const folder = useMusic((s) => s.folder);
+  const tracks = library.radioTracks;
+  const onRadio = folder.station === MUSIC_STATION_RADIO;
+  const unplayable = useMemo(() => new Set(folder.unplayable), [folder.unplayable]);
+  const list = useRef<HTMLDivElement>(null);
+  // Keep the playing track in view as the station moves on.
+  useEffect(() => {
+    const row = list.current?.querySelector('[aria-pressed="true"]');
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [folder.trackId]);
+
+  return (
+    <div className="flex flex-col gap-6 min-w-0" data-testid="music-radio">
+      <div className="flex items-center justify-between gap-8 flex-wrap">
+        <div className="flex flex-col min-w-0">
+          <span className="text-lg truncate">{RADIO_STATION_NAME}</span>
+          <Muted>{trackCountLabel(tracks.length)} of free retro game music</Muted>
+        </div>
+        <div className="flex gap-4 shrink-0">
+          <Button
+            size="sm"
+            onClick={() => playRadio({ shuffle: false })}
+            className="flex items-center gap-4"
+          >
+            <Icon name="play_arrow" />
+            Play
+          </Button>
+          <Button
+            size="sm"
+            variant="accent"
+            onClick={() => playRadio({ shuffle: true })}
+            className="flex items-center gap-4"
+            data-testid="music-radio-shuffle-all"
+          >
+            <Icon name="shuffle" />
+            Shuffle all
+          </Button>
+        </div>
+      </div>
+      <div
+        ref={list}
+        className="border-2 border-border overflow-y-auto pixel-scrollbar h-[min(200px,24vh)] sm:h-[min(300px,36vh)] py-2"
+      >
+        {tracks.map((track, i) => {
+          const current = onRadio && folder.trackId === track.id;
+          const cantPlay = unplayable.has(track.id);
+          return (
+            <MenuRow
+              key={track.id}
+              selected={current}
+              disabled={cantPlay}
+              onClick={() => playRadio({ startId: track.id })}
+              testId="music-radio-track"
+              right={
+                cantPlay ? (
+                  <Muted>can’t play here</Muted>
+                ) : current && folder.playing ? (
+                  <Icon name="volume_up" className="text-xs" />
+                ) : (
+                  <Muted className="hidden sm:inline truncate max-w-[40%]">{track.artist}</Muted>
+                )
+              }
+            >
+              <span className="text-text-muted mr-6 tabular-nums">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              {track.title}
+            </MenuRow>
+          );
+        })}
+      </div>
+      <Muted>
+        Each track downloads once, from its author’s page. Credits: Settings → About &amp; credits.
+      </Muted>
     </div>
   );
 }
@@ -658,27 +754,34 @@ function Controls({
   );
 }
 
-function FolderNowPlaying({ library }: { library: MusicLibrary }) {
+/** Controls for the page's player, as the radio or the music folder. Play
+ *  resumes what the player has queued when it belongs to this source, and
+ *  otherwise starts this source shuffled. */
+function PageNowPlaying({ library, source }: { library: MusicLibrary; source: PageSource }) {
   const folder = useMusic((s) => s.folder);
   const tracks = useMemo(() => indexTracks(library), [library]);
-  const ref = folder.trackId ? tracks.get(folder.trackId) : undefined;
-  const text = ref ? nowPlayingText(ref.track.title, ref.album.name) : 'Nothing playing';
+  const isRadio = source === 'radio';
+  const queuedHere =
+    folder.station !== null && (folder.station === MUSIC_STATION_RADIO) === isRadio;
+  const ref = queuedHere && folder.trackId ? tracks.get(folder.trackId) : undefined;
+  const text = ref ? trackLine(ref) : 'Nothing playing';
+  const canPlay = isRadio ? library.radioTracks.length > 0 : library.albums.length > 0;
   return (
-    <NowPlayingFrame text={text} source="folder">
+    <NowPlayingFrame text={text} source={source}>
       <Controls
         playing={folder.playing}
         shuffle={folder.shuffle}
         onToggle={() => {
-          if (!folder.playing && !folder.station && library.albums.length > 0) {
-            playFolder(MUSIC_STATION_ALL, { shuffle: true });
-          } else togglePlay('folder');
+          if (folder.playing || queuedHere) togglePlay(source);
+          else if (isRadio) playRadio({ shuffle: true });
+          else playFolder(MUSIC_STATION_ALL, { shuffle: true });
         }}
-        onPrevious={() => skip('folder', 'previous')}
-        onNext={() => skip('folder', 'next')}
-        onShuffle={() => setShuffle('folder', !folder.shuffle)}
+        onPrevious={() => skip(source, 'previous')}
+        onNext={() => skip(source, 'next')}
+        onShuffle={() => setShuffle(source, !folder.shuffle)}
         volume={Math.round(folder.volume * 100)}
         onVolume={(v) => setFolderVolume(v / 100)}
-        canPlay={library.albums.length > 0}
+        canPlay={canPlay}
       />
     </NowPlayingFrame>
   );
@@ -776,14 +879,12 @@ function NoticeLine() {
  *  and nothing beneath it. Escape never resumes music (resumeOnGesture.ts). */
 export function JukeboxPanel({ onClose }: { onClose: () => void }) {
   const library = useMusic((s) => s.library);
-  const storedTab = useMusic((s) => s.tab);
-  const tabUsable = useMusic((s) => sourceAvailable(s, s.tab));
-  const tab: MusicSourceId = tabUsable ? storedTab : 'folder';
+  const tab = useMusic(usableTab);
   // The controls follow what is playing; with nothing playing, the open tab.
   const playingSource = useMusic((s) =>
-    s.activeSource === 'folder'
+    isPageSource(s.activeSource)
       ? s.folder.playing
-        ? 'folder'
+        ? s.activeSource
         : null
       : s.apps[s.activeSource]?.playing
         ? s.activeSource
@@ -814,12 +915,13 @@ export function JukeboxPanel({ onClose }: { onClose: () => void }) {
           ) : (
             <>
               <SourceTabs library={library} tab={tab} />
+              {tab === 'radio' && <RadioTab library={library} />}
               {tab === 'folder' && <FolderTab library={library} />}
               {tab === 'apple' && <AppleTab library={library} />}
               {tab === 'spotify' && <SpotifyTab library={library} />}
               <NoticeLine />
-              {footerSource === 'folder' ? (
-                <FolderNowPlaying library={library} />
+              {isPageSource(footerSource) ? (
+                <PageNowPlaying library={library} source={footerSource} />
               ) : (
                 <AppNowPlaying source={footerSource} />
               )}

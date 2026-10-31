@@ -1,8 +1,9 @@
 /**
  * Jukebox UI store: the library the server sent, what the Music and Spotify
- * apps are playing, the folder player's state, which tab is open, and the
- * last failure to show. DOM-free and transport-free like conductorStore, so
- * the Node test runner can drive it; React reads it through `useMusic`.
+ * apps are playing, the page player's state (radio and folder music), which
+ * tab is open, and the last failure to show. DOM-free and transport-free like
+ * conductorStore, so the Node test runner can drive it; React reads it
+ * through `useMusic`.
  */
 
 import { useSyncExternalStore } from 'react';
@@ -17,13 +18,21 @@ import type {
 import type { MusicPrefs } from './preferences.js';
 import { readMusicPrefs } from './preferences.js';
 
-export type AppSource = Exclude<MusicSourceId, 'folder'>;
+/** Sources that play in the page, through the folder player. */
+export type PageSource = Extract<MusicSourceId, 'radio' | 'folder'>;
+/** Sources that play in an app on this Mac. */
+export type AppSource = Exclude<MusicSourceId, PageSource>;
 
-/** The folder player's state, as the panel and the pill show it. */
+export function isPageSource(source: MusicSourceId): source is PageSource {
+  return source === 'radio' || source === 'folder';
+}
+
+/** The page player's state (radio or folder music), as the panel and the
+ *  pill show it. */
 export interface FolderPlayback {
   playing: boolean;
   trackId: string | null;
-  /** The station playing (an album id, or 'all'), or the last one. */
+  /** The station playing ('radio', 'all' or an album id), or the last one. */
   station: string | null;
   shuffle: boolean;
   /** 0..1 */
@@ -88,6 +97,13 @@ export function sourceAvailable(state: MusicStoreState, source: MusicSourceId): 
   return state.library?.sources.some((s) => s.id === source && s.available) ?? false;
 }
 
+/** The tab to show: the chosen one while it works here, else the radio, else
+ *  the music folder (which always works on the Poke Agents server). */
+export function usableTab(state: MusicStoreState): MusicSourceId {
+  if (sourceAvailable(state, state.tab)) return state.tab;
+  return sourceAvailable(state, 'radio') ? 'radio' : 'folder';
+}
+
 export class MusicStore {
   private state: MusicStoreState;
   private readonly listeners = new Set<Listener>();
@@ -115,13 +131,12 @@ export class MusicStore {
     const state = this.state;
     switch (msg.type) {
       case 'musicLibrary': {
-        let next: MusicStoreState = { ...state, library: msg };
-        if (!sourceAvailable(next, state.tab)) next = { ...next, tab: 'folder' };
-        this.set(next);
+        const next: MusicStoreState = { ...state, library: msg };
+        this.set({ ...next, tab: usableTab(next) });
         return;
       }
       case 'musicState':
-        if (msg.source === 'folder') return;
+        if (isPageSource(msg.source)) return;
         this.set({ ...state, apps: { ...state.apps, [msg.source]: msg } });
         return;
       case 'musicActionResult': {
@@ -163,7 +178,7 @@ export class MusicStore {
   }
 
   setActiveSource(source: MusicSourceId): void {
-    const appStarted = source !== 'folder';
+    const appStarted = !isPageSource(source);
     if (this.state.activeSource !== source || this.state.appStarted !== appStarted) {
       this.set({ ...this.state, activeSource: source, appStarted });
     }

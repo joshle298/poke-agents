@@ -264,8 +264,12 @@ The user's own audio files in `~/.pixel-agents/sounds/`, one per effect name (`l
 _Avoid_: theme, skin
 
 **Jukebox**:
-Background music for the office, from music the user already has: audio files in `~/.pixel-agents/music/` (folder music, played in the page) or albums and links played in the Music or Spotify app on macOS. Cries and alerts briefly lower folder music. It never touches Conductor and never downloads music.
-_Avoid_: radio, player, soundtrack (that's what it plays)
+Background music for the office: Poke Agents Radio, audio files the user has in `~/.pixel-agents/music/` (folder music; both play in the page), or albums and links played in the Music or Spotify app on macOS. Cries and alerts briefly lower the music that plays in the page. It never touches Conductor, and the only music it downloads is the radio's.
+_Avoid_: player, soundtrack (that's what it plays)
+
+**Poke Agents Radio**:
+The Jukebox's built-in station and its default source: a fixed list of freely licensed (CC0 or CC BY) original retro game tracks, credited in the app and the README. Each track is downloaded once from its author's page when it first plays, and kept only if it matches its pinned checksum; `--no-radio` or `--no-sounds` turns it off. "Radio" means this station only, never the Jukebox as a whole.
+_Avoid_: playlist (it is not the user's), stream (tracks are downloaded, then played locally)
 
 ## Integration Boundary
 

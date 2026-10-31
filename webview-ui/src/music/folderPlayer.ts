@@ -1,8 +1,9 @@
 /**
- * Plays music folder tracks in the page: a few <audio> elements ("decks") so
- * the next track can preload on an idle one and crossfade in (1.5 s, equal
- * power) as the current one ends. Volume = user volume × fade × duck (duck.ts).
- * Media Session metadata and actions make the OS media keys work.
+ * Plays Poke Agents Radio and music folder tracks in the page: a few <audio>
+ * elements ("decks") so the next track can preload on an idle one and
+ * crossfade in (1.5 s, equal power) as the current one ends. Volume = user
+ * volume × fade × duck (duck.ts) × the track's gain (a radio track's loudness
+ * match). Media Session metadata and actions make the OS media keys work.
  *
  * Every fade starts from the gains the decks have at that moment, and a skip
  * during a fade starts the new track on a deck that isn't sounding, so a
@@ -22,6 +23,7 @@ import {
   MUSIC_SKIP_FADE_MS,
   MUSIC_START_FADE_MS,
   MUSIC_STATION_ALL,
+  MUSIC_STATION_RADIO,
 } from './constants.js';
 import { duckFactor, subscribeDuck } from './duck.js';
 import { indexTracks, stationTrackIds, type TrackRef } from './format.js';
@@ -60,7 +62,7 @@ export interface MediaSessionPort {
     action: 'play' | 'pause' | 'nexttrack' | 'previoustrack',
     handler: () => void,
   ): void;
-  setMetadata(metadata: { title: string; album: string }): void;
+  setMetadata(metadata: { title: string; album: string; artist?: string }): void;
 }
 
 export interface FolderPlayerEnv {
@@ -180,7 +182,7 @@ export class FolderPlayer {
 
   // ── Controls ────────────────────────────────────────────────
 
-  /** Play a station ('all' or an album id), optionally from one track. */
+  /** Play a station ('radio', 'all' or an album id), optionally from one track. */
   playStation(station: string, options: { shuffle?: boolean; startId?: string } = {}): void {
     const base = stationTrackIds(this.library, station).filter((id) => !this.unplayable.has(id));
     if (options.shuffle !== undefined) this.state = { ...this.state, shuffle: options.shuffle };
@@ -213,13 +215,12 @@ export class FolderPlayer {
 
   private resumeNow(): void {
     if (!this.queue) {
-      // The remembered album, or every album when it is gone from the folder.
-      const remembered = this.state.station;
-      const station =
-        remembered && stationTrackIds(this.library, remembered).length > 0
-          ? remembered
-          : MUSIC_STATION_ALL;
-      if (stationTrackIds(this.library, station).length === 0) return;
+      // The remembered station; when it is gone, every folder album, and with
+      // no folder music, the radio.
+      const station = [this.state.station, MUSIC_STATION_ALL, MUSIC_STATION_RADIO].find(
+        (s): s is string => !!s && stationTrackIds(this.library, s).length > 0,
+      );
+      if (!station) return;
       this.playStation(station, { startId: this.state.trackId ?? undefined });
       return;
     }
@@ -543,7 +544,9 @@ export class FolderPlayer {
   private applyVolumes(): void {
     const duck = duckFactor();
     this.decks.forEach((deck, i) => {
-      deck.volume = deckVolume(this.state.volume, this.fadeGain[i], duck);
+      const id = this.deckTrack[i];
+      const gain = id ? (this.tracks.get(id)?.gain ?? 1) : 1;
+      deck.volume = deckVolume(this.state.volume, this.fadeGain[i], duck, gain);
     });
   }
 
@@ -583,6 +586,11 @@ export class FolderPlayer {
 
   private updateMediaSession(): void {
     const ref = this.state.trackId ? this.tracks.get(this.state.trackId) : undefined;
-    if (ref) this.env.mediaSession?.setMetadata({ title: ref.track.title, album: ref.album.name });
+    if (!ref) return;
+    this.env.mediaSession?.setMetadata({
+      title: ref.track.title,
+      album: ref.album.name,
+      ...(ref.artist ? { artist: ref.artist } : {}),
+    });
   }
 }

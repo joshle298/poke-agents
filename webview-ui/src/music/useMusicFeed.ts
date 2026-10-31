@@ -5,7 +5,7 @@ import { requestMusicLibrary, sendMusicCommand } from './actions.js';
 import { canSend, pollWhileConnected, watchConnection } from './connection.js';
 import { MUSIC_APP_POLL_MS } from './constants.js';
 import { existingFolderPlayer, folderPlayer } from './controls.js';
-import { type AppSource, musicStore, useMusic } from './musicStore.js';
+import { type AppSource, isPageSource, musicStore, useMusic } from './musicStore.js';
 import { readMusicPrefs } from './preferences.js';
 import { resumeOnGesture } from './resumeOnGesture.js';
 
@@ -13,10 +13,10 @@ function isAppSource(source: string): source is AppSource {
   return source === 'apple' || source === 'spotify';
 }
 
-/** Folder music was playing when the page closed. */
-function rememberedFolderPlaying(): boolean {
+/** Radio or folder music was playing when the page closed. */
+function rememberedPagePlaying(): boolean {
   const prefs = readMusicPrefs();
-  return prefs.playing && prefs.source === 'folder';
+  return prefs.playing && isPageSource(prefs.source);
 }
 
 /**
@@ -45,9 +45,9 @@ function useConnected(): boolean {
 
 /**
  * Keeps the Jukebox store fed: server messages in, the library on start, the
- * app's now-playing while it matters, and the remembered folder music resumed
- * on the page's first gesture (browsers allow audio only after one, and the
- * Jukebox never plays on its own before it).
+ * app's now-playing while it matters, and the remembered radio or folder music
+ * resumed on the page's first gesture (browsers allow audio only after one,
+ * and the Jukebox never plays on its own before it).
  */
 export function useMusicFeed(): void {
   // Server messages, and the library once at start (cheap: a bounded scan).
@@ -86,14 +86,14 @@ export function useMusicFeed(): void {
     });
   }, [pollSource, appAvailable, connected]);
 
-  // Folder music that was playing when the page closed resumes on the first
-  // gesture outside the Jukebox, once the library is here.
+  // Radio or folder music that was playing when the page closed resumes on
+  // the first gesture outside the Jukebox, once the library is here.
   const libraryReady = useMusic((s) => s.library !== null);
   useEffect(() => {
-    if (!libraryReady || !rememberedFolderPlaying() || readMusicPrefs().station === null) return;
+    if (!libraryReady || !rememberedPagePlaying() || readMusicPrefs().station === null) return;
     return resumeOnGesture({
       target: window,
-      shouldResume: () => rememberedFolderPlaying() && !folderPlayer().isPlaying(),
+      shouldResume: () => rememberedPagePlaying() && !folderPlayer().isPlaying(),
       resume: (onBlocked) => folderPlayer().resume({ onBlocked }),
     });
   }, [libraryReady]);
