@@ -63,3 +63,23 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
     </div>
   );
 }
+
+/**
+ * Centred in a standalone office started with every provider off
+ * (`--no-conductor` without `--claude`): nothing can ever walk in, so say how
+ * to restart it. The CLI prints the same advice.
+ */
+export function NothingTrackedOffice() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-16">
+      <div className="pixel-panel pointer-events-auto flex flex-col items-center gap-8 py-12 px-16 max-w-[420px] text-center">
+        <PokeBallIcon size={32} />
+        <span className="text-lg">Nothing to track</span>
+        <span className="text-xs text-text-muted">
+          Restart without <span className="text-accent">--no-conductor</span>, or add{' '}
+          <span className="text-accent">--claude</span>.
+        </span>
+      </div>
+    </div>
+  );
+}

@@ -7,7 +7,7 @@ import { AgentCardBar } from './components/AgentCardBar.js';
 import { BattleLog } from './components/BattleLog.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
-import { ConductorEmptyOffice } from './components/ConductorEmptyOffice.js';
+import { ConductorEmptyOffice, NothingTrackedOffice } from './components/ConductorEmptyOffice.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
 import { CreditsModal } from './components/CreditsModal.js';
 import { DebugView } from './components/DebugView.js';
@@ -877,6 +877,10 @@ function App() {
         <ConductorEmptyOffice
           onOpenSessions={officeReadOnly ? null : () => setIsSessionsOpen(true)}
         />
+      )}
+      {/* Started with every provider off: nothing can arrive. */}
+      {activeProviders.length === 0 && agents.length === 0 && !isDebugMode && (
+        <NothingTrackedOffice />
       )}
 
       {pokemonTheme && battleLogOn && !isDebugMode && (
