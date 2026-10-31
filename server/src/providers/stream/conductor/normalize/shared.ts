@@ -18,6 +18,8 @@ export interface LogEvent {
   kind: 'log';
   role: 'user' | 'assistant' | 'tool';
   text: string;
+  /** For role tool: the canonical tool name. */
+  toolName?: string;
   /** Epoch ms. */
   at: number;
   /** Feed item id, so replays never duplicate an entry. */
@@ -61,6 +63,9 @@ export interface NormState {
   permissionPending: boolean;
   /** An AskUserQuestion is open: Waiting for input. */
   awaiting: boolean;
+  /** A question the agent asked without stopping (Codex `delivery: 'async'`),
+   *  open until the next user message. */
+  asyncQuestion?: { text: string; options?: string[] };
   sawSessionStateChanged: boolean;
   pendingOutcome?: { outcome: TurnOutcome; errorMessage?: string };
   /** Outcome of the last finished turn (seeds an errored agent). */
@@ -164,6 +169,8 @@ export function handleUserMessage(
   const sender = asString(content.senderSessionId);
   const at = itemTime(item);
   state.newestUserQueued = content.state === 'queued';
+  // A message from the user (or another session) answers an async question.
+  state.asyncQuestion = undefined;
   if (text) {
     out.push({
       kind: 'log',

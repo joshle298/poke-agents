@@ -406,6 +406,7 @@ export function handleClientMessage(
       break;
 
     case 'requestSessionDetail':
+    case 'requestSessionHistory':
     case 'sendSessionMessage':
     case 'stopSession':
     case 'archiveSession':

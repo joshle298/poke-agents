@@ -4,6 +4,9 @@
  * the last few tool labels, and messages exchanged with other sessions).
  *
  * In memory only: message text is user content and never reaches disk or logs.
+ * Every entry carries the key of its source (feed item, tool call or message
+ * id), the same key history pages use (history.ts), so the office can merge
+ * the two without duplicates; tool entries carry the canonical tool name.
  */
 
 import type { StreamSessionDetail } from '../../../../../core/src/provider.js';
@@ -19,10 +22,9 @@ import { clipText } from './normalize/shared.js';
 
 type Entry = StreamSessionDetail['entries'][number];
 
-interface StoredEntry extends Entry {
-  /** Dedupe/update key: feed item id or message id. */
-  key?: string;
-}
+/** Entry as kept: `key` is the dedupe/update key (feed item id, `tool:<id>`,
+ *  `peerIn:<item id>` or `peerOut:<message id>`). */
+type StoredEntry = Entry;
 
 interface SessionLog {
   prompt?: string;
@@ -71,8 +73,10 @@ export class SessionLogStore {
     this.push(sessionId, { role: 'assistant', text: clipText(text, LOG_ASSISTANT_MAX), at, key });
   }
 
-  addTool(sessionId: string, label: string, at: number, key?: string): void {
-    this.push(sessionId, { role: 'tool', text: clipText(label, LOG_ASSISTANT_MAX), at, key });
+  addTool(sessionId: string, label: string, at: number, key?: string, toolName?: string): void {
+    const entry: StoredEntry = { role: 'tool', text: clipText(label, LOG_ASSISTANT_MAX), at, key };
+    if (toolName) entry.toolName = toolName;
+    this.push(sessionId, entry);
   }
 
   /** A message to or from another session. Re-adding the same key updates its text. */
@@ -108,6 +112,8 @@ export class SessionLogStore {
     if (!log) return { entries: [] };
     const entries = log.entries.map((stored) => {
       const entry: Entry = { role: stored.role, text: stored.text, at: stored.at };
+      if (stored.key) entry.key = stored.key;
+      if (stored.toolName) entry.toolName = stored.toolName;
       if (stored.peerSessionId) {
         entry.peerSessionId = stored.peerSessionId;
         const label = peerLabel?.(stored.peerSessionId);

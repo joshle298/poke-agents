@@ -29,10 +29,11 @@ import type {
 import type {
   AgentEvent,
   AgentEventSink,
+  StreamSessionDetail,
   StreamSessionInfo,
 } from '../../../../../core/src/provider.js';
 import { canSeedSilently } from '../silentSeed.js';
-import { ConductorApiError, type ConductorClient } from './client.js';
+import { ConductorApiError, type ConductorClient, userFacingMessage } from './client.js';
 import {
   ARCHIVE_INTEREST_MS,
   ARCHIVED_LIST_INTERVAL_MS,
@@ -46,6 +47,7 @@ import {
   FOCUS_POLL_MS,
   FOCUS_TTL_MS,
   FULL_LIST_INTERVAL_MS,
+  HISTORY_PAGE_ITEMS,
   HOT_POLL_MS,
   HOT_RECENT_MS,
   LEVEL_WAIT_MAX_MS,
@@ -90,6 +92,7 @@ import {
   WORKSPACES_PAGE_LIMIT,
 } from './constants.js';
 import { harnessFromModel, isHarness } from './harness.js';
+import { formatHistoryCursor, historyEntries, parseHistoryCursor } from './history.js';
 import type { LinkObservation, LinkTracker } from './links.js';
 import { repoShortName, repoSlug, sessionLabel } from './naming.js';
 import { normalizeItem } from './normalize/index.js';
@@ -105,6 +108,7 @@ import {
   startTurn,
   survivesTurnEnd,
 } from './normalize/shared.js';
+import { pendingQuestion } from './question.js';
 import type { SessionLogStore } from './sessionLog.js';
 import type { ConductorStateStore } from './state.js';
 import { formatConductorToolStatus } from './tools.js';
@@ -187,6 +191,9 @@ interface SessionRecord {
   statusMessage?: string;
   lastErrorAt?: string;
   cursor?: { lastId: string; lastIndex: number };
+  /** Items in the feed as far as it was read (the offset of the next one):
+   *  known once the tail was found, then kept by steady polls. */
+  feedLength?: number;
   /** Normalizer state reconstructed from the feed tail. */
   tailed: boolean;
   /** Item #1 read (or its sender cached in state). */
@@ -472,24 +479,81 @@ export class ConductorPoller {
     return this.summaries();
   }
 
-  async getSessionDetail(sessionId: string) {
+  async getSessionDetail(sessionId: string): Promise<StreamSessionDetail | null> {
     const rec = this.records.get(sessionId);
     if (!rec) return null;
-    if (!rec.tailed) {
-      // At user priority, even if a low-priority tail unit is still queued:
-      // replays are idempotent. Overlapping detail requests share one.
-      rec.detailSync ??= this.syncTail(rec, PRIORITY_USER)
-        .catch((err: unknown) => this.noteSessionError(rec, err))
-        .finally(() => {
-          rec.detailSync = undefined;
-        });
-      await rec.detailSync;
-    }
+    if (!rec.tailed) await this.tailForUser(rec);
     if (!this.logs.get(sessionId).prompt && !rec.promptFetched && !rec.feedEmpty) {
       rec.promptFetched = true;
       await this.fetchPrompt(rec);
     }
-    return this.logs.get(sessionId, (peer) => this.labelFor(peer));
+    const detail = this.logs.get(sessionId, (peer) => this.labelFor(peer));
+    const question = rec.tailed ? pendingQuestion(rec.norm) : undefined;
+    if (question) detail.question = question;
+    return detail;
+  }
+
+  /**
+   * One page of older conversation for the chat view, oldest first: the
+   * newest page without a cursor, else the page that ends where `before`
+   * (a cursor from a previous page) starts. Fetched on demand at user
+   * priority, within the budget. Rejects with a user-facing message.
+   */
+  async getSessionHistory(
+    sessionId: string,
+    before?: string,
+  ): Promise<{ entries: StreamSessionDetail['entries']; before?: string; hasMore: boolean }> {
+    const rec = this.records.get(sessionId);
+    if (!rec) throw new Error('Session not found');
+    let end: number | undefined;
+    if (before === undefined) {
+      if (rec.feedLength === undefined) await this.tailForUser(rec);
+      end = rec.feedLength;
+      if (end === undefined) throw new Error("Couldn't read this session's history");
+    } else {
+      end = parseHistoryCursor(before);
+      if (end === undefined) throw new Error('Invalid history cursor');
+    }
+    const start = Math.max(0, end - HISTORY_PAGE_ITEMS);
+    let items: ConductorItem[] = [];
+    if (end > start) {
+      try {
+        const page = await this.client.listMessages(
+          rec.id,
+          { offset: start, limit: end - start },
+          PRIORITY_USER,
+        );
+        items = (page?.data ?? []).slice(0, end - start);
+      } catch (err) {
+        this.noteSessionError(rec, err);
+        throw new Error(userFacingMessage(err));
+      }
+    }
+    const entries = historyEntries(rec.id, items, {
+      harness: rec.norm.harness,
+      resolvedModel: rec.api.resolvedModel ?? undefined,
+    }).map((entry) => {
+      if (!entry.peerSessionId) return entry;
+      const label = this.labelFor(entry.peerSessionId);
+      return label ? { ...entry, peerLabel: label } : entry;
+    });
+    const page: { entries: StreamSessionDetail['entries']; before?: string; hasMore: boolean } = {
+      entries,
+      hasMore: start > 0,
+    };
+    if (start > 0) page.before = formatHistoryCursor(start);
+    return page;
+  }
+
+  /** Read the tail now, at user priority, even if a low-priority tail unit is
+   *  still queued (replays are idempotent); overlapping requests share one. */
+  private async tailForUser(rec: SessionRecord): Promise<void> {
+    rec.detailSync ??= this.syncTail(rec, PRIORITY_USER)
+      .catch((err: unknown) => this.noteSessionError(rec, err))
+      .finally(() => {
+        rec.detailSync = undefined;
+      });
+    await rec.detailSync;
   }
 
   /** After a successful archive: despawn and list it in the PC Box. */
@@ -1099,6 +1163,7 @@ export class ConductorPoller {
     if (rec.feedEmpty) {
       // Nothing to replay; steady polls read the feed from its start.
       rec.tailed = true;
+      rec.feedLength = 0;
       rec.lastPollAt = this.clock.now();
     }
     this.emitCachedSpawnLink(rec);
@@ -1247,6 +1312,7 @@ export class ConductorPoller {
     });
     if (start > 0) this.logs.markTruncated(rec.id);
     const recentTurn = this.processItems(rec, items, false);
+    rec.feedLength = start + items.length;
     rec.tailed = true;
     rec.pollSoon = false;
     rec.lastPollAt = this.clock.now();
@@ -1295,6 +1361,7 @@ export class ConductorPoller {
         throw err;
       }
       const data = page?.data ?? [];
+      if (rec.feedLength !== undefined) rec.feedLength += data.length;
       if (steady) this.processItems(rec, data, true);
       else items.push(...data);
       if (data.length > 0) after = data[data.length - 1].id;
@@ -1444,7 +1511,7 @@ export class ConductorPoller {
         } else if (event.role === 'assistant') {
           this.logs.addAssistant(rec.id, event.text, event.at, event.itemId);
         } else {
-          this.logs.addTool(rec.id, event.text, event.at, event.itemId);
+          this.logs.addTool(rec.id, event.text, event.at, event.itemId, event.toolName);
         }
         continue;
       }
@@ -1454,6 +1521,7 @@ export class ConductorPoller {
           formatConductorToolStatus(event.toolName, event.input),
           at,
           `tool:${event.toolId}`,
+          event.toolName,
         );
       }
       if (!emit) continue;

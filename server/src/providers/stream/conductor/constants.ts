@@ -196,6 +196,18 @@ export const LOG_TOOL_KEEP = 5;
 /** Item keys remembered per log so replayed pages never duplicate entries. */
 export const LOG_KEY_MEMORY = 2_000;
 export const USER_ACTION_DETAIL_MAX = 120;
+/** A pending question (sessionDetail.question): its text, and up to this many
+ *  options of at most this length each. */
+export const QUESTION_TEXT_MAX = 1_200;
+export const QUESTION_OPTIONS_MAX = 8;
+export const QUESTION_OPTION_MAX = 120;
+
+// ── Chat history (getSessionHistory) ───────────────────────
+
+/** Feed items per history page (the API's page cap). */
+export const HISTORY_PAGE_ITEMS = 100;
+/** Cursors this provider issues: `o<offset>`. */
+export const HISTORY_CURSOR_PATTERN = /^o(\d{1,9})$/;
 
 // ── Persistence ─────────────────────────────────────────────
 

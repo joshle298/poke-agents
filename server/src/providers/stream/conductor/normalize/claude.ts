@@ -261,6 +261,7 @@ function handleSystem(item: ConductorItem, raw: Raw, state: NormState, out: Prov
           kind: 'log',
           role: 'tool',
           text: formatConductorToolStatus(label, input),
+          toolName: label,
           at,
           itemId: item.id,
         });

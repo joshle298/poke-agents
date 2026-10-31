@@ -59,6 +59,23 @@ function fakeConductor(overrides: Partial<StreamProvider> = {}): StreamProvider 
         { role: 'peerOut' as const, text: 'Done', at: 3, peerSessionId: 'gone' },
       ],
       truncated: true,
+      question: { kind: 'askUser' as const, text: 'Which one?', options: ['A', 'B'] },
+    })),
+    getSessionHistory: vi.fn(async (_sessionId: string, before?: string) => ({
+      entries: [
+        { role: 'user' as const, text: 'Older ask', at: 0, key: 'item-0' },
+        {
+          role: 'peerOut' as const,
+          text: 'Go',
+          at: 0,
+          key: 'peerOut:m1',
+          peerSessionId: 's2',
+          peerLabel: 'Lead',
+        },
+        { role: 'tool' as const, text: 'Running: ls', at: 0, key: 'tool:t0', toolName: 'Bash' },
+      ],
+      before: before === undefined ? 'o100' : undefined,
+      hasMore: before === undefined,
     })),
     sendMessage: vi.fn(async () => {}),
     stopSession: vi.fn(async () => {}),
@@ -207,6 +224,7 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
             { role: 'peerOut', text: 'Done', at: 3, peerId: undefined },
           ],
           truncated: true,
+          question: { kind: 'askUser', text: 'Which one?', options: ['A', 'B'] },
         },
       ]);
     });
@@ -215,6 +233,96 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       send({ type: 'requestSessionDetail', id: 404 });
       await settle();
       expect(ofType('sessionDetail')).toEqual([{ type: 'sessionDetail', id: 404, entries: [] }]);
+    });
+  });
+
+  // ── Chat history ──────────────────────────────────────────────
+
+  describe('requestSessionHistory', () => {
+    it('answers with a page of older conversation, peers mapped to agents', async () => {
+      const id = adopt('s1');
+      const peer = adopt('s2');
+      send({ type: 'requestSessionHistory', id });
+      send({ type: 'requestSessionHistory', id, before: 'o100' });
+      await settle();
+      expect(provider.getSessionHistory).toHaveBeenNthCalledWith(1, 's1', undefined);
+      expect(provider.getSessionHistory).toHaveBeenNthCalledWith(2, 's1', 'o100');
+      expect(provider.setFocus).toHaveBeenCalledWith(['s1']);
+      const [first, second] = ofType('sessionHistory');
+      expect(first).toEqual({
+        type: 'sessionHistory',
+        id,
+        entries: [
+          { role: 'user', text: 'Older ask', at: 0, key: 'item-0', peerId: undefined },
+          {
+            role: 'peerOut',
+            text: 'Go',
+            at: 0,
+            key: 'peerOut:m1',
+            peerLabel: 'Lead',
+            peerId: peer,
+          },
+          {
+            role: 'tool',
+            text: 'Running: ls',
+            at: 0,
+            key: 'tool:t0',
+            toolName: 'Bash',
+            peerId: undefined,
+          },
+        ],
+        before: 'o100',
+        hasMore: true,
+        error: undefined,
+      });
+      expect(second).toMatchObject({ before: undefined, hasMore: false });
+    });
+
+    it('refuses a malformed cursor and a non-session agent without asking the provider', async () => {
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id, before: '../../etc' });
+      send({ type: 'requestSessionHistory', id: 999 });
+      await settle();
+      expect(provider.getSessionHistory).not.toHaveBeenCalled();
+      expect(ofType('sessionHistory').map((m) => [m.id, m.hasMore, m.error])).toEqual([
+        [id, false, 'Invalid request.'],
+        [999, false, 'This agent is not a Conductor session.'],
+      ]);
+    });
+
+    it('reports a failed page with the provider message', async () => {
+      provider.getSessionHistory = vi.fn(async () => {
+        throw new Error('Conductor is rate limiting requests. Try again shortly.');
+      });
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id });
+      await settle();
+      expect(ofType('sessionHistory')).toEqual([
+        {
+          type: 'sessionHistory',
+          id,
+          entries: [],
+          before: undefined,
+          hasMore: false,
+          error: 'Conductor is rate limiting requests. Try again shortly.',
+        },
+      ]);
+    });
+
+    it('is privileged: a read-only viewer gets no conversation, and its request settles', async () => {
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id }, ctx({ privileged: false }));
+      await settle();
+      expect(provider.getSessionHistory).not.toHaveBeenCalled();
+      expect(ofType('sessionHistory')).toEqual([
+        {
+          type: 'sessionHistory',
+          id,
+          entries: [],
+          hasMore: false,
+          error: 'Read-only office: open the tokened URL to read conversations.',
+        },
+      ]);
     });
   });
 

@@ -86,6 +86,7 @@ type ConductorControls = Required<
     | 'setScope'
     | 'listSessions'
     | 'getSessionDetail'
+    | 'getSessionHistory'
     | 'sendMessage'
     | 'stopSession'
     | 'archiveSession'
@@ -292,6 +293,10 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     async getSessionDetail(sessionId: string): Promise<StreamSessionDetail | null> {
       return poller ? poller.getSessionDetail(sessionId) : null;
+    },
+
+    async getSessionHistory(sessionId: string, before?: string) {
+      return requirePoller().getSessionHistory(sessionId, before);
     },
 
     async sendMessage(sessionId: string, text: string): Promise<void> {

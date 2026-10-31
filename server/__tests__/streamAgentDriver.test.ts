@@ -921,7 +921,8 @@ describe('StreamAgentDriver', () => {
       expect(ofType('conductorSessions')[0].sessions).toEqual([
         expect.objectContaining({ sessionId: 'archived', species: 25, shiny: true }),
       ]);
-      expect(ofType('conductorSessions')[0].sessions[0]).not.toHaveProperty('agentId');
+      const [listed] = ofType('conductorSessions')[0].sessions as ConductorSessionSummary[];
+      expect(listed).not.toHaveProperty('agentId');
     });
 
     it('seeds silently: no status it causes chimes', () => {

@@ -210,10 +210,18 @@ describe('Pokédex session log', () => {
     expect(log.get('s')).toEqual({
       prompt: 'First task',
       entries: [
-        { role: 'user', text: 'First', at: 1_000 },
-        { role: 'assistant', text: 'Second', at: 2_000 },
+        { role: 'user', text: 'First', at: 1_000, key: 'item-1' },
+        { role: 'assistant', text: 'Second', at: 2_000, key: 'item-2' },
       ],
     });
+  });
+
+  it('names the tool of a tool entry', () => {
+    const log = new SessionLogStore();
+    log.addTool('s', 'Running: npm test', 1, 'tool:t1', 'Bash');
+    expect(log.get('s').entries).toEqual([
+      { role: 'tool', text: 'Running: npm test', at: 1, key: 'tool:t1', toolName: 'Bash' },
+    ]);
   });
 
   it('keeps only the last 5 tool labels and at most 40 entries, then reports truncation', () => {
@@ -244,6 +252,7 @@ describe('Pokédex session log', () => {
         role: 'peerOut',
         text: 'Review the change',
         at: 5,
+        key: 'peerOut:msg-1',
         peerSessionId: 'child',
         peerLabel: 'Worker A',
       },
