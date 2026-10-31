@@ -327,7 +327,7 @@ export function SettingsModal({
           onOpenCredits();
         }}
       >
-        Credits
+        About &amp; credits
       </MenuItem>
     </Modal>
   );

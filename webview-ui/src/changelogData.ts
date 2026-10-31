@@ -23,8 +23,8 @@ export function toMajorMinor(version: string): string {
 
 export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
 
-/** Newest first. Entries before 0.1 are the upstream Pixel Agents releases this
- *  fork is built on. */
+/** Newest first. Entries before 0.1 are the Pixel Agents releases Poke Agents
+ *  is built on. */
 export const changelogEntries: ChangelogEntry[] = [
   {
     version: '0.1',

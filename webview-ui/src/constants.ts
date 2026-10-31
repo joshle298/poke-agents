@@ -795,6 +795,8 @@ export const TOAST_MAX_VISIBLE = 3;
 export const TOAST_Z_INDEX = 60;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
+/** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */
+export const PIXEL_AGENTS_REPO_URL = 'https://github.com/pixel-agents-hq/pixel-agents';
 /** Credits links (PMD Sprite Repository and the community art license). */
 export const PMD_SPRITE_SITE_URL = 'https://sprites.pmdcollab.org';
 export const PMD_SPRITE_REPO_URL = 'https://github.com/PMDCollab/SpriteCollab';
