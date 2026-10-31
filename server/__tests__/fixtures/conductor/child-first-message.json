@@ -1,0 +1,303 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000101",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000101",
+      "type": "userMessage",
+      "deliveryAttemptId": "3e553e55-0000-4000-8000-000000000001",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "senderSessionId": "5e551044-0000-4000-8000-000000000004",
+      "id": "3e553e55-0000-4000-8000-000000000001",
+      "message": "You are Worker A. Review the change and report back to the orchestrator.",
+      "state": "sent",
+      "turnId": "3e553e55-0000-4000-8000-000000000001",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "thinkingLevel": "high",
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:05.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000102",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000102",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "thread.started",
+          "thread_id": "0000c0de-0000-4000-8000-000000000001"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:00:05.300Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000103",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000103",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.started"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:00:05.300Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000104",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000104",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000e1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'git diff --stat origin/main...'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "git diff --stat origin/main..."
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:00:06.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000105",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 5,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000105",
+      "type": "userMessage",
+      "deliveryAttemptId": "3e553e55-0000-4000-8000-000000000002",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "senderSessionId": "5e551044-0000-4000-8000-000000000004",
+      "id": "3e553e55-0000-4000-8000-000000000002",
+      "message": "Also check the migration file.",
+      "state": "sent",
+      "turnId": "3e553e55-0000-4000-8000-000000000001",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "thinkingLevel": "high",
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:01:01.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000106",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 6,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000106",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000e1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'git diff --stat origin/main...'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "completed",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "git diff --stat origin/main..."
+              }
+            ],
+            "aggregatedOutput": " 2 files changed\n",
+            "exitCode": 0,
+            "durationMs": 400
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:01:02.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000107",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 7,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000107",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000e2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor message create --session 5e551044-0000-4000-8000-000000000004 --message 'Worker A report: review finished, 2 findings.''",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor message create --session 5e551044-0000-4000-8000-000000000004 --message 'Worker A report: review finished, 2 findings.'"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:01:02.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000108",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 8,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000108",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000e2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor message create --session 5e551044-0000-4000-8000-000000000004 --message 'Worker A report: review finished, 2 findings.''",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "completed",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor message create --session 5e551044-0000-4000-8000-000000000004 --message 'Worker A report: review finished, 2 findings.'"
+              }
+            ],
+            "aggregatedOutput": "Message ID  3e553e55-0000-4000-8000-000000000003\nState       queued\nDeep link   conductor://workspace?id=0000aaaa-0000-4000-8000-000000000001&session=5e551044-0000-4000-8000-000000000004\n",
+            "exitCode": 0,
+            "durationMs": 700
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:01:03.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000109",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "sessionIndex": 9,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000109",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.completed",
+          "usage": {
+            "input_tokens": 30000,
+            "cached_input_tokens": 28000,
+            "cache_write_input_tokens": 1900,
+            "output_tokens": 80,
+            "reasoning_output_tokens": 10
+          },
+          "conductor_sdk_metadata": {
+            "requestedModel": "gpt-6.1-sol",
+            "requestedReasoningEffort": "high",
+            "requestedServiceTier": "fast",
+            "requestedFastMode": true,
+            "requestedThinkingLevel": "high",
+            "model": "gpt-6.1-sol",
+            "modelProvider": "openai_sse",
+            "reasoningEffort": "high",
+            "serviceTier": "priority",
+            "codexUsage": {
+              "schemaVersion": 1,
+              "reports": [
+                {
+                  "threadId": "0000c0de-0000-4000-8000-000000000001",
+                  "turnId": "0000c0de-0000-4000-8000-000000000002",
+                  "cumulativeTotalTokens": 30080,
+                  "model": "gpt-6.1-sol",
+                  "modelProvider": "openai_sse",
+                  "serviceTier": "priority",
+                  "usage": {
+                    "totalTokens": 30080,
+                    "inputTokens": 30000,
+                    "cachedInputTokens": 28000,
+                    "cacheWriteInputTokens": 1900,
+                    "outputTokens": 80,
+                    "reasoningOutputTokens": 10
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "3e553e55-0000-4000-8000-000000000001",
+      "turnId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    "receivedAt": "2026-01-01T12:01:04.000Z"
+  }
+]

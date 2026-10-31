@@ -1,0 +1,323 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000036",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000036",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a0002-0000-4000-8000-000000000002",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "id": "7a7a0002-0000-4000-8000-000000000002",
+      "message": "Add a toggle button to the sidebar.",
+      "state": "sent",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002",
+      "config": {
+        "collaborationMode": "default",
+        "model": "grok-4.7",
+        "harness": "cursor",
+        "thinkingLevel": "xhigh",
+        "fastMode": true,
+        "chromeEnabled": false,
+        "localExecutionMcpEnabled": true,
+        "localExecutionMcpRoutedEnabled": false,
+        "getDiffCommentsEnabled": true,
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000037",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000037",
+      "type": "agent",
+      "rawPayload": {
+        "type": "system",
+        "subtype": "init",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "uuid": "run-00000a11-0000-4000-8000-000000000001",
+        "content": "grok-4.7"
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:00.300Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000038",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000038",
+      "type": "agent",
+      "rawPayload": {
+        "type": "assistant",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "Looking for the sidebar component."
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:01.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000039",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000039",
+      "type": "agent",
+      "rawPayload": {
+        "type": "assistant",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-00000000-0000-4000-8000-000000000001-1\nfc_00000000-0000-4000-8000-000000000001_0",
+              "name": "grep",
+              "input": {
+                "pattern": "Sidebar",
+                "glob": "*.tsx",
+                "offset": 0,
+                "outputMode": "files_with_matches"
+              }
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:01.100Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000040",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000040",
+      "type": "agent",
+      "rawPayload": {
+        "type": "user",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call-00000000-0000-4000-8000-000000000001-1\nfc_00000000-0000-4000-8000-000000000001_0",
+              "content": {
+                "status": "success",
+                "value": {
+                  "workspaceResults": {
+                    "/workspace/example-repo": {
+                      "type": "content",
+                      "output": {
+                        "matches": [
+                          {
+                            "file": "./src/sidebar.tsx"
+                          }
+                        ],
+                        "totalMatches": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "is_error": false
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:01.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000041",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 6,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000041",
+      "type": "agent",
+      "rawPayload": {
+        "type": "assistant",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-00000000-0000-4000-8000-000000000001-2\nfc_00000000-0000-4000-8000-000000000001_1",
+              "name": "Edit",
+              "input": {
+                "file_path": "/workspace/example-repo/src/sidebar.tsx"
+              }
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:02.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000042",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 7,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000042",
+      "type": "agent",
+      "rawPayload": {
+        "type": "user",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call-00000000-0000-4000-8000-000000000001-2\nfc_00000000-0000-4000-8000-000000000001_1",
+              "content": "Applied edit to /workspace/example-repo/src/sidebar.tsx",
+              "is_error": false
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:02.400Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000043",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 8,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000043",
+      "type": "agent",
+      "rawPayload": {
+        "type": "assistant",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call-00000000-0000-4000-8000-000000000001-3\nfc_00000000-0000-4000-8000-000000000001_2",
+              "name": "Bash",
+              "input": {
+                "command": "npm test -- sidebar",
+                "timeout": 120000
+              }
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:03.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000044",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 9,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000044",
+      "type": "agent",
+      "rawPayload": {
+        "type": "user",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "call-00000000-0000-4000-8000-000000000001-3\nfc_00000000-0000-4000-8000-000000000001_2",
+              "content": "Tests: 3 passed",
+              "is_error": false
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:09.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000045",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 10,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000045",
+      "type": "agent",
+      "rawPayload": {
+        "type": "assistant",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "message": {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Added the toggle button."
+            }
+          ]
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:09.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000046",
+    "sessionId": "5e551022-0000-4000-8000-000000000002",
+    "sessionIndex": 11,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000046",
+      "type": "agent",
+      "rawPayload": {
+        "type": "result",
+        "session_id": "5e551022-0000-4000-8000-000000000002",
+        "subtype": "finished",
+        "is_error": false,
+        "result": "Added the toggle button.",
+        "conductor_sdk_metadata": {
+          "requestedModel": "grok-4.7",
+          "requestedFastMode": true,
+          "model": "grok-4.7"
+        }
+      },
+      "userMessageId": "7a7a0002-0000-4000-8000-000000000002",
+      "turnId": "7a7a0002-0000-4000-8000-000000000002"
+    },
+    "receivedAt": "2026-01-01T12:00:09.600Z"
+  }
+]

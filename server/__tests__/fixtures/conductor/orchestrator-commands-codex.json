@@ -1,0 +1,200 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000095",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000095",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a000b-0000-4000-8000-000000000011",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "id": "7a7a000b-0000-4000-8000-000000000011",
+      "message": "Start worker B.",
+      "state": "sent",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "thinkingLevel": "high",
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000096",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000096",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.started"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000b-0000-4000-8000-000000000011",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011"
+    },
+    "receivedAt": "2026-01-01T12:00:00.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000097",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000097",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000d1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor --json session create --workspace 0000bbbb-0000-4000-8000-000000000002 --agent claude --model opus-5-5-1m --name \"Worker B\" --message-file /tmp/worker-b.md'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor --json session create --workspace 0000bbbb-0000-4000-8000-000000000002 --agent claude --model opus-5-5-1m --name \"Worker B\" --message-file /tmp/worker-b.md"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000b-0000-4000-8000-000000000011",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011"
+    },
+    "receivedAt": "2026-01-01T12:00:01.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000098",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000098",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000d1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor --json session create --workspace 0000bbbb-0000-4000-8000-000000000002 --agent claude --model opus-5-5-1m --name \"Worker B\" --message-file /tmp/worker-b.md'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "completed",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor --json session create --workspace 0000bbbb-0000-4000-8000-000000000002 --agent claude --model opus-5-5-1m --name \"Worker B\" --message-file /tmp/worker-b.md"
+              }
+            ],
+            "aggregatedOutput": "{\n  \"id\": \"5e5510cc-0000-4000-8000-000000000012\",\n  \"deepLink\": \"conductor://workspace?id=0000bbbb-0000-4000-8000-000000000002&session=5e5510cc-0000-4000-8000-000000000012\",\n  \"name\": \"Worker B\",\n  \"model\": \"opus-5-5-1m\",\n  \"resolvedModel\": \"claude-opus-5-5[1m]\",\n  \"effort\": \"high\",\n  \"initialMessage\": {\n    \"messageId\": \"3e553e55-0000-4000-8000-000000000004\",\n    \"state\": \"queued\",\n    \"deepLink\": \"conductor://workspace?id=0000bbbb-0000-4000-8000-000000000002&session=5e5510cc-0000-4000-8000-000000000012\"\n  }\n}\n",
+            "exitCode": 0,
+            "durationMs": 900
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000b-0000-4000-8000-000000000011",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011"
+    },
+    "receivedAt": "2026-01-01T12:00:01.900Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000099",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000099",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000d2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor session message 5e5510cc-0000-4000-8000-000000000012 --after 00e0e0e0-0000-4000-8000-000000000999 --limit 50 --json'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor session message 5e5510cc-0000-4000-8000-000000000012 --after 00e0e0e0-0000-4000-8000-000000000999 --limit 50 --json"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000b-0000-4000-8000-000000000011",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011"
+    },
+    "receivedAt": "2026-01-01T12:00:30.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000100",
+    "sessionId": "5e5510bb-0000-4000-8000-000000000011",
+    "sessionIndex": 6,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000100",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000d2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'conductor session message 5e5510cc-0000-4000-8000-000000000012 --after 00e0e0e0-0000-4000-8000-000000000999 --limit 50 --json'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "completed",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "conductor session message 5e5510cc-0000-4000-8000-000000000012 --after 00e0e0e0-0000-4000-8000-000000000999 --limit 50 --json"
+              }
+            ],
+            "aggregatedOutput": "{\"data\":[],\"offset\":0,\"hasMore\":false}\n",
+            "exitCode": 0,
+            "durationMs": 300
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000b-0000-4000-8000-000000000011",
+      "turnId": "7a7a000b-0000-4000-8000-000000000011"
+    },
+    "receivedAt": "2026-01-01T12:00:30.300Z"
+  }
+]
