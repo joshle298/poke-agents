@@ -6,7 +6,10 @@ import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 
 const attrs = { [JUKEBOX_UI_ATTRIBUTE]: '' };
 
-/** The ♪ toolbar button: opens and closes the Jukebox (standalone only). */
+/** The Music toolbar button: opens and closes the Jukebox (standalone only).
+ *  A text label like its neighbours (Sessions, PC, Layout, Settings), so it
+ *  shares their height and padding; an icon glyph's tighter line box made it
+ *  render smaller than the rest of the row. */
 export function JukeboxButton({
   size = 'lg',
   className = '',
@@ -23,12 +26,9 @@ export function JukeboxButton({
       size={size}
       onClick={() => musicStore.setOpen(!open)}
       title="Jukebox"
-      aria-label="Jukebox"
       className={className}
     >
-      <span className="material-symbols-sharp block" aria-hidden="true">
-        music_note
-      </span>
+      Music
     </Button>
   );
 }

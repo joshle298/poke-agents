@@ -49,7 +49,7 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **
 
 - Click a Pokémon or its party slot to open its Pokédex. Cmd-click (Ctrl-click) or double-click opens the session in Conductor.
 - In the **Chat** tab, Enter sends your reply and Shift+Enter starts a new line.
-- **Sessions** in the toolbar opens the Sessions modal, **PC** the PC Box, and ♪ the Jukebox.
+- **Sessions** in the toolbar opens the Sessions modal, **PC** the PC Box, and **Music** the Jukebox.
 - The × on a Pokémon's card or party slot hides the session. Find it again in Sessions.
 - **Escape** closes the window on top: a confirmation, then a modal, then the Pokédex.
 - **Settings** has the Pokémon theme, Show connections and Battle log switches, the [Sound](#sounds) controls, and **About & credits**: what Poke Agents is, and the artists of the sprites in use.
@@ -117,7 +117,7 @@ At most four sounds play a second, one cry at a time, with a cooldown per sessio
 
 ### Music
 
-The Jukebox (♪ in the toolbar, or **Jukebox…** under Settings → Sound) plays background music. It opens on the radio until you pick another source.
+The Jukebox (**Music** in the toolbar, or **Jukebox…** under Settings → Sound) plays background music. It opens on the radio until you pick another source.
 
 - **Radio** (any platform): Poke Agents Radio, 12 original chiptune and retro RPG tracks for a town, a route, indoors, a calm night and a battle. Their authors released them under CC0 or CC BY (see [Radio credits](#radio-credits)); none is a cover or arrangement of game music. Each track downloads once, the first time it plays or is queued next, from its author's page on `opengameart.org` or `incompetech.com` into `~/.pixel-agents/cache/music/radio/`, and plays only if it matches the size and SHA-256 pinned in `server/src/music/radioCatalog.ts`. The repository holds no audio. `--no-radio` (or `POKE_AGENTS_RADIO=off`) turns the radio off.
 - **My music** (any platform): audio files you own in `~/.pixel-agents/music/`, one folder per game or album. MP3, M4A/AAC, OGG/Opus, WAV and FLAC play; Apple Lossless and copy-protected `.m4p` files don't. **Open folder** creates the folder and opens it.
