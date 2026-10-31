@@ -23,6 +23,18 @@ export function requestSessionDetail(id: number): void {
   transport.send({ type: 'requestSessionDetail', id });
 }
 
+/** Ask for the next older page of an agent's conversation, or the newest
+ *  page when the chat view has none yet. */
+export function requestSessionHistory(id: number): void {
+  const cursor = conductorStore.getState().chatHistories[id]?.cursor;
+  conductorStore.noteHistoryRequest(id);
+  transport.send(
+    cursor
+      ? { type: 'requestSessionHistory', id, before: cursor }
+      : { type: 'requestSessionHistory', id },
+  );
+}
+
 export function requestConductorSessions(): void {
   transport.send({ type: 'requestConductorSessions' });
 }

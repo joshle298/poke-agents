@@ -16,6 +16,7 @@ import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { PcBoxModal } from './components/PcBoxModal.js';
+import type { PokedexTab } from './components/SessionPanel.js';
 import { SessionPanel } from './components/SessionPanel.js';
 import { SessionsModal } from './components/SessionsModal.js';
 import { SettingsModal } from './components/SettingsModal.js';
@@ -187,8 +188,10 @@ function App() {
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
   const [isPcBoxOpen, setIsPcBoxOpen] = useState(false);
   const [isCreditsOpen, setIsCreditsOpen] = useState(false);
-  // The agent whose Pokédex is open (stream agents only).
+  // The agent whose Pokédex is open (stream agents only), and its tab (kept
+  // across agents, so a jump to a peer stays in Chat).
   const [detailAgentId, setDetailAgentId] = useState<number | null>(null);
+  const [pokedexTab, setPokedexTab] = useState<PokedexTab>('overview');
   const [battleLogOn, setBattleLogOn] = useBoolPref(BATTLE_LOG_STORAGE_KEY, true);
   // Per-device (localStorage), owned by the office: its link layer reads the
   // same module state every frame.
@@ -898,6 +901,8 @@ function App() {
           rightInsetPx={cardBarLayout === 'overlay' ? TERMINAL_SIDEBAR_WIDTH_PX : 0}
           readOnly={officeReadOnly}
           appearance={terminalDrawer.getAppearance(detailAgentId)}
+          tab={pokedexTab}
+          onTabChange={setPokedexTab}
           isInOffice={isInOffice}
           onJump={handleJumpToAgent}
           onClose={closeDetail}
@@ -940,6 +945,8 @@ function App() {
       mode="docked"
       readOnly={officeReadOnly}
       appearance={terminalDrawer.getAppearance(detailAgentId)}
+      tab={pokedexTab}
+      onTabChange={setPokedexTab}
       isInOffice={isInOffice}
       onJump={handleJumpToAgent}
       onClose={closeDetail}
@@ -1178,6 +1185,8 @@ function App() {
           mode="sheet"
           readOnly={officeReadOnly}
           appearance={terminalDrawer.getAppearance(detailAgentId)}
+          tab={pokedexTab}
+          onTabChange={setPokedexTab}
           isInOffice={isInOffice}
           onJump={handleJumpToAgent}
           onClose={closeDetail}

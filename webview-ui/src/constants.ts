@@ -760,6 +760,15 @@ export const POKEDEX_SHEET_MAX_HEIGHT_RATIO = 0.72;
 export const POKEDEX_REFRESH_MS = 5_000;
 /** An action outcome stays visible in the Pokédex this long. */
 export const POKEDEX_ACTION_RESULT_VISIBLE_MS = 8_000;
+/** A sent message with no conductorActionResult after this long shows as
+ *  unconfirmed (it may still have reached Conductor). */
+export const POKEDEX_SEND_TIMEOUT_MS = 15_000;
+/** A history page with no sessionHistory reply after this long offers a retry. */
+export const POKEDEX_HISTORY_TIMEOUT_MS = 20_000;
+/** The chat thread follows new lines while scrolled within this of the end. */
+export const POKEDEX_CHAT_STICK_SLACK_PX = 24;
+/** Compact portrait in the chat tab's identity row (the source size). */
+export const POKEDEX_CHAT_PORTRAIT_PX = 40;
 /** What Revive sends to a fainted (errored) session. */
 export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
 /** Deep links the UI will hand to openExternal (the server re-validates). */
