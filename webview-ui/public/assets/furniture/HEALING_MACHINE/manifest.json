@@ -1,0 +1,13 @@
+{
+  "id": "HEALING_MACHINE",
+  "name": "Healing Machine",
+  "category": "electronics",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 1,
+  "width": 32,
+  "height": 32,
+  "footprintW": 2,
+  "footprintH": 2
+}

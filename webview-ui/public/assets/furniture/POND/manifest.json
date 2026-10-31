@@ -1,0 +1,42 @@
+{
+  "id": "POND",
+  "name": "Pond",
+  "category": "outdoor",
+  "type": "group",
+  "groupType": "animation",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "members": [
+    {
+      "type": "asset",
+      "id": "POND_1",
+      "file": "POND_1.png",
+      "width": 80,
+      "height": 48,
+      "footprintW": 5,
+      "footprintH": 3,
+      "frame": 0
+    },
+    {
+      "type": "asset",
+      "id": "POND_2",
+      "file": "POND_2.png",
+      "width": 80,
+      "height": 48,
+      "footprintW": 5,
+      "footprintH": 3,
+      "frame": 1
+    },
+    {
+      "type": "asset",
+      "id": "POND_3",
+      "file": "POND_3.png",
+      "width": 80,
+      "height": 48,
+      "footprintW": 5,
+      "footprintH": 3,
+      "frame": 2
+    }
+  ]
+}

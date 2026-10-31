@@ -1,0 +1,13 @@
+{
+  "id": "LOW_WALL",
+  "name": "Low Wall",
+  "category": "outdoor",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "width": 16,
+  "height": 16,
+  "footprintW": 1,
+  "footprintH": 1
+}

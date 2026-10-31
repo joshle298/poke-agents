@@ -1,0 +1,33 @@
+{
+  "id": "FENCE",
+  "name": "Fence",
+  "category": "outdoor",
+  "type": "group",
+  "groupType": "rotation",
+  "rotationScheme": "2-way",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 0,
+  "members": [
+    {
+      "type": "asset",
+      "id": "FENCE_FRONT",
+      "file": "FENCE_FRONT.png",
+      "width": 16,
+      "height": 16,
+      "footprintW": 1,
+      "footprintH": 1,
+      "orientation": "front"
+    },
+    {
+      "type": "asset",
+      "id": "FENCE_SIDE",
+      "file": "FENCE_SIDE.png",
+      "width": 16,
+      "height": 16,
+      "footprintW": 1,
+      "footprintH": 1,
+      "orientation": "side"
+    }
+  ]
+}
