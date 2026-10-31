@@ -177,6 +177,9 @@ components:
         - $ref: '#/components/schemas/RequestConductorSessions'
         - $ref: '#/components/schemas/SetConductorScope'
         - $ref: '#/components/schemas/SetSessionHidden'
+        - $ref: '#/components/schemas/SetSessionPinned'
+        - $ref: '#/components/schemas/ArchiveSession'
+        - $ref: '#/components/schemas/RestoreSession'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -249,6 +252,9 @@ components:
         label:
           type: string
           description: Display name (for Conductor, the session name).
+        seatId:
+          type: string
+          description: Persisted seat for an agent adopted after the client connected.
         species:
           type: integer
           description: National dex number of the Pokémon shown for this agent.
@@ -1707,6 +1713,41 @@ components:
         hidden:
           type: boolean
 
+    SetSessionPinned:
+      type: object
+      additionalProperties: false
+      required: [type, sessionId, pinned]
+      properties:
+        type:
+          const: setSessionPinned
+        sessionId:
+          type: string
+          description: Conductor session id.
+        pinned:
+          type: boolean
+
+    ArchiveSession:
+      description: Archive the agent's Conductor session (deposit it in the PC Box). Reversible with restoreSession.
+      type: object
+      additionalProperties: false
+      required: [type, sessionId]
+      properties:
+        type:
+          const: archiveSession
+        sessionId:
+          type: string
+
+    RestoreSession:
+      description: Unarchive a Conductor session (withdraw it from the PC Box).
+      type: object
+      additionalProperties: false
+      required: [type, sessionId]
+      properties:
+        type:
+          const: restoreSession
+        sessionId:
+          type: string
+
     # ── Supporting schemas ─────────────────────────────────────────
 
     AgentSeatMeta:
@@ -1970,6 +2011,14 @@ components:
           type: number
         hidden:
           type: boolean
+        pinned:
+          type: boolean
+          description: Pinned sessions are always shown, ahead of the scope filters and the cap.
+        archived:
+          type: boolean
+          description: Archived in Conductor (shown in the PC Box, never in the office).
+        archivedAt:
+          type: number
         agentId:
           type: integer
           description: The agent id when the session is in the office.
@@ -1983,7 +2032,17 @@ components:
 
     ConductorAction:
       type: string
-      enum: [sendSessionMessage, stopSession, openExternal, setSessionHidden, setConductorScope]
+      enum:
+        [
+          sendSessionMessage,
+          stopSession,
+          openExternal,
+          setSessionHidden,
+          setSessionPinned,
+          setConductorScope,
+          archiveSession,
+          restoreSession,
+        ]
 
     PokemonAnim:
       type: object

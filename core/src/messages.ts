@@ -93,7 +93,10 @@ export type ClientMessage =
   | StopSession
   | RequestConductorSessions
   | SetConductorScope
-  | SetSessionHidden;
+  | SetSessionHidden
+  | SetSessionPinned
+  | ArchiveSession
+  | RestoreSession;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -116,6 +119,7 @@ export interface AgentCreated {
   hooksOnly?: boolean;
   providerId?: string;
   label?: string;
+  seatId?: string;
   species?: number;
   shiny?: boolean;
   level?: number;
@@ -355,6 +359,9 @@ export interface ConductorSessionSummary {
   status: ConductorSessionStatus;
   lastActivityAt?: number;
   hidden: boolean;
+  pinned?: boolean;
+  archived?: boolean;
+  archivedAt?: number;
   agentId?: number;
   leadSessionId?: string;
   externalUrl?: string;
@@ -372,7 +379,14 @@ export interface ConductorActionResult {
 }
 
 export type ConductorAction =
-  'sendSessionMessage' | 'stopSession' | 'openExternal' | 'setSessionHidden' | 'setConductorScope';
+  | 'sendSessionMessage'
+  | 'stopSession'
+  | 'openExternal'
+  | 'setSessionHidden'
+  | 'setSessionPinned'
+  | 'setConductorScope'
+  | 'archiveSession'
+  | 'restoreSession';
 
 export interface LayoutLoaded {
   type: 'layoutLoaded';
@@ -765,4 +779,20 @@ export interface SetSessionHidden {
   type: 'setSessionHidden';
   sessionId: string;
   hidden: boolean;
+}
+
+export interface SetSessionPinned {
+  type: 'setSessionPinned';
+  sessionId: string;
+  pinned: boolean;
+}
+
+export interface ArchiveSession {
+  type: 'archiveSession';
+  sessionId: string;
+}
+
+export interface RestoreSession {
+  type: 'restoreSession';
+  sessionId: string;
 }

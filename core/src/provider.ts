@@ -271,6 +271,7 @@ export interface StreamProvider {
   /** The user dismissed the session's character: hide it until unhidden. */
   onDismiss?(sessionId: string): void;
   setSessionHidden?(sessionId: string, hidden: boolean): void;
+  setSessionPinned?(sessionId: string, pinned: boolean): void;
   getScope?(): ConductorScope;
   setScope?(scope: ConductorScope): void;
   /** Every session in scope, hidden ones included. */
@@ -280,6 +281,9 @@ export interface StreamProvider {
   sendMessage?(sessionId: string, text: string): Promise<void>;
   /** Cancel the session's running turn. Rejects with a user-facing message. */
   stopSession?(sessionId: string): Promise<void>;
+  /** Archive (deposit) or unarchive (withdraw) the session. Rejects with a user-facing message. */
+  archiveSession?(sessionId: string): Promise<void>;
+  restoreSession?(sessionId: string): Promise<void>;
   /** Mark the session as focused (selected in the office) so it polls faster. */
   setFocus?(sessionIds: string[]): void;
 }
