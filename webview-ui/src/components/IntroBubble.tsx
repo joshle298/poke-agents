@@ -9,6 +9,7 @@ import {
   INTRO_BUBBLE_Z_INDEX,
 } from '../constants.js';
 import type { ConsentChoice } from '../hooks/introTourState.js';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 import type { OfficeState } from '../office/engine/officeState.js';
 import { computeIntroBubbleGeometry } from './introBubbleGeometry.js';
 import { Button } from './ui/Button.js';
@@ -46,10 +47,8 @@ interface IntroBubbleProps {
    *  itself — an unanswered consent step changes nothing and the whole Intro
    *  returns the next time the office is opened. */
   onClose: () => void;
-  /** True while another surface owns Escape — an open Settings/changelog modal
-   *  (stacked ABOVE this bubble) or the layout editor's multi-stage Esc
-   *  ladder. Escape aborts the tour only when the tour is topmost; without
-   *  this gate it silently aborted UNDER an open modal. */
+  /** True while the layout editor's multi-stage Esc ladder owns Escape. Open
+   *  modals need no gate: they sit above the bubble in the Escape stack. */
   escapeSuppressed: boolean;
 }
 
@@ -115,14 +114,9 @@ export function IntroBubble({
     return () => officeState.despawnGreeter();
   }, [officeState]);
 
-  useEffect(() => {
-    if (escapeSuppressed) return;
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose, escapeSuppressed]);
+  // Escape aborts the tour when it is the topmost surface (escapeStack.ts):
+  // a modal opened over it takes the key first.
+  useEscapeLayer(!escapeSuppressed, onClose, { z: INTRO_BUBBLE_Z_INDEX });
 
   // Per-frame tick (same pattern as ToolOverlay): re-render — the greeter's
   // matrix effect, a pan, and the camera drift all move the anchor between

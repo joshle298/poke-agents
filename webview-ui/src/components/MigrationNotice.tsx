@@ -1,10 +1,15 @@
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 import { Button } from './ui/Button.js';
 
 interface MigrationNoticeProps {
   onDismiss: () => void;
 }
 
+/** Above every modal (z-100), so Escape dismisses it first. */
+const MIGRATION_NOTICE_Z = 100;
+
 export function MigrationNotice({ onDismiss }: MigrationNoticeProps) {
+  useEscapeLayer(true, onDismiss, { z: MIGRATION_NOTICE_Z });
   return (
     <div
       className="absolute inset-0 bg-black/70 flex items-center justify-center z-100"

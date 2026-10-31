@@ -924,16 +924,7 @@ function App() {
           installPending={installPending}
           onChoice={handleConsentChoice}
           onClose={handleIntroClose}
-          escapeSuppressed={
-            isSettingsOpen ||
-            isChangelogOpen ||
-            isHooksInfoOpen ||
-            isSessionsOpen ||
-            isPcBoxOpen ||
-            isCreditsOpen ||
-            showMigrationNotice ||
-            editor.isEditMode
-          }
+          escapeSuppressed={editor.isEditMode}
         />
       )}
 

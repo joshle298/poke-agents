@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { useEscapeLayer } from '../../hooks/useEscapeLayer.js';
 import { Button } from './Button.js';
 
 interface ModalProps {
@@ -20,6 +21,8 @@ export function Modal({
   zIndex = 50,
   className = '',
 }: ModalProps) {
+  // Escape closes the topmost open surface (escapeStack.ts).
+  useEscapeLayer(isOpen, onClose, { z: zIndex });
   if (!isOpen) return null;
 
   return (

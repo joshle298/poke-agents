@@ -45,6 +45,7 @@ import {
   POKEDEX_SHEET_MAX_HEIGHT_RATIO,
   POKEDEX_SHEET_Z_INDEX,
 } from '../constants.js';
+import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 import type { AgentAppearance } from './AgentCard.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
@@ -143,19 +144,10 @@ export function SessionPanel({
     if (needSessions) requestConductorSessions();
   }, [needSessions]);
 
-  // Escape dismisses an open confirmation, else closes the panel — unless
-  // the user is typing.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('input, textarea')) return;
-      if (confirm) setConfirm(null);
-      else onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, confirm]);
+  // Escape closes the panel when it is the topmost surface: an open modal or
+  // confirmation above it takes the key first, and Escape typed in the
+  // reply box keeps the draft (escapeStack.ts).
+  useEscapeLayer(true, onClose, { z: POKEDEX_DRAWER_Z_INDEX, closeFromFields: false });
 
   const species = findSpecies({ species: speciesMap }, agent?.species, agent?.shiny);
   const condition = agentCondition(agent, now);

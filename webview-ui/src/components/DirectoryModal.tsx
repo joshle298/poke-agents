@@ -86,12 +86,10 @@ export function DirectoryModal({
   };
 
   // Scoped to the modal rather than the document: the office's own key handling
-  // (Esc exits the layout editor) must not see these.
+  // must not see these. Escape is the Modal's (escapeStack.ts), which stops it
+  // before the layout editor's Esc ladder.
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      onClose();
-    } else if (e.key === 'Enter') {
+    if (e.key === 'Enter') {
       e.stopPropagation();
       // Enter submits only from the text fields. On a button it is that
       // button's own activation (the browser turns it into a click): Cancel
