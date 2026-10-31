@@ -21,11 +21,59 @@ export function toMajorMinor(version: string): string {
   return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : version;
 }
 
+/**
+ * What the version label does when the office loads: `notice` ("Updated to
+ * vX!") when this host last saw another version, `record` on a first run
+ * (nothing was updated, so the version is recorded without a notice), or
+ * `none` once this version was seen.
+ */
+export function versionNotice(
+  currentVersion: string,
+  lastSeenVersion: string,
+): 'notice' | 'record' | 'none' {
+  if (!currentVersion) return 'none';
+  if (!lastSeenVersion) return 'record';
+  return toMajorMinor(currentVersion) === lastSeenVersion ? 'none' : 'notice';
+}
+
 export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
 
 /** Newest first. Entries before 0.1 are the Pixel Agents releases Poke Agents
  *  is built on. */
 export const changelogEntries: ChangelogEntry[] = [
+  {
+    version: '0.2',
+    sections: [
+      {
+        title: 'Features',
+        items: [
+          'Chat tab in the Pokédex: the conversation as one thread, Load earlier for older messages, and a reply box (Enter sends, Shift+Enter adds a line)',
+          'Pending questions show with their options; Reply with this option sends the option as a normal message',
+          'Sessions walk in at their real level, and tool steps read like "Bash · 41s"',
+          'PC Box portraits survive a reload; --claude agents level up from their tool calls',
+          'Settings → About & credits says what Poke Agents is',
+        ],
+      },
+      {
+        title: 'Fixes',
+        items: [
+          'The office refuses host names it does not know (DNS rebinding), and --open keeps the token off the browser command line',
+          'Withdraw keeps a session in the office, and "All" in Sessions means the last 30 days instead of 1 hour',
+          'Closing the Pokédex releases its fast polling; rate limits and busy workspaces no longer starve working sessions',
+          'Short turns show a working burst, sessions already waiting on you do not chime at startup, and seats survive restarts',
+          'Escape closes only the window on top, and Enter that confirms an IME composition no longer sends',
+          'A session that returns during its recall comes back, and a spawned session shows its name once',
+        ],
+      },
+    ],
+    contributors: [
+      {
+        name: '@joshle298',
+        url: 'https://github.com/joshle298',
+        description: 'Poke Agents: the polish pass against real Conductor sessions',
+      },
+    ],
+  },
   {
     version: '0.1',
     sections: [

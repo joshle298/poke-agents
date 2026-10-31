@@ -129,6 +129,10 @@ export default defineConfig({
   build: {
     outDir: '../dist/webview',
     emptyOutDir: true,
+    // One ~800 kB chunk, served from the local server (or the VS Code
+    // webview), so its size costs no download. Warn only if it grows well past
+    // that, instead of on every first `npm ci`.
+    chunkSizeWarningLimit: 1200,
   },
   base: './',
 });
