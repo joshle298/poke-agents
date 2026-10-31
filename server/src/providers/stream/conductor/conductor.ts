@@ -74,12 +74,6 @@ export interface ConductorProviderOptions {
   autoTick?: boolean;
 }
 
-/** Pokémon identity persisted per Conductor session (conductor-state.json). */
-export interface ConductorSessionPersona {
-  pokemonLine?: string;
-  shiny?: boolean;
-}
-
 /** Every optional StreamProvider control, all of which this provider implements. */
 type ConductorControls = Required<
   Pick<
@@ -101,19 +95,11 @@ type ConductorControls = Required<
 >;
 
 /**
- * The provider plus the hooks the runtime uses to keep ids and Pokémon stable
- * across restarts (all optional to call; none touch the network).
+ * The provider with every control. Agent ids and Pokémon are not its business:
+ * the runtime's stream memory keeps them (StreamAgentMemory).
  */
 export type ConductorProvider = StreamProvider &
   ConductorControls & {
-    /** Agent id this session had last time, if any. */
-    agentIdFor(sessionId: string): number | undefined;
-    /** Remember the agent id the runtime gave this session. */
-    rememberAgentId(sessionId: string, agentId: number): void;
-    /** Highest reserved agent id; the runtime allocates new ids above it. */
-    maxReservedAgentId(): number;
-    sessionPersona(sessionId: string): ConductorSessionPersona | undefined;
-    setSessionPersona(sessionId: string, persona: ConductorSessionPersona): void;
     /** Test hook: one scheduling round (no-op before start or after stop). */
     tick(): Promise<void>;
   };
@@ -137,10 +123,12 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   const env = opts.env ?? process.env;
   const log = opts.log ?? ((msg: string) => console.log(`${LOG_PREFIX} ${msg}`));
   const stateDir = opts.stateDir ?? path.join(os.homedir(), SERVER_JSON_DIR);
-  const state = new ConductorStateStore(path.join(stateDir, STATE_FILE_NAME), log);
+  const clock = opts.clock ?? systemClock;
+  const state = new ConductorStateStore(path.join(stateDir, STATE_FILE_NAME), log, () =>
+    clock.now(),
+  );
   const logs = new SessionLogStore();
   const links = new LinkTracker();
-  const clock = opts.clock ?? systemClock;
   const budget = resolveBudget(opts, env);
 
   let sink: AgentEventSink | undefined;
@@ -328,29 +316,6 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     setFocus(sessionIds: string[]): void {
       poller?.setFocus(sessionIds);
-    },
-
-    agentIdFor(sessionId: string): number | undefined {
-      return state.session(sessionId)?.agentId;
-    },
-
-    rememberAgentId(sessionId: string, agentId: number): void {
-      if (Number.isInteger(agentId) && agentId > 0) state.patchSession(sessionId, { agentId });
-    },
-
-    maxReservedAgentId(): number {
-      return state.maxAgentId();
-    },
-
-    sessionPersona(sessionId: string): ConductorSessionPersona | undefined {
-      const entry = state.session(sessionId);
-      if (!entry || (entry.pokemonLine === undefined && entry.shiny === undefined))
-        return undefined;
-      return { pokemonLine: entry.pokemonLine, shiny: entry.shiny };
-    },
-
-    setSessionPersona(sessionId: string, persona: ConductorSessionPersona): void {
-      state.patchSession(sessionId, { pokemonLine: persona.pokemonLine, shiny: persona.shiny });
     },
 
     async tick(): Promise<void> {

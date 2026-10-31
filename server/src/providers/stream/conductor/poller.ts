@@ -67,6 +67,7 @@ import {
   SESSIONS_CHANGED_DEBOUNCE_MS,
   SESSIONS_PAGE_LIMIT,
   STARTING_GRACE_MS,
+  STATE_SEEN_REFRESH_MS,
   STATUS_POLL_MAX_MS,
   STATUS_POLL_MS,
   STEADY_POLL_GAP_MS,
@@ -832,6 +833,11 @@ export class ConductorPoller {
     let rec = this.records.get(session.id);
     const persisted = this.state.session(session.id);
     const resolvedModel = session.resolvedModel ?? undefined;
+    // A remembered session still exists: keep its entry from aging out.
+    const now = this.clock.now();
+    if (persisted && now - (persisted.seenAt ?? 0) >= STATE_SEEN_REFRESH_MS) {
+      this.state.patchSession(session.id, { seenAt: now });
+    }
     if (!rec) {
       const harness = isHarness(persisted?.harness)
         ? persisted.harness
@@ -1800,7 +1806,6 @@ export class ConductorPoller {
       const archivedAt = parseTime(session.archivedAt);
       if (archivedAt) summary.archivedAt = archivedAt;
     }
-    if (persisted?.agentId) summary.agentId = persisted.agentId;
     const lead = rec?.firstSender ?? persisted?.firstSender;
     if (lead) summary.leadSessionId = lead;
     if (session.deepLink) summary.externalUrl = session.deepLink;

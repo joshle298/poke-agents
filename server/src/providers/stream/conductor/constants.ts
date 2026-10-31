@@ -187,6 +187,15 @@ export const STATE_FILE_NAME = 'conductor-state.json';
 export const POLLER_LOCK_FILE_NAME = 'conductor.lock';
 export const STATE_FILE_VERSION = 1;
 export const STATE_FILE_MODE = 0o600;
+/** User decisions (scope, hidden, pinned, a withdrawal) are written this soon... */
 export const STATE_SAVE_DEBOUNCE_MS = 1_000;
+/** ...and poll bookkeeping (cursors, activity times) at most this often. */
+export const STATE_LAZY_SAVE_MS = 30_000;
+/** Entries neither hidden nor pinned go once nothing touched them for this long. */
+export const STATE_STALE_ENTRY_MS = 30 * 24 * 60 * 60_000;
+/** At most this many session entries; the least recent go first. */
+export const STATE_SESSIONS_MAX = 2_000;
+/** A listed session's seenAt is refreshed at most this often. */
+export const STATE_SEEN_REFRESH_MS = 24 * 60 * 60_000;
 
 export const LOG_PREFIX = '[Pixel Agents] Conductor:';
