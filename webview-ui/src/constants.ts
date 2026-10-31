@@ -610,7 +610,7 @@ export const KEYBOARD_MIN_HEIGHT_PX = 150;
 
 // ── Pokémon office ───────────────────────────────────────────
 // Characters drawn from PMDCollab sheets (decoded at runtime, never bundled),
-// the Poké Ball spawn/recall, links and message projectiles between agents,
+// the capsule spawn/recall, links and message projectiles between agents,
 // and the themed overlay label. Theme off = none of this runs.
 
 /** PMD sheet durations are game frames at this rate. */
@@ -687,32 +687,32 @@ export const POKEMON_EVOLVE_SOLID_ENVELOPE = 0.8;
 export const POKEMON_EVOLVE_FLICKER_LOW = 0.4;
 export const POKEMON_SILHOUETTE_COLOR = '#ffffff';
 export const POKEMON_OUTLINE_COLOR = '#ffffff';
-export const POKEMON_RECALL_COLOR = '#ff4040';
+export const POKEMON_RECALL_COLOR = '#7ee8d6';
 
-// Poké Ball spawn (throw → open → materialize) and recall (red beam → return).
-export const POKEBALL_SPAWN_SEC = 0.9;
-export const POKEBALL_RECALL_SEC = 0.6;
-/** Spawn phase boundaries as fractions of POKEBALL_SPAWN_SEC. */
-export const POKEBALL_THROW_END = 0.4;
-export const POKEBALL_OPEN_END = 0.55;
-/** Recall: beam phase ends here; the ball flies off for the rest. */
-export const POKEBALL_RECALL_BEAM_END = 0.5;
-/** With no thrower, the ball drops from this far above the ground point. */
-export const POKEBALL_DROP_HEIGHT_PX = 48;
-/** Peak height of a thrown ball's arc above the straight line. */
-export const POKEBALL_THROW_ARC_PX = 20;
+// Capsule spawn (throw → open → materialize) and recall (teal beam → return).
+export const CAPSULE_SPAWN_SEC = 0.9;
+export const CAPSULE_RECALL_SEC = 0.6;
+/** Spawn phase boundaries as fractions of CAPSULE_SPAWN_SEC. */
+export const CAPSULE_THROW_END = 0.4;
+export const CAPSULE_OPEN_END = 0.55;
+/** Recall: beam phase ends here; the capsule flies off for the rest. */
+export const CAPSULE_RECALL_BEAM_END = 0.5;
+/** With no thrower, the capsule drops from this far above the ground point. */
+export const CAPSULE_DROP_HEIGHT_PX = 48;
+/** Peak height of a thrown capsule's arc above the straight line. */
+export const CAPSULE_THROW_ARC_PX = 20;
 /** The materializing body starts at this scale and grows to 1. */
-export const POKEBALL_MATERIALIZE_MIN_SCALE = 0.25;
+export const CAPSULE_MATERIALIZE_MIN_SCALE = 0.25;
 /** Share of the materialize phase spent growing (the rest fades white → colour). */
-export const POKEBALL_GROW_SHARE = 0.6;
-export const POKEBALL_FLASH_COLOR = '#ffffff';
-/** Burst ring radius (world px) when the ball opens, and its sample count. */
-export const POKEBALL_BURST_RADIUS_PX = 10;
-export const POKEBALL_BURST_POINTS = 16;
-export const POKEBALL_RECALL_BEAM_COLOR = 'rgba(255, 64, 64, 0.9)';
-/** During recall the ball hovers this far above the head, then leaves this far up. */
-export const POKEBALL_RECALL_HOVER_PX = 6;
-export const POKEBALL_RECALL_EXIT_PX = 40;
+export const CAPSULE_GROW_SHARE = 0.6;
+export const CAPSULE_FLASH_COLOR = '#ffffff';
+/** Burst ring radius (world px) when the capsule opens, and its sample count. */
+export const CAPSULE_BURST_RADIUS_PX = 10;
+export const CAPSULE_BURST_POINTS = 16;
+export const CAPSULE_RECALL_BEAM_COLOR = 'rgba(126, 232, 214, 0.9)';
+/** During recall the capsule hovers this far above the head, then leaves this far up. */
+export const CAPSULE_RECALL_HOVER_PX = 6;
+export const CAPSULE_RECALL_EXIT_PX = 40;
 
 // Links between agents (agentLinks), drawn on the floor under everyone.
 export const LINK_MARCH_PX_PER_SEC = 12;
@@ -734,14 +734,14 @@ export const LINK_CASING_COLOR = 'rgba(48, 30, 12, 0.5)';
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
-// Message projectiles (agentMessage): a ball flies sender → receiver.
+// Message projectiles (agentMessage): a capsule flies sender → receiver.
 export const PROJECTILE_SPEED_PX_PER_SEC = 160;
 export const PROJECTILE_MIN_SEC = 0.4;
 export const PROJECTILE_MAX_SEC = 1.4;
 export const PROJECTILE_ARC_LIFT_PX = 16;
 /** The server coalesces; this caps what the client keeps in the air. */
 export const PROJECTILE_MAX_IN_FLIGHT = 8;
-/** Message preview bubble near the receiver once the ball lands. */
+/** Message preview bubble near the receiver once the capsule lands. */
 export const MESSAGE_PREVIEW_SEC = 3;
 export const MESSAGE_PREVIEW_MAX_CHARS = 80;
 /** agentNotice speech bubble. */

@@ -66,8 +66,9 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
           FREAK inc.
         </p>
         <p className="m-0">
-          This repository contains no Pokémon artwork. When the Pokémon theme is on, the app
-          downloads sprites and portraits from the PMD Sprite Repository (
+          This repository contains no Pokémon artwork. Poke Agents' own pixel art, such as the app
+          icon and the capsule, is original. When the Pokémon theme is on, the app downloads sprites
+          and portraits from the PMD Sprite Repository (
           <ExternalLink href={PMD_SPRITE_SITE_URL}>sprites.pmdcollab.org</ExternalLink>,{' '}
           <ExternalLink href={PMD_SPRITE_REPO_URL}>PMDCollab/SpriteCollab</ExternalLink>) to a cache
           on your computer. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon

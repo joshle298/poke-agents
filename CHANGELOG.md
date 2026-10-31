@@ -5,7 +5,8 @@
 ### Features
 
 - **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
-- **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, Poké Balls, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
+- **Demo mode.** `npm run demo` (`poke-agents --demo`) plays a scripted story with synthetic sessions instead of connecting to Conductor, so you can try Poke Agents without a Conductor account: a Lead spawns five sessions that work, message it, level up, faint and get revived, fall asleep, wait on a question and evolve. Every action in the office works on the demo's sessions, and nothing reaches Conductor. The first round is the same on every run (for screenshots); `--demo-seed` and `--demo-speed` (or `POKE_AGENTS_DEMO_SPEED`) vary it. The Mac app takes `--demo` too.
+- **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, capsules, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
 - **The Pokémon Town.** A new office opens on a small town in a forest, drawn in code (`scripts/generate-world-assets.mjs`): working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones lie tucked into the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back. An office with a saved layout keeps it.
 - **Jukebox.** Background music from music you already have: audio files in `~/.pixel-agents/music/`, or albums and links you play in the Music or Spotify app on macOS (the Mac app asks once for permission to control them). Open it from ♪ in the toolbar or **Jukebox…** under Settings → Sound. Pokémon cries and alerts briefly lower folder music. It never downloads, streams or bundles soundtracks.
 
@@ -17,7 +18,8 @@
 
 ### Changes
 
-- A new app icon, a pill-shaped pixel capsule with a small terminal (a `>` prompt and a block cursor) set into its band, drawn in code by `scripts/generate-icons.mjs`.
+- A new app icon: Promptling, an original pixel mascot (a round teal creature whose eyes are a `>` prompt and a block cursor), drawn in code by `scripts/generate-icons.mjs` for the Mac app, the favicon and the installed web app.
+- Sessions are thrown out of, recalled into and messaged as an original capsule (a teal-and-cream pill with a gold collar that opens by pulling its halves apart) instead of a red-and-white ball. The PC Box and the empty office show the same capsule when there is no portrait.
 - New flag `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`): no cry downloads and no sound pack.
 
 ## Poke Agents v0.2.0

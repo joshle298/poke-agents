@@ -170,7 +170,9 @@ function writeAppState(state: AppState): void {
 async function startOffice(): Promise<StandaloneOffice> {
   const started = await startStandalone({
     distRoot: officeRoot(),
-    conductor: true,
+    // A demo launch plays synthetic sessions and never connects to Conductor.
+    conductor: !args.demo,
+    ...(args.demo ? { demo: {} } : {}),
     claude: false,
     terminal: false,
     // Conductor deep links (already validated by the server) open in the

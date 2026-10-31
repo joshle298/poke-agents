@@ -160,54 +160,89 @@ test('the committed icon files are what the script draws (run it after changing 
   }
 });
 
-/** Cells that belong to the capsule (everything but the sparkles). */
-const CAPSULE_KEYS = new Set('kngGrRpPwsS');
+/** Promptling's body, face and feet: everything but the sparkles and the
+ *  antenna bulb, which may sit as near the tile's edge as the sparkles. */
+const MASCOT_KEYS = new Set('ktTdDcCePmb');
+/** The eyes: the `>` prompt and the block cursor (with its glint). */
+const EYE_KEYS = new Set('eP');
 
-function capsuleBox(grid) {
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  grid.forEach((row, y) =>
-    row.forEach((key, x) => {
-      if (!CAPSULE_KEYS.has(key)) return;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }),
+const isEye = (grid, x, y) => EYE_KEYS.has(grid[y]?.[x]);
+
+/** Is there a `>` drawn in eye ink: a column, the next column one row down,
+ *  then the first column again, with nothing in eye ink to its right? */
+function hasPrompt(grid) {
+  return grid.some((row, y) =>
+    row.some(
+      (_, x) =>
+        isEye(grid, x, y) &&
+        isEye(grid, x + 1, y + 1) &&
+        isEye(grid, x, y + 2) &&
+        !isEye(grid, x + 1, y) &&
+        !isEye(grid, x + 1, y + 2) &&
+        !isEye(grid, x + 2, y + 1),
+    ),
   );
-  return { width: maxX - minX + 1, height: maxY - minY + 1 };
 }
 
-test('every size keeps the original mark: a terminal cursor, and a prompt from 32 px up', () => {
+/** Is there a solid block of eye ink at least 2 cells wide and 3 tall? */
+function hasCursor(grid) {
+  return grid.some((row, y) =>
+    row.some((_, x) => [0, 1].every((dx) => [0, 1, 2].every((dy) => isEye(grid, x + dx, y + dy)))),
+  );
+}
+
+test('every size keeps the face: a `>` prompt eye and a block cursor eye', () => {
   for (const size of [16, 32, 48, 64, 128, 1024]) {
-    const keys = new Set(designFor(size).flat());
-    assert.ok(keys.has('G'), `${size} px shows the cursor`);
-    if (size >= 32) assert.ok(keys.has('g'), `${size} px shows the > prompt`);
+    const grid = designFor(size);
+    assert.ok(hasPrompt(grid), `${size} px shows the > prompt`);
+    assert.ok(hasCursor(grid), `${size} px shows the cursor`);
   }
 });
 
-test('the capsule is a pill, clearly wider than tall, at every size', () => {
-  for (const size of [16, 32, 64, 1024]) {
-    const { width, height } = capsuleBox(designFor(size));
-    assert.ok(width / height >= 1.25, `${size} px: ${width} x ${height} cells`);
+test('the face checks reject a grid without the prompt or the cursor', () => {
+  const grid = designFor(1024).map((row) => row.map((key) => (EYE_KEYS.has(key) ? 't' : key)));
+  assert.equal(hasPrompt(grid), false);
+  assert.equal(hasCursor(grid), false);
+});
+
+/** Hue in degrees and saturation (HSV) of an RGB pixel. */
+function hueSat(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return { hue: 0, sat: 0, value: max / 255 };
+  let hue;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  return { hue: (hue * 60 + 360) % 360, sat: d / max, value: max / 255 };
+}
+
+test('no size uses red: the icon stays off the official ball colours', () => {
+  for (const size of [16, 32, 128, 1024]) {
+    const { data } = renderIcon(size);
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const { hue, sat, value } = hueSat(data[i], data[i + 1], data[i + 2]);
+      const red = (hue < 20 || hue > 340) && sat > 0.4 && value > 0.3;
+      assert.ok(!red, `${size} px: pixel ${i / 4} is red (${data.subarray(i, i + 3).join(',')})`);
+    }
   }
 });
 
-test('at 16 px a full pixel of tile surrounds the capsule', () => {
+test('at 16 px a full pixel of tile surrounds the body', () => {
   const grid = designFor(16);
   const body = bodyCoverage(16);
   grid.forEach((row, y) =>
     row.forEach((key, x) => {
-      if (!CAPSULE_KEYS.has(key)) return;
+      if (!MASCOT_KEYS.has(key)) return;
       for (const [nx, ny] of [
         [x - 1, y],
         [x + 1, y],
         [x, y - 1],
         [x, y + 1],
       ]) {
-        if (CAPSULE_KEYS.has(grid[ny][nx])) continue;
+        if (MASCOT_KEYS.has(grid[ny][nx])) continue;
         assert.equal(body[ny * 16 + nx], 1, `tile around (${x}, ${y})`);
       }
     }),

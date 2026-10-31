@@ -223,7 +223,7 @@ export class OfficeState {
 
   /** Links between agents from the latest agentLinks snapshot. */
   links: AgentLink[] = [];
-  /** Message balls in flight (agentMessage), at most PROJECTILE_MAX_IN_FLIGHT. */
+  /** Message capsules in flight (agentMessage), at most PROJECTILE_MAX_IN_FLIGHT. */
   projectiles: Projectile[] = [];
   /** Previews of landed messages, shown near their receivers. */
   messagePreviews: MessagePreview[] = [];
@@ -1584,7 +1584,7 @@ export class OfficeState {
     if (ch) this.playOneShot(ch, 'turnEnd', { force: true });
   }
 
-  /** The Lead (or whoever created it) throws the ball a new character pops
+  /** The Lead (or whoever created it) throws the capsule a new character pops
    *  out of. No-op unless `id` is still spawning and `fromId` is present. */
   setSpawnOrigin(id: number, fromId: number): void {
     const ch = this.characters.get(id);
@@ -1657,9 +1657,9 @@ export class OfficeState {
 
   /**
    * One agent messaged another: the sender attacks toward the receiver and a
-   * ball flies between them; its preview shows near the receiver on landing.
+   * capsule flies between them; its preview shows near the receiver on landing.
    * Refused (false) when either end is missing or PROJECTILE_MAX_IN_FLIGHT
-   * balls are already in the air.
+   * capsules are already in the air.
    */
   launchProjectile(fromId: number, toId: number, kind: AgentLinkKind, preview?: string): boolean {
     if (fromId === toId) return false;

@@ -1,7 +1,7 @@
 /**
  * The renderer's Pokémon branch: resolve the PMD frame a character shows
  * right now, and queue its z-sorted drawables (outline, body, faint tint,
- * evolution flash, Poké Ball effect). Returns null whenever the character
+ * evolution flash, capsule effect). Returns null whenever the character
  * should stay upstream — theme off, no species, sheets not decoded — so it
  * never disappears while sprites load.
  */
@@ -23,9 +23,9 @@ import {
 } from '../sprites/pokemonSprites.js';
 import type { Character } from '../types.js';
 import { TILE_SIZE } from '../types.js';
+import { renderCapsuleEffect } from './capsuleEffect.js';
 import type { FrameRef } from './frameCanvas.js';
 import { frameGreyed, frameOutline, frameSilhouette } from './frameCanvas.js';
-import { renderPokeballEffect } from './pokeballEffect.js';
 import {
   choosePokemonAnim,
   evolutionFlashAlpha,
@@ -95,7 +95,7 @@ export function pushPokemonDrawables(
     drawables.push({
       zY,
       draw: (c) =>
-        renderPokeballEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
+        renderCapsuleEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
     });
     return;
   }

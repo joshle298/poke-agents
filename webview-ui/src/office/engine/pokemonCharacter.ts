@@ -39,7 +39,7 @@ import { isPokemonThemeEnabled } from './pokemonTheme.js';
 /**
  * A Pokémon as far as the UI is concerned: the theme is on and the server
  * sent this character's species (pokemonSpeciesLoaded), even if its sheets
- * are still decoding. Drives the Poké Ball spawn and the themed label. Hosts
+ * are still decoding. Drives the capsule spawn and the themed label. Hosts
  * that never send species (VS Code, `--no-sprites`) stay upstream throughout.
  */
 export function hasPokemonIdentity(ch: Character): boolean {

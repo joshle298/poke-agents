@@ -1,7 +1,7 @@
 /**
  * The Pokémon office's domain model: the species store (decode, measure,
  * shiny keyed apart, URL allowlist) and what OfficeState does with it —
- * species hit boxes, the Poké Ball spawn/recall timing behind matrixEffect,
+ * species hit boxes, the capsule spawn/recall timing behind matrixEffect,
  * the Lead's throw, evolution, faint, sleep and wake. Synthetic species and a
  * fake sheet loader; no DOM, no art.
  *
@@ -13,10 +13,10 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, test, vi } from 'vitest';
 
 import {
+  CAPSULE_RECALL_SEC,
+  CAPSULE_SPAWN_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
-  POKEBALL_RECALL_SEC,
-  POKEBALL_SPAWN_SEC,
   POKEMON_EVOLVE_SEC,
   POKEMON_FEET_BELOW_GROUND_PX,
   POKEMON_GROUND_OFFSET_PX,
@@ -201,7 +201,7 @@ test('a species that has not decoded keeps the upstream hit box', async () => {
   assert.equal(os.getCharacterAt(ch.x + 7, ch.y - 20), 1);
 });
 
-// ── Poké Ball spawn / recall behind matrixEffect ────────────────
+// ── Capsule spawn / recall behind matrixEffect ──────────────────
 
 test('without a species (or theme off) the matrix rain keeps its 0.3 s', () => {
   const os = new OfficeState(floorLayout());
@@ -225,7 +225,7 @@ test('a species the server never described (VS Code, --no-sprites) keeps the mat
   assert.equal(os.characters.get(1)!.matrixEffect, null);
 });
 
-test('with a known species the Poké Ball spawn and recall run their own durations', async () => {
+test('with a known species the capsule spawn and recall run their own durations', async () => {
   await loadSpecies(25);
   const os = new OfficeState(floorLayout());
   os.addAgent(1);
@@ -233,12 +233,12 @@ test('with a known species the Poké Ball spawn and recall run their own duratio
   const ch = os.characters.get(1)!;
   os.update(MATRIX_EFFECT_DURATION + 0.01);
   assert.equal(ch.matrixEffect, 'spawn', 'still opening (field name and values unchanged)');
-  os.update(POKEBALL_SPAWN_SEC - MATRIX_EFFECT_DURATION);
+  os.update(CAPSULE_SPAWN_SEC - MATRIX_EFFECT_DURATION);
   assert.equal(ch.matrixEffect, null);
 
   os.removeAgent(1);
   assert.equal(ch.matrixEffect, 'despawn');
-  os.update(POKEBALL_RECALL_SEC - 0.05);
+  os.update(CAPSULE_RECALL_SEC - 0.05);
   assert.ok(os.characters.has(1), 'still being recalled');
   os.update(0.1);
   assert.equal(os.characters.has(1), false);
@@ -270,7 +270,7 @@ test('an agent id that returns during its recall comes back instead of vanishing
   }
 });
 
-test('a child created with a Lead is thrown from the Lead; otherwise the ball drops', () => {
+test('a child created with a Lead is thrown from the Lead; otherwise the capsule drops', () => {
   const os = new OfficeState(floorLayout());
   const lead = placeAgent(os, 1, 2, 2);
   os.addAgent(2);
@@ -285,7 +285,7 @@ test('a child created with a Lead is thrown from the Lead; otherwise the ball dr
   os.setSpawnOrigin(3, 99);
   assert.equal(os.characters.get(3)!.effectOrigin, undefined, 'missing Lead');
 
-  os.update(POKEBALL_SPAWN_SEC + 0.01);
+  os.update(CAPSULE_SPAWN_SEC + 0.01);
   assert.equal(os.characters.get(2)!.effectOrigin, undefined, 'cleared once spawned');
 });
 

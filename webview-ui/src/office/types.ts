@@ -296,8 +296,8 @@ export interface Character {
   idleSec?: number;
   /** PMD row (0-7) to face instead of `dir` while a one-shot plays. */
   faceOverride?: number | null;
-  /** World point the Poké Ball is thrown from on spawn (the Lead or parent);
-   *  absent = the ball drops from above. */
+  /** World point the capsule is thrown from on spawn (the Lead or parent);
+   *  absent = the capsule drops from above. */
   effectOrigin?: { x: number; y: number };
   /** Seconds into the evolution flash; undefined when not evolving. */
   evolveTimer?: number;
@@ -337,13 +337,13 @@ export interface BedRest {
  *  waking up, and the hurt flinch that leads into a faint. */
 export type PokemonOneShot = 'toolBurst' | 'message' | 'turnEnd' | 'wake' | 'hurt';
 
-/** A message ball in flight from one agent to another (agentMessage). */
+/** A message capsule in flight from one agent to another (agentMessage). */
 export interface Projectile {
   id: number;
   fromId: number;
   toId: number;
   kind: AgentLinkKind;
-  /** Shown near the receiver once the ball lands. */
+  /** Shown near the receiver once the capsule lands. */
   preview?: string;
   /** Seconds in flight, and the flight's length. */
   t: number;

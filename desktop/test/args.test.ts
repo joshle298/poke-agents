@@ -37,6 +37,19 @@ describe('parseDesktopArgs', () => {
     assert.deepEqual(parseDesktopArgs(['.', '--smoke-reconnect'], {}), { smoke: false });
   });
 
+  it('reads --demo (or POKE_AGENTS_DEMO=1) for a demo launch, smoke or not', () => {
+    assert.deepEqual(parseDesktopArgs(['.', '--demo'], {}), { smoke: false, demo: true });
+    assert.deepEqual(parseDesktopArgs(['.'], { POKE_AGENTS_DEMO: '1' }), {
+      smoke: false,
+      demo: true,
+    });
+    assert.deepEqual(parseDesktopArgs(['.', '--smoke', '--demo'], {}), {
+      smoke: true,
+      smokeOut: undefined,
+      demo: true,
+    });
+  });
+
   it('reads the same from the environment', () => {
     assert.deepEqual(
       parseDesktopArgs(['.'], { POKE_AGENTS_SMOKE: '1', POKE_AGENTS_SMOKE_OUT: '/tmp/a.png' }),

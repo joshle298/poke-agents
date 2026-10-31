@@ -82,7 +82,7 @@ export const changelogEntries: ChangelogEntry[] = [
         items: [
           'Conductor cloud sessions appear live in the office, each as a Pokémon that keeps its species',
           'Levels and evolution at Lv 16 and Lv 36, plus status conditions: SLP asleep, FNT fainted on an error, ! when a session needs you',
-          'Leads (sessions that spawned others) are legendaries, linked to their sessions; messages between sessions fly as Poké Balls',
+          'Leads (sessions that spawned others) are legendaries, linked to their sessions; messages fly between sessions with a short preview',
           'Pokédex panel: task, recent replies and messages, with Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin',
           'PC Box for archived sessions, and a Sessions modal for scope, search, hide and pin',
           'Party bar, an optional battle log, and npm start to open the office in its own window',

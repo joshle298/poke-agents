@@ -198,6 +198,31 @@ describe('parseArgs', () => {
     expect(parseArgs([]).sprites).toBe(true);
     expect(parseArgs(['--no-sprites']).sprites).toBe(false);
   });
+
+  // 16. --demo, --demo-seed, --demo-speed
+  it('plays no demo by default; --demo-seed and --demo-speed imply --demo', () => {
+    expect(parseArgs([])).toMatchObject({ demo: false });
+    expect(parseArgs(['--demo'])).toMatchObject({ demo: true });
+    expect(parseArgs(['--demo'])).not.toHaveProperty('demoSeed');
+    expect(parseArgs(['--demo-seed', '7'])).toMatchObject({ demo: true, demoSeed: 7 });
+    expect(parseArgs(['--demo-speed', '2.5'])).toMatchObject({ demo: true, demoSpeed: 2.5 });
+  });
+
+  it('rejects a malformed or out-of-range demo seed or speed', () => {
+    for (const bad of ['-1', '1.5', 'abc', '99999999999']) {
+      expect(() => parseArgs(['--demo-seed', bad])).toThrow(CliArgsError);
+    }
+    for (const bad of ['0', '0.1', '50', 'fast', '']) {
+      expect(() => parseArgs(['--demo-speed', bad])).toThrow(CliArgsError);
+    }
+    expect(() => parseArgs(['--demo-seed'])).toThrow(/Missing value/);
+    expect(() => parseArgs(['--demo-speed'])).toThrow(/Missing value/);
+  });
+
+  it('refuses --demo with --claude: the demo shows synthetic sessions only', () => {
+    expect(() => parseArgs(['--demo', '--claude'])).toThrow(/--demo/);
+    expect(() => parseArgs(['--claude', '--demo-speed', '2'])).toThrow(CliArgsError);
+  });
 });
 
 describe('startOnPreferredPort', () => {

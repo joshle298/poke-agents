@@ -87,6 +87,7 @@ import {
   hasWallSprites,
   wallColorToHex,
 } from '../wallTiles.js';
+import { renderCapsuleEffect } from './capsuleEffect.js';
 import { getCharacterSprite } from './characters.js';
 import type { ConnectionsRenderState } from './connectionsRender.js';
 import { renderLinks, renderProjectiles } from './connectionsRender.js';
@@ -94,7 +95,6 @@ import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { spawnEffectStyle } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
-import { renderPokeballEffect } from './pokeballEffect.js';
 import { pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
 import type { ZDrawable } from './pokemonRender.js';
 import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
@@ -709,16 +709,16 @@ export function renderScene(
     // at lower rows (e.g. desks, bookshelves that occlude from below).
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
 
-    // A Pokémon still decoding opens out of its Poké Ball as the upstream
+    // A Pokémon still decoding opens out of its capsule as the upstream
     // character; everyone else gets the matrix rain.
-    if (ch.matrixEffect && spawnEffectStyle(ch) === 'pokeball') {
+    if (ch.matrixEffect && spawnEffectStyle(ch) === 'capsule') {
       const frame = spriteFrame(spriteData);
       const ground = { x: ch.x, y: ch.y + sittingOffset };
       const pCh = ch;
       drawables.push({
         zY: charZY,
         draw: (c) =>
-          renderPokeballEffect(
+          renderCapsuleEffect(
             c,
             pCh,
             frame,

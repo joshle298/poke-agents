@@ -87,6 +87,9 @@ export class PixelAgentsServer {
      *  consent ask. Conductor defaults off here: the CLI attaches it. */
     claude?: boolean;
     conductor?: boolean;
+    /** The scripted demo office (`--demo`): recorded so it never reuses, or is
+     *  reused by, an office showing real sessions. */
+    demo?: boolean;
     /** Opens a validated Conductor deep link on the host (standalone). */
     openExternal?: OpenExternalSideEffect;
     /** The Jukebox (standalone): music folder, Music and Spotify apps. */
@@ -103,6 +106,7 @@ export class PixelAgentsServer {
           allowedHosts: normalizedAllowedHosts(options?.allowedHosts ?? []),
           conductor: options?.conductor ?? false,
           claude: options?.claude ?? true,
+          ...(options?.demo ? { demo: true } : {}),
         };
 
     // Capability-based reuse: an embedded (VS Code) caller only reuses another

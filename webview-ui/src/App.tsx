@@ -219,7 +219,7 @@ function App() {
 
   // The theme is the server's setting (settingsLoaded / pokemonThemeUpdated),
   // applied as <html data-theme>, which swaps the index.css palette.
-  // The office's render flag (Poké Balls, sprites, themed labels) follows the
+  // The office's render flag (capsules, sprites, themed labels) follows the
   // same value, including the Settings toggle's optimistic change.
   useEffect(() => {
     const root = document.documentElement;

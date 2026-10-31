@@ -1,15 +1,16 @@
 /**
  * In-house pixel art for the Pokémon office (no Pokémon art: these are drawn
- * here, as JSON palettes + pixels like the speech bubbles): the Poké Ball the
+ * here, as JSON palettes + pixels like the speech bubbles): the capsule the
  * spawn effect and message projectiles use, the envelope flown when the theme
- * is off, and the needs-you "!" and sleeping "z" bubbles.
+ * is off, and the needs-you "!" and sleeping "z" bubbles. The capsule is an
+ * original design, not a rendition of any official ball.
  */
 
 import type { SpriteData } from '../types.js';
 import bubbleAlertData from './bubble-alert.json';
 import bubbleSleepData from './bubble-sleep.json';
+import capsuleData from './capsule.json';
 import envelopeData from './envelope.json';
-import pokeballData from './pokeball.json';
 
 type Palette = Record<string, string>;
 
@@ -17,16 +18,19 @@ function resolve(palette: Palette, pixels: string[][]): SpriteData {
   return pixels.map((row) => row.map((key) => palette[key] ?? key));
 }
 
-/** Closed Poké Ball (10x10): thrown, recalled, and flown as a message. */
-export const POKEBALL_CLOSED_SPRITE: SpriteData = resolve(
-  pokeballData.palette,
-  pokeballData.frames.closed,
+/** A frame written as one string per row, one palette key per pixel. */
+const rows = (frame: string[]): string[][] => frame.map((row) => [...row]);
+
+/** Closed capsule (16x8): thrown, recalled, and flown as a message. */
+export const CAPSULE_CLOSED_SPRITE: SpriteData = resolve(
+  capsuleData.palette,
+  rows(capsuleData.frames.closed),
 );
 
-/** Open Poké Ball (10x10): the moment it pops. */
-export const POKEBALL_OPEN_SPRITE: SpriteData = resolve(
-  pokeballData.palette,
-  pokeballData.frames.open,
+/** Open capsule (23x8): its halves pulled apart, light on the centre line. */
+export const CAPSULE_OPEN_SPRITE: SpriteData = resolve(
+  capsuleData.palette,
+  rows(capsuleData.frames.open),
 );
 
 /** Envelope (7x5): a message in flight while the theme is off. */

@@ -5,7 +5,7 @@
  *   ~/.pixel-agents/config.json  under keys "vscode" or "standalone".
  *
  * Agents + seats (per adapter) persist to
- *   ~/.pixel-agents/<namespace>-state.json
+ *   ~/.pixel-agents/<namespace>-state.json (the demo office: demo-state.json)
  *
  * Runtime visibility (which agents show in the office) is scope-controlled by the
  * runtime scanner + Watch All Sessions toggle, not by persistence. Both adapters
@@ -43,6 +43,9 @@ interface AdapterState {
 
 export interface FileStateAdapterOptions {
   namespace: ConfigNamespace;
+  /** Stem of the agents-and-seats file (`<stem>-state.json`); default: the
+   *  namespace. The demo office keeps its own while sharing the settings. */
+  stateFileStem?: string;
 }
 
 export class FileStateAdapter implements StateAdapter, StreamAgentMemory {
@@ -54,7 +57,9 @@ export class FileStateAdapter implements StateAdapter, StreamAgentMemory {
     this.stateFilePath = path.join(
       os.homedir(),
       LAYOUT_FILE_DIR,
-      `${options.namespace}-state.json`,
+      options.stateFileStem
+        ? `${options.stateFileStem}-state.json`
+        : `${options.namespace}-state.json`,
     );
   }
 

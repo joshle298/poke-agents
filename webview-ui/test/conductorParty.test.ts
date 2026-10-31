@@ -239,7 +239,7 @@ describe('PC Box portraits', () => {
     );
   });
 
-  it('falls back to the Poké Ball without the route, a species or a valid dex', () => {
+  it('falls back to the capsule without the route, a species or a valid dex', () => {
     expect(pcBoxPortraitUrl({ species: 4, shiny: false }, loaded, false)).toBeUndefined();
     expect(pcBoxPortraitUrl(undefined, loaded, true)).toBeUndefined();
     expect(pcBoxPortraitUrl({ species: 0, shiny: false }, loaded, true)).toBeUndefined();
