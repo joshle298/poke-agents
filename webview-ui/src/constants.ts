@@ -749,8 +749,11 @@ export const STATUS_BADGE_TEXT_COLOR = '#ffffff';
 /** In the town, always-shown labels at or below this CSS scale (zoom ÷ device
  *  pixel ratio) are one-line chips; hover or select shows the full card. */
 export const TOWN_COMPACT_LABEL_MAX_SCALE = 2;
-/** Nickname characters a one-line town chip shows. */
-export const TOWN_COMPACT_LABEL_CHARS = 12;
+/** Nickname characters a one-line town chip shows: about 11 fit the 64 CSS px
+ *  between neighboring desks at zoom 2. */
+export const TOWN_COMPACT_LABEL_CHARS = 11;
+/** CSS px a town FNT chip floats above the head (clear of hair and horns). */
+export const TOWN_FAINT_CHIP_LIFT_PX = 4;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',

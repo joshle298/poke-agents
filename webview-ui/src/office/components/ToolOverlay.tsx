@@ -29,6 +29,7 @@ import {
   TEAM_ROLE_COLOR,
   TOWN_COMPACT_LABEL_CHARS,
   TOWN_COMPACT_LABEL_MAX_SCALE,
+  TOWN_FAINT_CHIP_LIFT_PX,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
@@ -204,7 +205,7 @@ function CompactLabel({
         left,
         top,
         transform: 'translate(-50%, -100%)',
-        fontSize: '16px',
+        fontSize: '14px',
         opacity: 0.85,
         zIndex: OVERLAY_LABEL_Z_INDEX,
       }}
@@ -524,7 +525,7 @@ export function ToolOverlay({
             ch.isErrored && ch.townGoal === 'center' ? (
               <FaintChip
                 left={project.toScreenX(ch.x)}
-                top={project.toScreenY(overlayAnchorY(ch, 'bubble'))}
+                top={project.toScreenY(overlayAnchorY(ch, 'bubble')) - TOWN_FAINT_CHIP_LIFT_PX}
               />
             ) : null;
           if (!bubbleNode && !faintChip) return null;
