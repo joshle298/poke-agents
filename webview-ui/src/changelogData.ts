@@ -42,6 +42,36 @@ export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
  *  is built on. */
 export const changelogEntries: ChangelogEntry[] = [
   {
+    version: '0.3',
+    sections: [
+      {
+        title: 'Features',
+        items: [
+          'The Pokémon town: workers in the Lab, idle ones in the tall grass, fainted ones in the Pokémon Center beds',
+          'Sounds: each Pokémon cries when its session needs you, faints, arrives or evolves, plus original chiptune effects',
+          'The Jukebox, with Poke Agents Radio: 12 freely licensed original tracks, or your own music',
+          'The Mac app, with notifications and a Dock badge for sessions that need you',
+          'Demo mode (--demo or npm run demo): a scripted office of synthetic sessions, no Conductor account needed',
+        ],
+      },
+      {
+        title: 'Changes',
+        items: [
+          'A new app icon, Promptling, and an original capsule for throws, recalls and messages',
+          'New flags --no-sounds and --no-radio',
+          'Working sessions read Working, fainted Pokémon turn grey, and a Lead with many sessions keeps them in place',
+        ],
+      },
+    ],
+    contributors: [
+      {
+        name: '@joshle298',
+        url: 'https://github.com/joshle298',
+        description: 'Poke Agents: the town, sounds, the Jukebox, the Mac app and the demo',
+      },
+    ],
+  },
+  {
     version: '0.2',
     sections: [
       {

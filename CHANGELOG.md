@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## Poke Agents v0.3.0
+
+The Pokémon release. Poke Agents shows your Conductor cloud sessions as Pokémon in a small pixel-art town, as a Mac app or in a browser window next to Conductor. It is a visualizer: all coding happens in Conductor with your Conductor settings, and Poke Agents only asks Conductor's API to act when you click.
+
+With this release, Poke Agents has:
+
+- **The town:** working sessions at the Lab's desks (Leads at the lectern), idle ones wandering and napping in the Meadow's tall grass, fainted ones in the Pokémon Center's beds.
+- **A Pokémon per session** that keeps its species, levels up with the session's messages, evolves at Lv 16 and Lv 36, and shows `SLP`, `FNT` or `!`. Leads are legendaries, linked to the sessions they created, messaged or read, and messages fly between sessions as capsules with a preview.
+- **The Pokédex:** Overview (task, status, HP for the context left, recent tool steps, messages with other sessions and the session actions) and Chat (the conversation, **Load earlier**, a reply box, and pending questions with **Reply with this option**).
+- **PC Box** for archived sessions, the **Sessions** modal for scope, activity window, cap, search, hide and pin, the **party bar** and the **battle log**.
+- **Sounds:** each Pokémon's cry, downloaded at runtime, and original chiptune effects.
+- **Jukebox** with **Poke Agents Radio**, 12 freely licensed original tracks, plus your own music.
+- **The Mac app**, with notifications and a Dock badge, and **demo mode** for trying it without a Conductor account.
+- **Promptling**, an original mascot, as the app icon, and an original capsule.
 
 ### Features
 
@@ -25,6 +38,9 @@
 - Sessions are thrown out of, recalled into and messaged as an original capsule (a teal-and-cream pill with a gold collar that opens by pulling its halves apart) instead of a red-and-white ball. The PC Box and the empty office show the same capsule when there is no portrait.
 - New flag `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`): no cry or radio downloads and no sound pack.
 - New flag `--no-radio` (or `POKE_AGENTS_RADIO=off`): Poke Agents Radio off, no track downloads.
+- The README is rewritten around the town, with screenshots from the demo in `docs/screenshots/`; its Credits name the species and sprite artists in them. Upstream Pixel Agents' documentation is now a link, and the Mac app checklist moved to CONTRIBUTING.md.
+- The Mac app's About panel and Info.plist say "Based on Pixel Agents by Pablo De Lucca", replacing the old fork wording.
+- Upstream's unused README images (`banner.png`, `office.png`, `characters.png`, `Screenshot.jpg`) are gone from `webview-ui/public/`.
 
 ## Poke Agents v0.2.0
 

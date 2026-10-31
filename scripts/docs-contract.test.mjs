@@ -74,6 +74,9 @@ test('no doc calls Poke Agents a fork of Pixel Agents', () => {
     'package.json': read('package.json'),
     'webview-ui/public/manifest.webmanifest': read('webview-ui/public/manifest.webmanifest'),
     'webview-ui/index.html': read('webview-ui/index.html'),
+    // The Mac app's About panel and Info.plist copyright.
+    'desktop/src/constants.ts': read('desktop/src/constants.ts'),
+    'desktop/electron-builder.yml': read('desktop/electron-builder.yml'),
   };
   const forkWording = /\b(?:a|the|this|our) fork\b|\bfork of\b|\bfork's\b/i;
   for (const [name, text] of Object.entries(docs)) {
@@ -94,7 +97,7 @@ test('the upstream credit stays: README names Pablo De Lucca and links Pixel Age
 });
 
 test('the README states that Poke Agents is only a visualizer', () => {
-  const principle = section(README, '## Poke Agents Is a Visualizer');
+  const principle = section(README, '## What It Is');
   assert.match(principle, /All coding happens in Conductor/);
   assert.match(principle, /never does/);
   assert.match(principle, /store or change your Conductor settings/);

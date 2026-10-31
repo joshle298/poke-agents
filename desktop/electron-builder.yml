@@ -5,7 +5,7 @@ appId: com.joshle298.pokeagents
 productName: Poke Agents
 # Also the About panel's (COPYRIGHT in src/constants.ts); electron-builder
 # writes it to Info.plist as NSHumanReadableCopyright.
-copyright: © 2026 Josh Le. MIT License. A fork of Pixel Agents by Pablo De Lucca.
+copyright: © 2026 Josh Le. MIT License. Based on Pixel Agents by Pablo De Lucca.
 
 directories:
   output: release

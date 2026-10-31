@@ -21,7 +21,7 @@ export const MAX_EARLY_COMMANDS = 4;
 /** Help → Poke Agents Help: the README's Mac app section. */
 export const HELP_URL = 'https://github.com/joshle298/poke-agents#mac-app';
 /** About panel and Info.plist copyright (electron-builder.yml says the same). */
-export const COPYRIGHT = '© 2026 Josh Le. MIT License. A fork of Pixel Agents by Pablo De Lucca.';
+export const COPYRIGHT = '© 2026 Josh Le. MIT License. Based on Pixel Agents by Pablo De Lucca.';
 
 /** The office's night-dark background (--color-bg-dark), painted before the
  *  first frame so the window never flashes white. */
