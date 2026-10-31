@@ -224,6 +224,51 @@ describe('Conductor poller: workspace activity', () => {
   });
 });
 
+describe('Conductor poller: workspace activity wakes a session known from a cursor', () => {
+  it("reads the tail of an idle session that walked in on an earlier run's cursor", async () => {
+    const id = uuid(0x2201);
+    const ws = uuid(0x2202);
+    const stateDir = tmpStateDir();
+    writeState(stateDir, {
+      version: 1,
+      scope: scope(),
+      sessions: { [id]: { cursor: { lastId: 'gone', lastIndex: 19 }, firstSender: null } },
+    });
+    const h = await boot({
+      stateDir,
+      prepare: (api) => {
+        api.addWorkspace({
+          id: ws,
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+        });
+        api.addSession({ id, workspaceId: ws, items: idleFeed(id, NOW - 2 * HOUR) });
+      },
+    });
+    expect(h.sink.adopted.has(id)).toBe(true);
+    await run(h, 2 * MINUTE, () => {}, 5_000);
+    const pagesBefore = h.api
+      .callsTo(`/sessions/${id}/messages`)
+      .filter((c) => c.query.limit === '100').length;
+
+    // It wakes up: a new turn starts, and its workspace shows activity.
+    const turn = retime(fixture('claude-turn.json').slice(0, 8), id, h.clock.t - 1_000).map(
+      (item, i) => ({ ...item, id: `${item.id}-wake`, sessionIndex: 100 + i }),
+    );
+    h.api.sessions.get(id)?.items.push(...turn);
+    const workspace = h.api.workspaces.find((w) => w.id === ws);
+    if (workspace) workspace.lastActivityAt = new Date(h.clock.t).toISOString();
+    await run(h, 20_000);
+
+    const pagesAfter = h.api
+      .callsTo(`/sessions/${id}/messages`)
+      .filter((c) => c.query.limit === '100').length;
+    expect(pagesAfter).toBeGreaterThan(pagesBefore);
+    expect(h.sink.eventsFor(id)).toContainEqual({ kind: 'turnStart' });
+    await h.provider.stop();
+  });
+});
+
 describe('Conductor poller: units that wait for a free slot', () => {
   it('resolves a pinned session from outside the discovery window within seconds of startup', async () => {
     const pinned = uuid(0x3001);

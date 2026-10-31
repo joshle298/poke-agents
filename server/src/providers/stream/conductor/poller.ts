@@ -623,11 +623,12 @@ export class ConductorPoller {
   private focusPeers(now: number, focused: Set<string>): Set<string> {
     const peers = new Set<string>();
     for (const id of focused) {
+      let taken = 0;
       for (const peer of this.links.recentNeighbors(id, now - FOCUS_PEER_RECENT_MS, Infinity)) {
         const rec = this.records.get(peer);
         if (!rec || focused.has(peer) || !rec.adopted || !rec.tailed) continue;
         peers.add(peer);
-        if (peers.size >= FOCUS_PEERS_MAX * focused.size) break;
+        if (++taken >= FOCUS_PEERS_MAX) break;
       }
     }
     return peers;
@@ -737,7 +738,7 @@ export class ConductorPoller {
               ),
             'onboard',
           );
-        } else if (tier !== 'cold') {
+        } else if (tier !== 'cold' || (rec.adopted && rec.pollSoon)) {
           add(
             rec.adopted ? 3.5 : 7,
             () =>
@@ -981,9 +982,11 @@ export class ConductorPoller {
       for (const session of this.records.values()) {
         if (
           session.workspaceId === ws.id &&
-          session.tailed &&
+          (session.tailed || session.adopted) &&
           now - (session.lastPollAt ?? 0) >= WORKSPACE_CATCHUP_MIN_GAP_MS
         ) {
+          // Tailed: one poll after its cursor. In the office but never tailed
+          // (it walked in on a cursor from an earlier run): its tail.
           session.pollSoon = true;
         }
       }
