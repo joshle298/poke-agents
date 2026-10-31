@@ -5,9 +5,10 @@
  *   node scripts/generate-world-assets.mjs
  *
  * Writes, under webview-ui/public/assets/:
- *   floors/floor_9.png .. floor_16.png    grass, speckled grass, tall grass (three
- *                                         variants: 11, 15, 16), dirt, cobbles, the
- *                                         Pokémon Center's tiles (14)
+ *   floors/floor_9.png .. floor_18.png    grass, speckled grass, tall grass (three
+ *                                         variants: 11, 15, 16; a patch's top row:
+ *                                         17), dirt, cobbles, the Pokémon Center's
+ *                                         tiles (14), grass in a patch's shadow (18)
  *   carpets/carpet_3.png                  an auto-tiled dirt path
  *   furniture/<ID>/                       outdoor items, the Center's and the Lab's furniture
  *   layouts/pokemon-town.json             the town (the standalone default layout)
@@ -22,7 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import * as art from './world/art.mjs';
-import { buildTown } from './world/town.mjs';
+import { buildTown, COLOR } from './world/town.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = path.join(REPO_ROOT, 'webview-ui', 'public', 'assets');
@@ -47,6 +48,8 @@ const floors = [
   ['floor_14.png', art.centerTileFloor()],
   ['floor_15.png', art.tallGrassFloor(1)],
   ['floor_16.png', art.tallGrassFloor(2)],
+  ['floor_17.png', art.tallGrassTopFloor(COLOR.tallGrass, COLOR.grass)],
+  ['floor_18.png', art.grassShadowFloor()],
 ];
 for (const [file, canvas] of floors) write(`floors/${file}`, canvas.png());
 
@@ -98,6 +101,17 @@ item('HEALING_MACHINE', 'Healing Machine', 'electronics', art.healingMachine(), 
   canPlaceOnSurfaces: true,
 });
 item('LAB_MACHINE', 'Lab Machine', 'electronics', art.labMachine(), 2, 2, 1);
+// Desk clutter for the Lab: surface items, like a PC.
+item('MICROSCOPE', 'Microscope', 'misc', art.microscope(), 1, 2, 1, { canPlaceOnSurfaces: true });
+item('PAPER_STACK', 'Paper Stack', 'misc', art.paperStack(), 1, 2, 1, { canPlaceOnSurfaces: true });
+// Back-wall items: the bottom row hangs on the wall, the top row is
+// background (it may share a tile with a tree trunk behind the wall).
+const ON_WALL = { canPlaceOnWalls: true };
+item('WALL_WINDOW', 'Wall Window', 'wall', art.wallWindow(), 1, 2, 1, ON_WALL);
+item('CENTER_POSTER', 'Center Poster', 'wall', art.centerPoster(), 2, 2, 1, ON_WALL);
+item('SPECIMEN_CABINET', 'Specimen Cabinet', 'wall', art.specimenCabinet(), 2, 2, 1, ON_WALL);
+// A wainscot stacks with whatever hangs on its wall tile: all background.
+item('WAINSCOT', 'Wainscot', 'wall', art.wainscot(), 1, 1, 1, ON_WALL);
 item('CENTER_SIGN', 'Center Sign', 'outdoor', art.centerSign(), 2, 2, 1);
 item('LAB_SIGN', 'Lab Sign', 'outdoor', art.labSign(), 2, 2, 1);
 // A roof edge hangs on a back wall tile and covers its top face. Every row is
@@ -136,15 +150,16 @@ function rotationPair(id, name, category, [front, side], footprintW, footprintH,
   });
 }
 
-// A Pokémon Center bed: R puts the pillow on the other side.
+// A Pokémon Center bed: R puts the pillow on the other side. All background:
+// a fainted Pokémon walks onto it and lies down.
 rotationPair(
   'CENTER_BED',
   'Bed',
   'decor',
   [art.centerBed('left'), art.centerBed('right')],
   2,
-  1,
-  1,
+  2,
+  2,
 );
 
 // A fence turns: R swaps the horizontal run for the vertical one.

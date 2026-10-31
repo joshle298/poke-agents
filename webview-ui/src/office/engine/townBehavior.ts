@@ -3,7 +3,7 @@
  * per-frame step that takes them there. Pure and DOM-free (Node-tested).
  *
  *   Active (working)            → its seat: the upstream FSM, unchanged
- *   Fainted (errored)           → walks to the Center and rests on a bed
+ *   Fainted (errored)           → walks to the Center and lies in a bed
  *   Needs you (awaiting input)  → stays where it is (seated at its desk)
  *   Idle                        → walks to the Meadow and wanders inside it
  *   Asleep                      → naps in the Meadow (walks there first)
@@ -13,19 +13,69 @@
  */
 
 import {
+  POKEMON_GROUND_OFFSET_PX,
+  TOWN_BED_OVERLAP_PX,
   TOWN_MEADOW_DELAY_SEC,
   TOWN_RETRY_SEC,
+  TOWN_SPREAD_TILES,
   TOWN_TARGET_TRIES,
   TOWN_WALL_OVERLAP_PX,
+  WANDER_PAUSE_MAX_SEC,
+  WANDER_PAUSE_MIN_SEC,
 } from '../../constants.js';
 import type { AreaRoleTiles } from '../layout/areaRoles.js';
 import { tileKey } from '../layout/areaRoles.js';
 import { findPath } from '../layout/tileMap.js';
-import type { Character, Seat, TileType as TileTypeVal, TownGoal } from '../types.js';
-import { CharacterState, TILE_SIZE, TileType } from '../types.js';
+import type { BedRest, Character, Seat, TileType as TileTypeVal, TownGoal } from '../types.js';
+import { CharacterState, Direction, TILE_SIZE, TileType } from '../types.js';
 import { updateCharacter } from './characters.js';
 
 type Tile = { col: number; row: number };
+
+/**
+ * Tiles other characters stand on or are heading to. A map also tells, per
+ * tile, how far its occupant's resting pose rises above its ground point
+ * (world px; 0 when unknown), so a bed under a tall sleeper counts as covered.
+ */
+export type Occupancy = ReadonlySet<string> | ReadonlyMap<string, number>;
+
+function riseAt(occupied: Occupancy, key: string): number {
+  return 'get' in occupied ? (occupied.get(key) ?? 0) : 0;
+}
+
+/** How far a fainted character's held pose reaches from its ground point
+ *  (world px): sideways and up. Zeros fit anywhere. */
+export interface RestFit {
+  halfW: number;
+  rise: number;
+}
+
+export const NO_REST_FIT: RestFit = { halfW: 0, rise: 0 };
+
+/** A bed in the Pokémon Center, as the town step sees it. */
+export interface TownBed extends BedRest {
+  /** Where its sleeper stands: the bottom row, at the end away from the pillow. */
+  rest: Tile;
+  /** Every tile of the bed (a rest on the floor never picks one). */
+  tiles: ReadonlySet<string>;
+  /** World px from the bed's middle to the Center's edge on the nearer side. */
+  room: number;
+  /** The nearest bed directly above and below (overlapping columns), if any. */
+  above: TownBed | null;
+  below: TownBed | null;
+  /** World px a sleeper here may rise before it covers the bed above
+   *  (Infinity when there is none). */
+  headroom: number;
+}
+
+/** A placed item that can be a bed: fully walkable and inside the Center. */
+export interface BedPlacement {
+  col: number;
+  row: number;
+  w: number;
+  h: number;
+  blanket: BedRest['blanket'];
+}
 
 /** The layout facts the town step needs, rebuilt with the layout. */
 export interface TownWorld {
@@ -34,9 +84,10 @@ export interface TownWorld {
   meadowTiles: Tile[];
   /** Walkable Center tiles: where fainted characters rest. */
   centerTiles: Tile[];
-  /** Walkable Center tiles on a bed (the bottom row of a placed item a
-   *  character can stand on): where a fainted character lies down first. */
-  restSpots: Tile[];
+  /** The Center's beds: where a fainted character lies down first. */
+  beds: TownBed[];
+  /** Every tile of every bed. */
+  bedTiles: ReadonlySet<string>;
   /** Per Center tile, its clearance from the Center's side walls (centerClearance). */
   centerClearance: ReadonlyMap<string, number>;
   /** Seat uids on the lectern: kept for Leads. */
@@ -45,6 +96,9 @@ export interface TownWorld {
   seatRoom: ReadonlyMap<string, number>;
   tileMap: TileTypeVal[][];
   blockedTiles: Set<string>;
+  /** `blockedTiles` plus the walk-behind tiles outside the role areas (under
+   *  the forest's canopy, across a desk's top): town walks keep off them. */
+  pathBlocked: Set<string>;
 }
 
 type GoalFacts = Pick<
@@ -70,13 +124,23 @@ export function setTownGoal(ch: Character, goal: TownGoal | null): void {
   ch.townRetryTimer = goal === 'meadow' ? TOWN_MEADOW_DELAY_SEC : 0;
 }
 
-/** A random candidate nobody stands on or is heading to, else any candidate. */
+/**
+ * A random candidate nobody stands on or is heading to, preferring one at
+ * least TOWN_SPREAD_TILES (Chebyshev) from all of those, so characters spread
+ * out; else any free candidate, else any candidate.
+ */
 export function pickTownTile(
   candidates: readonly Tile[],
-  occupied: ReadonlySet<string>,
+  occupied: Occupancy,
   random: () => number = Math.random,
 ): Tile | null {
-  return pickTieredTile([candidates], occupied, random);
+  const taken = Array.from(occupied.keys(), (key) => key.split(',').map(Number));
+  const spread = candidates.filter((t) =>
+    taken.every(
+      ([col, row]) => Math.max(Math.abs(col - t.col), Math.abs(row - t.row)) >= TOWN_SPREAD_TILES,
+    ),
+  );
+  return pickTieredTile([spread, candidates], occupied, random);
 }
 
 /**
@@ -85,7 +149,7 @@ export function pickTownTile(
  */
 export function pickTieredTile(
   tiers: ReadonlyArray<readonly Tile[]>,
-  occupied: ReadonlySet<string>,
+  occupied: Occupancy,
   random: () => number = Math.random,
 ): Tile | null {
   for (const tier of tiers) {
@@ -97,38 +161,178 @@ export function pickTieredTile(
 }
 
 /**
- * Where a fainted character may rest, best first, for a sprite that spills
- * `clearance` tiles to each side of the tile it stands on: beds that keep it
- * inside the Center's walls (the most central side of each bed first), then
- * any Center tile that does. When nothing is wide enough, the widest tiles.
+ * The Center's beds, from the placed items that can be one. The pillow is at
+ * the end nearer the Center's side wall (beds stand with their head to a
+ * wall), the sleeper stands at the other end of the bottom row and is drawn
+ * centred on the bed. Pure (Node-tested).
  */
-export function centerRestTiers(world: TownWorld, clearance: number): Tile[][] {
+export function townBeds(
+  placements: readonly BedPlacement[],
+  center: ReadonlySet<string>,
+): TownBed[] {
+  const beds: TownBed[] = [];
+  for (const p of placements) {
+    const row = p.row + p.h - 1;
+    const first = p.col;
+    const last = p.col + p.w - 1;
+    let ok = p.w >= 2;
+    for (let c = first; c <= last && ok; c++) ok = center.has(tileKey(c, row));
+    if (!ok) continue;
+    let left = first;
+    while (center.has(tileKey(left - 1, row))) left--;
+    let right = last;
+    while (center.has(tileKey(right + 1, row))) right++;
+    const pillow = first - left <= right - last ? 'left' : 'right';
+    const midX = (p.col + p.w / 2) * TILE_SIZE;
+    const tiles = new Set<string>();
+    for (let r = p.row; r <= row; r++) {
+      for (let c = first; c <= last; c++) tiles.add(tileKey(c, r));
+    }
+    beds.push({
+      pillow,
+      midX,
+      blanket: p.blanket,
+      rest: { col: pillow === 'left' ? last : first, row },
+      tiles,
+      room: Math.min(midX - left * TILE_SIZE, (right + 1) * TILE_SIZE - midX),
+      above: null,
+      below: null,
+      headroom: Infinity,
+    });
+  }
+  // Stacked beds: the nearest bed above whose columns overlap.
+  const span = (b: TownBed) => {
+    const cols = [...b.tiles].map((k) => Number(k.split(',')[0]));
+    return { lo: Math.min(...cols), hi: Math.max(...cols) };
+  };
+  for (const b of beds) {
+    const s = span(b);
+    let best: TownBed | null = null;
+    for (const a of beds) {
+      if (a === b || a.rest.row >= b.rest.row) continue;
+      const t = span(a);
+      if (t.hi < s.lo || t.lo > s.hi) continue;
+      if (!best || a.rest.row > best.rest.row) best = a;
+    }
+    if (!best) continue;
+    b.above = best;
+    best.below = b;
+    const ground = b.rest.row * TILE_SIZE + TILE_SIZE / 2 + POKEMON_GROUND_OFFSET_PX;
+    b.headroom = ground - (best.rest.row + 1) * TILE_SIZE + TOWN_BED_OVERLAP_PX;
+  }
+  return beds;
+}
+
+/** Whether a bed is wide enough for a sleeper reaching `halfW` px sideways. */
+function bedFits(bed: TownBed, fit: RestFit): boolean {
+  return fit.halfW <= bed.room + TOWN_WALL_OVERLAP_PX;
+}
+
+/** Center tiles off the beds, with their clearance from the side walls. */
+function floorTiles(world: TownWorld): Tile[] {
+  return world.centerTiles.filter((t) => !world.bedTiles.has(tileKey(t.col, t.row)));
+}
+
+/**
+ * Where a fainted character may rest, best first. Beds that fit its pose:
+ * first those with no sleeper above or below, then any that neither puts it
+ * over a sleeper above (a tall pose) nor under a tall sleeper below. Then the
+ * floor tiles that keep it inside the Center's walls; when none is wide
+ * enough, the widest floor tiles.
+ */
+export function centerRestTiers(
+  world: TownWorld,
+  fit: RestFit = NO_REST_FIT,
+  occupied: Occupancy = new Set<string>(),
+): Tile[][] {
+  const taken = (b: TownBed | null) => b !== null && occupied.has(tileKey(b.rest.col, b.rest.row));
+  const usable = world.beds.filter(
+    (b) =>
+      bedFits(b, fit) &&
+      !(fit.rise > b.headroom && taken(b.above)) &&
+      !(
+        b.below &&
+        taken(b.below) &&
+        riseAt(occupied, tileKey(b.below.rest.col, b.below.rest.row)) > b.below.headroom
+      ),
+  );
+  const alone = usable.filter((b) => !taken(b.above) && !taken(b.below));
+  const floor = floorTiles(world);
   const clear = (t: Tile) => world.centerClearance.get(tileKey(t.col, t.row)) ?? 0;
-  const fits = (t: Tile) => clear(t) >= clearance;
-  const beds = world.restSpots.filter(fits);
-  const roomiest = Math.max(-1, ...beds.map(clear));
+  const need = townRoomNeeded(fit.halfW);
   const tiers = [
-    beds.filter((t) => clear(t) === roomiest),
-    beds.filter((t) => clear(t) !== roomiest),
-    world.centerTiles.filter(fits),
+    alone.map((b) => b.rest),
+    usable.map((b) => b.rest),
+    floor.filter((t) => clear(t) >= need),
   ];
   if (tiers.every((tier) => tier.length === 0)) {
-    const widest = Math.max(-1, ...world.centerTiles.map(clear));
-    tiers.push(world.centerTiles.filter((t) => clear(t) === widest));
+    const widest = Math.max(-1, ...floor.map(clear));
+    tiers.push(floor.filter((t) => clear(t) === widest));
   }
   return tiers.filter((tier) => tier.length > 0);
 }
 
-/** Whether a fainted character may rest where it stands: in the Center, on a
- *  tile wide enough for its sprite (or as wide as the Center gets). */
-function restsHere(ch: Character, world: TownWorld, clearance: number): boolean {
+/** The bed whose sleeper's spot is (col, row), if any. */
+function bedAt(world: TownWorld, col: number, row: number): TownBed | undefined {
+  return world.beds.find((b) => b.rest.col === col && b.rest.row === row);
+}
+
+/** Whether a fainted character may rest where it stands: on a bed that fits
+ *  it, or on a floor tile of the Center wide enough for its pose (or as wide
+ *  as the Center's floor gets). Never on a bed's other tiles. */
+function restsHere(ch: Character, world: TownWorld, fit: RestFit): boolean {
   const here = tileKey(ch.tileCol, ch.tileRow);
   if (!world.roles.center.has(here)) return false;
-  const widest = Math.max(0, ...world.centerClearance.values());
-  return (world.centerClearance.get(here) ?? 0) >= Math.min(clearance, widest);
+  const bed = bedAt(world, ch.tileCol, ch.tileRow);
+  if (bed) return bedFits(bed, fit);
+  if (world.bedTiles.has(here)) return false;
+  const widest = Math.max(
+    0,
+    ...floorTiles(world).map((t) => world.centerClearance.get(tileKey(t.col, t.row)) ?? 0),
+  );
+  return (world.centerClearance.get(here) ?? 0) >= Math.min(townRoomNeeded(fit.halfW), widest);
+}
+
+/** Lie down in `bed`: centred on it, the head toward the pillow. */
+function lieDown(ch: Character, bed: TownBed): void {
+  ch.bedRest = bed;
+  ch.x = bed.midX;
+  ch.dir = bed.pillow === 'left' ? Direction.LEFT : Direction.RIGHT;
+}
+
+/** Get out of bed (if in one): back over the tile it stands on. */
+export function leaveBed(ch: Character): void {
+  if (!ch.bedRest) return;
+  ch.bedRest = undefined;
+  if (ch.state !== CharacterState.WALK) ch.x = ch.tileCol * TILE_SIZE + TILE_SIZE / 2;
 }
 
 const NO_SEATS: Map<string, Seat> = new Map();
+
+/**
+ * A town walk from where `ch` stands to `target`: never in under the forest's
+ * canopy or across furniture tops on the way (`pathBlocked`), unless that is
+ * the only way out (it stands in there already). Empty when unreachable.
+ */
+export function townPath(ch: Character, target: Tile, world: TownWorld): Tile[] {
+  const path = findPath(
+    ch.tileCol,
+    ch.tileRow,
+    target.col,
+    target.row,
+    world.tileMap,
+    world.pathBlocked,
+  );
+  if (path.length > 0) return path;
+  return findPath(
+    ch.tileCol,
+    ch.tileRow,
+    target.col,
+    target.row,
+    world.tileMap,
+    world.blockedTiles,
+  );
+}
 
 function startWalk(ch: Character, path: Tile[]): void {
   ch.path = path;
@@ -138,30 +342,22 @@ function startWalk(ch: Character, path: Tile[]): void {
   ch.frameTimer = 0;
 }
 
-/** Walk toward a random free tile of `tiers`; retry later when none is reachable. */
+/** Walk toward a free tile `pick` chooses; retry later when none is reachable. */
 function headTo(
   ch: Character,
   dt: number,
-  tiers: ReadonlyArray<readonly Tile[]>,
+  pick: (taken: Occupancy) => Tile | null,
   world: TownWorld,
-  occupied: () => ReadonlySet<string>,
-  random: () => number,
+  occupied: () => Occupancy,
 ): void {
   ch.townRetryTimer = (ch.townRetryTimer ?? 0) - dt;
   if (ch.townRetryTimer > 0) return;
   ch.townRetryTimer = TOWN_RETRY_SEC;
   const taken = occupied();
   for (let i = 0; i < TOWN_TARGET_TRIES; i++) {
-    const target = pickTieredTile(tiers, taken, random);
+    const target = pick(taken);
     if (!target) return;
-    const path = findPath(
-      ch.tileCol,
-      ch.tileRow,
-      target.col,
-      target.row,
-      world.tileMap,
-      world.blockedTiles,
-    );
+    const path = townPath(ch, target, world);
     if (path.length > 0) {
       startWalk(ch, path);
       return;
@@ -173,10 +369,10 @@ export interface TownStepOptions {
   /** Asleep (a Pokémon not active for a while): it naps once in the Meadow. */
   asleep: boolean;
   /** Tiles other characters stand on or are heading to (computed on demand). */
-  occupied: () => ReadonlySet<string>;
-  /** Tiles the character's sprite spills to each side (wide Pokémon), so it
-   *  rests clear of the Center's walls. Default 0. */
-  clearance?: number;
+  occupied: () => Occupancy;
+  /** The reach of its resting pose (wide or tall Pokémon), so it rests clear
+   *  of the Center's walls and of the other sleepers. Default: fits anywhere. */
+  fit?: RestFit;
   random?: () => number;
 }
 
@@ -188,13 +384,34 @@ export interface TownStepOptions {
 export function townSpawnTile(
   goal: TownGoal | null,
   world: TownWorld,
-  occupied: ReadonlySet<string>,
-  clearance = 0,
+  occupied: Occupancy,
+  fit: RestFit = NO_REST_FIT,
   random: () => number = Math.random,
 ): Tile | null {
   if (goal === 'meadow') return pickTownTile(world.meadowTiles, occupied, random);
-  if (goal === 'center') return pickTieredTile(centerRestTiers(world, clearance), occupied, random);
+  if (goal === 'center') {
+    return pickTieredTile(centerRestTiers(world, fit, occupied), occupied, random);
+  }
   return null;
+}
+
+/** An idle character's stroll inside the Meadow: after a pause, to a spread-out
+ *  Meadow tile. */
+function wanderMeadow(
+  ch: Character,
+  dt: number,
+  world: TownWorld,
+  occupied: () => Occupancy,
+  random: () => number,
+): void {
+  ch.frame = 0;
+  ch.wanderTimer -= dt;
+  if (ch.wanderTimer > 0) return;
+  ch.wanderTimer = WANDER_PAUSE_MIN_SEC + random() * (WANDER_PAUSE_MAX_SEC - WANDER_PAUSE_MIN_SEC);
+  const target = pickTownTile(world.meadowTiles, occupied(), random);
+  if (!target) return;
+  const path = townPath(ch, target, world);
+  if (path.length > 0) startWalk(ch, path);
 }
 
 /**
@@ -210,9 +427,8 @@ export function stepTownCharacter(
   opts: TownStepOptions,
 ): void {
   const random = opts.random ?? Math.random;
-  const wanderTargets = goal === 'meadow' ? world.meadowTiles : [];
-  const fsm = () =>
-    updateCharacter(ch, dt, wanderTargets, NO_SEATS, world.tileMap, world.blockedTiles);
+  const fsm = () => updateCharacter(ch, dt, [], NO_SEATS, world.tileMap, world.blockedTiles);
+  if (goal !== 'center' || ch.state !== CharacterState.IDLE) leaveBed(ch);
 
   if (goal === 'stay') {
     // Holds the pose its turn ended in (seated at its desk); a walk already
@@ -226,17 +442,29 @@ export function stepTownCharacter(
     return;
   }
   if (goal === 'center') {
-    const clearance = opts.clearance ?? 0;
-    if (restsHere(ch, world, clearance)) return; // resting until revived
-    headTo(ch, dt, centerRestTiers(world, clearance), world, opts.occupied, random);
+    const fit = opts.fit ?? NO_REST_FIT;
+    if (restsHere(ch, world, fit)) {
+      // resting until revived, in bed when there is one here
+      const bed = bedAt(world, ch.tileCol, ch.tileRow);
+      if (bed) lieDown(ch, bed);
+      return;
+    }
+    leaveBed(ch);
+    headTo(
+      ch,
+      dt,
+      (taken) => pickTieredTile(centerRestTiers(world, fit, taken), taken, random),
+      world,
+      opts.occupied,
+    );
     return;
   }
   if (world.roles.meadow.has(tileKey(ch.tileCol, ch.tileRow))) {
     if (opts.asleep) return; // napping
-    fsm(); // wander, with Meadow tiles as the only destinations
+    wanderMeadow(ch, dt, world, opts.occupied, random);
     return;
   }
-  headTo(ch, dt, [world.meadowTiles], world, opts.occupied, random);
+  headTo(ch, dt, (taken) => pickTownTile(world.meadowTiles, taken, random), world, opts.occupied);
 }
 
 /**

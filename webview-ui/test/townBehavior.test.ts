@@ -15,28 +15,34 @@ import { afterEach, beforeAll, beforeEach, test, vi } from 'vitest';
 import type { AgentLink } from '../../core/src/messages.js';
 import {
   AREA_DEFAULT_COLORS,
+  BED_SLEEPER_LIFT_PX,
   POKEMON_SLEEP_AFTER_SEC,
   TOWN_MEADOW_DELAY_SEC,
   TOWN_SPAWN_GRACE_SEC,
+  TOWN_SPREAD_TILES,
   TOWN_USER_WALK_HOLD_SEC,
 } from '../src/constants.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { choosePokemonAnim } from '../src/office/engine/pokemonAnim.js';
+import { bodyTopY, pokemonGroundY, pokemonHitBox } from '../src/office/engine/pokemonCharacter.js';
 import { setPokemonThemeEnabled } from '../src/office/engine/pokemonTheme.js';
+import type { RestFit, TownBed } from '../src/office/engine/townBehavior.js';
 import {
   centerRestTiers,
   pickTieredTile,
   pickTownTile,
   stepTownCharacter,
   townGoalFor,
+  townPath,
   townRoomNeeded,
   townSeatMove,
 } from '../src/office/engine/townBehavior.js';
 import { areaRoleTiles, centerClearance, tileKey } from '../src/office/layout/areaRoles.js';
 import { setPokemonSpecies } from '../src/office/sprites/pokemonSprites.js';
 import type { Character, OfficeLayout } from '../src/office/types.js';
-import { CharacterState, TileType } from '../src/office/types.js';
+import { CharacterState, Direction, TileType } from '../src/office/types.js';
 import {
+  DEFAULT_ANIMS,
   flushDecodes,
   installFakeLoader,
   resetPokemonStore,
@@ -323,7 +329,7 @@ test('a character the user walks out of the Meadow stays a while, then heads bac
 
 test('a session that turns out idle or fainted as it is created appears in its area', () => {
   const os = new OfficeState(town);
-  const { roles, restSpots } = os.town!;
+  const { roles, beds } = os.town!;
   os.addAgent(1, 0, 0); // with the spawn effect, as a new session arrives
   os.addAgent(2, 0, 0);
   const idle = os.characters.get(1)!;
@@ -336,8 +342,8 @@ test('a session that turns out idle or fainted as it is created appears in its a
   assert.ok(idle.matrixEffect, 'still opening its Poké Ball');
   assert.ok(roles.meadow.has(at(idle)), `opens in the Meadow (at ${at(idle)})`);
   assert.equal(idle.seatId, desk, 'keeps its desk for when it works');
-  const beds = new Set(restSpots.map((t) => tileKey(t.col, t.row)));
-  assert.ok(beds.has(at(fainted)), `opens on a Center bed (at ${at(fainted)})`);
+  const bedSpots = new Set(beds.map((b) => tileKey(b.rest.col, b.rest.row)));
+  assert.ok(bedSpots.has(at(fainted)), `opens on a Center bed (at ${at(fainted)})`);
   run(os, 20, () => {
     const end = idle.path[idle.path.length - 1];
     if (end) assert.ok(roles.meadow.has(tileKey(end.col, end.row)), 'heads only into the Meadow');
@@ -358,32 +364,90 @@ test('a session that is working as it is created stays at its desk', () => {
   assert.equal(at(ch), tileKey(seat.seatCol, seat.seatRow), 'no jump once settled');
 });
 
-test('the Center has beds; a fainted agent lies on the most central side of one', () => {
+test('the Center has beds; a fainted agent lies in one, centred, its head on the pillow', () => {
   const os = new OfficeState(town);
   const world = os.town!;
-  assert.ok(world.restSpots.length >= 4, `${world.restSpots.length} bed tiles`);
-  const tiers = centerRestTiers(world, 0);
-  const clear = (t: { col: number; row: number }) =>
-    world.centerClearance.get(tileKey(t.col, t.row))!;
-  assert.ok(tiers[0].length >= 4, 'one tile per bed first');
-  for (const t of tiers[0]) assert.equal(clear(t), 1, 'the side away from the wall');
+  assert.equal(world.beds.length, 4, 'four beds');
+  for (const bed of world.beds) {
+    // The pillow is at the wall end; the sleeper stands at the other end.
+    const clear = (col: number) => world.centerClearance.get(tileKey(col, bed.rest.row))!;
+    const other = bed.pillow === 'left' ? bed.rest.col - 1 : bed.rest.col + 1;
+    assert.equal(clear(other), 0, 'the pillow end is against a side wall');
+    assert.equal(clear(bed.rest.col), 1, 'the sleeper stands one tile in');
+    assert.ok(bed.blanket, 'a blanket to tuck it in');
+  }
+  const tiers = centerRestTiers(world);
+  assert.equal(tiers[0].length, 4, 'every bed first');
   const ch = seatedAgent(os, 1);
   os.setAgentActive(1, false);
   os.setAgentError(1);
   run(os, 30);
-  assert.ok(
-    tiers[0].some((t) => tileKey(t.col, t.row) === at(ch)),
-    `rests on a bed (at ${at(ch)})`,
-  );
+  const bed = world.beds.find((b) => tileKey(b.rest.col, b.rest.row) === at(ch));
+  assert.ok(bed, `rests on a bed (at ${at(ch)})`);
+  assert.equal(ch.bedRest, bed, 'lies in it');
+  assert.equal(ch.x, bed.midX, 'centred on the bed, not on its tile');
+  assert.equal(bed.midX, (bed.rest.col + (bed.pillow === 'left' ? 0 : 1)) * 16);
+  assert.equal(ch.dir, bed.pillow === 'left' ? Direction.LEFT : Direction.RIGHT, 'head to pillow');
+  // Revived, it gets out of bed and walks back to work from its tile.
+  os.setAgentActive(1, true);
+  os.update(DT);
+  assert.equal(ch.bedRest, undefined, 'out of bed');
+  run(os, 20);
+  const seat = os.seats.get(ch.seatId!)!;
+  assert.equal(at(ch), tileKey(seat.seatCol, seat.seatRow), 'back at its desk');
 });
 
-test('a wide fainted sprite rests clear of the Center walls', () => {
+test('fainted agents spread over the beds before sharing a stack', () => {
+  const os = new OfficeState(town);
+  for (let id = 1; id <= 2; id++) seatedAgent(os, id);
+  for (let id = 1; id <= 2; id++) {
+    os.setAgentActive(id, false);
+    os.setAgentError(id);
+  }
+  run(os, 40);
+  const bedOf = (id: number) => os.characters.get(id)!.bedRest as TownBed | undefined;
+  const [a, b] = [bedOf(1), bedOf(2)];
+  assert.ok(a && b && a !== b, 'two beds');
+  assert.ok(a.above !== b && a.below !== b, 'not one above the other');
+});
+
+test('centerRestTiers: a tall sleeper never lies over a taken bed, nor anyone under one', () => {
   const os = new OfficeState(town);
   const world = os.town!;
-  // Spills two tiles each side: no bed fits, so the widest Center tiles.
-  const tiers = centerRestTiers(world, 2);
+  const lower = world.beds.find((b) => b.above)!;
+  const upper = lower.above!;
+  assert.ok(Number.isFinite(lower.headroom) && lower.headroom > 0, `headroom ${lower.headroom}`);
+  const key = (b: TownBed) => tileKey(b.rest.col, b.rest.row);
+  const spots = (tiers: Array<Array<{ col: number; row: number }>>) =>
+    new Set(tiers.flat().map((t) => tileKey(t.col, t.row)));
+  const tall: RestFit = { halfW: 8, rise: lower.headroom + 1 };
+  const short: RestFit = { halfW: 8, rise: 4 };
+  // The bed above is taken: a tall sleeper skips the bed under it.
+  const upperTaken = new Map([[key(upper), 4]]);
+  assert.ok(!spots(centerRestTiers(world, tall, upperTaken)).has(key(lower)));
+  assert.ok(spots(centerRestTiers(world, short, upperTaken)).has(key(lower)), 'a short one fits');
+  // A tall sleeper lies below: nobody takes the bed it covers.
+  const lowerTakenTall = new Map([[key(lower), lower.headroom + 1]]);
+  assert.ok(!spots(centerRestTiers(world, short, lowerTakenTall)).has(key(upper)));
+  const lowerTakenShort = new Map([[key(lower), 4]]);
+  assert.ok(spots(centerRestTiers(world, short, lowerTakenShort)).has(key(upper)));
+  // Beds whose stack is empty come first.
+  const first = centerRestTiers(world, short, lowerTakenShort)[0];
+  assert.ok(!first.some((t) => tileKey(t.col, t.row) === key(upper)), 'a lone bed first');
+});
+
+test('a wide fainted sprite rests on the floor, clear of the Center walls', () => {
+  const os = new OfficeState(town);
+  const world = os.town!;
+  // Reaches 40 px each side: wider than any bed, two tiles of room needed.
+  const wide: RestFit = { halfW: 40, rise: 10 };
+  assert.equal(townRoomNeeded(40), 2);
+  const tiers = centerRestTiers(world, wide);
   for (const tier of tiers) {
-    for (const t of tier) assert.ok(world.centerClearance.get(tileKey(t.col, t.row))! >= 2);
+    for (const t of tier) {
+      assert.ok(world.centerClearance.get(tileKey(t.col, t.row))! >= 2);
+      assert.ok(!world.bedTiles.has(tileKey(t.col, t.row)), 'not on a bed');
+    }
   }
   const ch = seatedAgent(os, 1);
   os.setAgentActive(1, false);
@@ -391,12 +455,13 @@ test('a wide fainted sprite rests clear of the Center walls', () => {
   ch.townGoal = 'center';
   const occupied = () => new Set<string>();
   for (let t = 0; t < 40; t += DT) {
-    stepTownCharacter(ch, DT, 'center', world, { asleep: false, occupied, clearance: 2 });
+    stepTownCharacter(ch, DT, 'center', world, { asleep: false, occupied, fit: wide });
   }
   assert.ok(world.roles.center.has(at(ch)), `in the Center (at ${at(ch)})`);
   assert.ok(world.centerClearance.get(at(ch))! >= 2, `clear of the walls (at ${at(ch)})`);
+  assert.equal(ch.bedRest, undefined, 'not in a bed');
   // Moved onto a bed by hand, it gets up and finds a wider spot.
-  const bed = world.restSpots[0];
+  const bed = world.beds[0].rest;
   Object.assign(ch, {
     tileCol: bed.col,
     tileRow: bed.row,
@@ -405,7 +470,7 @@ test('a wide fainted sprite rests clear of the Center walls', () => {
     townRetryTimer: 0,
   });
   for (let t = 0; t < 30; t += DT) {
-    stepTownCharacter(ch, DT, 'center', world, { asleep: false, occupied, clearance: 2 });
+    stepTownCharacter(ch, DT, 'center', world, { asleep: false, occupied, fit: wide });
   }
   assert.ok(world.centerClearance.get(at(ch))! >= 2, `moved off the bed (at ${at(ch)})`);
 });
@@ -437,10 +502,127 @@ test('a wide fainted Pokémon (measured on its Faint pose) rests clear of the wa
   // 44 px each side: two tiles of Center beside it (a few px may touch a wall).
   assert.equal(townRoomNeeded(44), 2);
   assert.ok(os.town!.centerClearance.get(at(ch))! >= 2, `two tiles from each wall (at ${at(ch)})`);
+  assert.equal(ch.bedRest, undefined, 'no bed is wide enough');
+});
+
+test("a sleeper's FNT chip hangs just over its lying pose, in the row it lies in", async () => {
+  setPokemonThemeEnabled(true);
+  // Standing, the body rises 12 px; lying (the held Faint frame) only 6 px,
+  // 20 px each side, in the Down, Right and Left rows.
+  const mon = speciesMessage(25, {
+    anims: { ...DEFAULT_ANIMS, Faint: { frameWidth: 48, frameHeight: 64, durations: [4, 4, 4] } },
+  });
+  const lying = (row: number) => ({
+    x0: 96 + 4,
+    y0: row * 64 + 30,
+    x1: 96 + 43,
+    y1: row * 64 + 37,
+  });
+  installFakeLoader([mon], { boxes: { Faint: [lying(0), lying(2), lying(6)] } });
+  setPokemonSpecies(mon);
+  await flushDecodes();
+  const os = new OfficeState(town);
+  const ch = seatedAgent(os, 1);
+  os.setAgentIdentity(1, { species: 25 });
+  os.setAgentActive(1, false);
+  os.setAgentError(1);
+  run(os, 30);
+  assert.ok(ch.bedRest, `in bed (at ${at(ch)})`);
+  ch.pmdAnim = null; // the hurt flinch is over: the held faint shows
+  const ground = pokemonGroundY(ch);
+  assert.equal(bodyTopY(ch), ground - 6, 'the top of the lying pose');
+  assert.notEqual(bodyTopY(ch), ground - 12, 'not the standing head a row above');
+  const box = pokemonHitBox(ch)!;
+  assert.equal(box.right - box.left, 40, 'the click box is the lying pose too');
+});
+
+test("an asleep Pokémon's bubble sits on its sleeping pose, not its standing head", async () => {
+  setPokemonThemeEnabled(true);
+  // Sleep frames are 32×40 (ground point 24 px down); the curled body rises 6 px.
+  installFakeLoader([speciesMessage(25)], { boxes: { Sleep: { x0: 8, y0: 18, x1: 23, y1: 25 } } });
+  setPokemonSpecies(speciesMessage(25));
+  await flushDecodes();
+  const os = new OfficeState(town);
+  const ch = seatedAgent(os, 1);
+  os.setAgentIdentity(1, { species: 25 });
+  os.setAgentActive(1, false);
+  run(os, 40);
+  settle(os, ch);
+  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  assert.equal(bodyTopY(ch), pokemonGroundY(ch) - 6);
+});
+
+test('theme off, a fainted human lies in bed too', () => {
+  const os = new OfficeState(town);
+  const ch = seatedAgent(os, 1);
+  os.setAgentActive(1, false);
+  os.setAgentError(1);
+  run(os, 30);
+  assert.ok(ch.bedRest, `in bed (at ${at(ch)})`);
+  assert.equal(ch.x, ch.bedRest.midX);
+  // Turned on its side, its top is half a tile over the mattress's middle.
+  assert.equal(bodyTopY(ch), ch.y - BED_SLEEPER_LIFT_PX - 8);
+});
+
+test('town walks keep out from under the forest: into the garden by its opening', () => {
+  const os = new OfficeState(town);
+  const world = os.town!;
+  const walker = { tileCol: 24, tileRow: 22 } as Character;
+  const path = townPath(walker, { col: 27, row: 22 }, world);
+  assert.ok(path.length > 0, 'a way in');
+  for (const t of path) {
+    assert.ok(!world.pathBlocked.has(tileKey(t.col, t.row)), `(${t.col},${t.row}) is open ground`);
+    assert.ok(t.row <= 22, `(${t.col},${t.row}) is not in the forest`);
+  }
   assert.ok(
-    !os.town!.restSpots.some((t) => tileKey(t.col, t.row) === at(ch)),
-    'no bed is wide enough',
+    path.some((t) => t.col === 25 && t.row === 19),
+    'through the opening by the signpost',
   );
+  // Already in under the canopy (a right-click walk), it still finds its way out.
+  const lost = { tileCol: 26, tileRow: 24 } as Character;
+  assert.ok(world.pathBlocked.has(tileKey(26, 24)), 'the forest edge is off the town paths');
+  assert.ok(townPath(lost, { col: 27, row: 22 }, world).length > 0, 'and out again');
+});
+
+test('pickTownTile prefers a tile two or more from everyone, then any free one', () => {
+  const tiles = [0, 1, 2, 3, 4, 5].map((col) => ({ col, row: 0 }));
+  const occupied = new Set(['0,0', '5,0']);
+  for (let i = 0; i < 20; i++) {
+    const t = pickTownTile(tiles, occupied)!;
+    assert.ok(t.col >= 2 && t.col <= 3, `spread out (${t.col})`);
+  }
+  const crowded = new Set(['0,0', '2,0', '4,0']);
+  for (let i = 0; i < 20; i++) {
+    const t = pickTownTile(tiles, crowded)!;
+    assert.ok(!crowded.has(tileKey(t.col, t.row)), 'still a free tile');
+  }
+});
+
+test('idle Pokémon spread out over the Meadow instead of clumping', () => {
+  const os = new OfficeState(town);
+  const n = 8;
+  const chars = Array.from({ length: n }, (_, i) => seatedAgent(os, i + 1));
+  for (let id = 1; id <= n; id++) os.setAgentActive(id, false);
+  // Where each settles: the tile it is walking to, else the one it stands on.
+  const settled = (ch: Character) =>
+    ch.path[ch.path.length - 1] ?? { col: ch.tileCol, row: ch.tileRow };
+  const meadow = os.town!.roles.meadow;
+  run(os, 120, () => {
+    for (const a of chars) {
+      const sa = settled(a);
+      if (!meadow.has(tileKey(sa.col, sa.row))) continue; // still on its way out
+      for (const b of chars) {
+        const sb = settled(b);
+        if (a.id >= b.id || !meadow.has(tileKey(sb.col, sb.row))) continue;
+        const d = Math.max(Math.abs(sa.col - sb.col), Math.abs(sa.row - sb.row));
+        assert.ok(
+          d >= TOWN_SPREAD_TILES,
+          `${sa.col},${sa.row} and ${sb.col},${sb.row}: ${d} apart`,
+        );
+      }
+    }
+  });
+  for (const ch of chars) assert.ok(inMeadow(os, ch), `in the Meadow (at ${at(ch)})`);
 });
 
 test('a working agent with no desk takes the desk of one that is away in the Meadow', () => {

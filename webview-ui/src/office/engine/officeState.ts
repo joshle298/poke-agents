@@ -26,17 +26,22 @@ import {
   PROJECTILE_MAX_SEC,
   PROJECTILE_MIN_SEC,
   PROJECTILE_SPEED_PX_PER_SEC,
+  STATIC_LAYER_REACH,
   TEAMMATE_CLUSTER_MAX_CHILDREN,
   TOWN_SPAWN_GRACE_SEC,
   TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
+import { foregroundSprite } from '../floorForeground.js';
+import { floorPatternHasForeground } from '../floorTiles.js';
+import type { AreaRoleTiles } from '../layout/areaRoles.js';
 import { areaRoleTiles, centerClearance, tileKey } from '../layout/areaRoles.js';
 import {
   getAmbientAnimationFrames,
   getAnimationFrames,
   getCatalogEntry,
   getOnStateType,
+  getToggledType,
 } from '../layout/furnitureCatalog.js';
 import {
   createDefaultLayout,
@@ -44,6 +49,7 @@ import {
   layoutToFurnitureInstances,
   layoutToSeats,
   layoutToTileMap,
+  placedSprite,
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
@@ -68,7 +74,7 @@ import type {
   Seat,
   TileType as TileTypeVal,
 } from '../types.js';
-import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
+import { CharacterState, Direction, PetState, TILE_SIZE, TileType } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
@@ -85,16 +91,21 @@ import {
   pokemonAnimSourceOf,
   pokemonGeometryOf,
   pokemonHitBox,
-  pokemonRestHalfWidth,
+  pokemonRestPose,
 } from './pokemonCharacter.js';
 import { isPokemonThemeEnabled } from './pokemonTheme.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
-import type { TownWorld } from './townBehavior.js';
+import type { LayerRect } from './staticLayer.js';
+import { staticLayerItems } from './staticLayer.js';
+import type { BedPlacement, RestFit, TownWorld } from './townBehavior.js';
 import {
+  leaveBed,
+  NO_REST_FIT,
   pickTownTile,
   rowRoom,
   setTownGoal,
   stepTownCharacter,
+  townBeds,
   townGoalFor,
   townRoomNeeded,
   townSeatMove,
@@ -137,6 +148,20 @@ export class OfficeState {
   /** Meadow / Center tiles when the layout has Area roles (the Pokémon Town),
    *  else null and every character runs the upstream FSM. */
   town: TownWorld | null = null;
+  /** The town's static layer (see staticLayer.ts): items nothing can be drawn
+   *  behind, in draw order, drawn once with the ground. Not in `furniture`.
+   *  Empty outside the town. */
+  staticFurniture: FurnitureInstance[] = [];
+  /** Wall tiles in the static layer (`"col,row"`), drawn with the ground. */
+  staticWallTiles: ReadonlySet<string> = new Set();
+  /** Bumped whenever the static layer is rebuilt (the renderer's cache key). */
+  staticLayerVersion = 0;
+  private staticUids: ReadonlySet<string> = new Set();
+  /** Tiles the static layer assumed characters can stand on. */
+  private standable: ReadonlySet<string> = new Set();
+  /** Tiles outside that assumption a character or pet has stood on or
+   *  stepped into since the layout was built; the layer takes them in. */
+  private strayTiles = new Set<string>();
   characters: Map<number, Character> = new Map();
   pets: Pet[] = [];
   /** Accumulated time for furniture animation frame cycling */
@@ -224,6 +249,172 @@ export class OfficeState {
     this.rebuildTown();
     // Pets are built last because they need walkableTiles populated for spawn.
     this.rebuildPetsFromLayout(this.layout);
+    this.rebuildStaticLayer();
+  }
+
+  /**
+   * Work out the town's static layer (see staticLayer.ts): the walls and
+   * items no character is expected to be drawn behind. Characters are
+   * expected on the role areas and seats and on the open ground joining them
+   * — not in under the walk-behind parts of furniture (the forest's canopy,
+   * a desk's top) unless one has actually gone there. Outside the town there
+   * is none and everything stays z-sorted, as upstream.
+   */
+  private rebuildStaticLayer(): void {
+    const town = this.town;
+    const before = this.staticUids;
+    this.staticUids = new Set();
+    this.staticWallTiles = new Set();
+    this.staticFurniture = [];
+    this.standable = new Set();
+    if (town) {
+      const seeds: string[] = [
+        ...town.roles.meadow,
+        ...town.roles.center,
+        ...town.roles.lectern,
+        ...this.strayTiles,
+      ];
+      for (const seat of this.seats.values()) seeds.push(tileKey(seat.seatCol, seat.seatRow));
+      for (const ch of this.getCharacters()) seeds.push(tileKey(ch.tileCol, ch.tileRow));
+      for (const pet of this.pets) seeds.push(tileKey(pet.tileCol, pet.tileRow));
+      const standable = this.floodStandable(seeds, this.walkBehindTiles());
+      this.standable = new Set(standable.map((t) => tileKey(t.col, t.row)));
+
+      const walls: Array<LayerRect & { candidate: boolean; key: string }> = [];
+      for (let r = 0; r < this.tileMap.length; r++) {
+        for (let c = 0; c < (this.tileMap[r]?.length ?? 0); c++) {
+          if (this.tileMap[r][c] !== TileType.WALL) continue;
+          walls.push({
+            x: c * TILE_SIZE,
+            y: (r - 1) * TILE_SIZE,
+            w: TILE_SIZE,
+            h: TILE_SIZE * 2,
+            zY: (r + 1) * TILE_SIZE,
+            candidate: true,
+            key: tileKey(c, r),
+          });
+        }
+      }
+      const placed = this.layout.furniture.filter((item) => getCatalogEntry(item.type));
+      const instances = layoutToFurnitureInstances(placed);
+      const items = instances.map((inst, i) => ({
+        x: inst.x,
+        y: inst.y,
+        w: inst.sprite[0]?.length ?? 0,
+        h: inst.sprite.length,
+        zY: inst.zY,
+        candidate:
+          getToggledType(placed[i].type) === null &&
+          getAmbientAnimationFrames(placed[i].type) === null,
+      }));
+      // Tall grass is drawn over whoever stands in it, in the z-sorted pass.
+      const others: LayerRect[] = [];
+      for (const t of standable) {
+        if (!floorPatternHasForeground(this.tileMap[t.row]?.[t.col] ?? TileType.VOID)) continue;
+        others.push({
+          x: (t.col - 1) * TILE_SIZE,
+          y: (t.row - 1) * TILE_SIZE,
+          w: TILE_SIZE * 3,
+          h: TILE_SIZE * 2,
+          zY: (t.row + 1) * TILE_SIZE,
+        });
+      }
+      // Walls first: on a tie they are drawn before furniture.
+      const chosen = staticLayerItems({
+        items: [...walls, ...items],
+        others,
+        standable,
+        reach: STATIC_LAYER_REACH,
+      });
+      const furnitureChosen = [...chosen]
+        .filter((i) => i >= walls.length)
+        .map((i) => i - walls.length);
+      this.staticWallTiles = new Set(
+        [...chosen].filter((i) => i < walls.length).map((i) => walls[i].key),
+      );
+      this.staticUids = new Set(furnitureChosen.map((i) => placed[i].uid));
+      this.staticFurniture = furnitureChosen
+        .map((i) => ({ inst: instances[i], i }))
+        .sort((a, b) => a.inst.zY - b.inst.zY || a.i - b.i)
+        .map(({ inst }) => inst);
+    }
+    this.staticLayerVersion++;
+    const same =
+      before.size === this.staticUids.size && [...before].every((uid) => this.staticUids.has(uid));
+    if (!same) this.rebuildFurnitureInstances();
+  }
+
+  /** Tiles under the walk-behind rows of furniture that also has a solid row
+   *  (a tree's canopy over its trunk, a desk's top): walkable, but no place
+   *  a character is sent. Floor pieces that are background throughout
+   *  (flowers, a doormat, a bed) are ordinary ground. */
+  private walkBehindTiles(): Set<string> {
+    const out = new Set<string>();
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type);
+      const bg = entry?.backgroundTiles ?? 0;
+      if (!entry || bg === 0 || bg >= entry.footprintH) continue;
+      for (let dr = 0; dr < bg; dr++) {
+        for (let dc = 0; dc < entry.footprintW; dc++)
+          out.add(tileKey(item.col + dc, item.row + dr));
+      }
+    }
+    return out;
+  }
+
+  /** The seeds and the walkable tiles joined to them, not crossing `skip`. */
+  private floodStandable(
+    seeds: readonly string[],
+    skip: ReadonlySet<string>,
+  ): Array<{ col: number; row: number }> {
+    const seen = new Set<string>();
+    const out: Array<{ col: number; row: number }> = [];
+    const queue: Array<{ col: number; row: number }> = [];
+    const visit = (col: number, row: number) => {
+      const key = tileKey(col, row);
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ col, row });
+      queue.push({ col, row });
+    };
+    for (const key of seeds) {
+      const [col, row] = key.split(',').map(Number);
+      visit(col, row);
+    }
+    while (queue.length > 0) {
+      const { col, row } = queue.pop()!;
+      for (const [dc, dr] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const c = col + dc;
+        const r = row + dr;
+        if (skip.has(tileKey(c, r)) || !isWalkable(c, r, this.tileMap, this.blockedTiles)) continue;
+        visit(c, r);
+      }
+    }
+    return out;
+  }
+
+  /** A character or pet standing on, or stepping into, a tile the static
+   *  layer did not expect: take the tile in and work the layer out again. */
+  private keepStaticLayerHonest(): void {
+    if (!this.town) return;
+    let strayed = false;
+    const check = (col: number, row: number) => {
+      const key = tileKey(col, row);
+      if (this.standable.has(key) || this.strayTiles.has(key)) return;
+      this.strayTiles.add(key);
+      strayed = true;
+    };
+    for (const who of [...this.getCharacters(), ...this.pets]) {
+      check(who.tileCol, who.tileRow);
+      const next = who.path[0];
+      if (next) check(next.col, next.row);
+    }
+    if (strayed) this.rebuildStaticLayer();
   }
 
   /** Derive the Meadow / Center tiles and lectern seats from the layout's Area roles. */
@@ -235,14 +426,25 @@ export class OfficeState {
     }
     const walkableIn = (keys: ReadonlySet<string>) =>
       this.walkableTiles.filter((t) => keys.has(tileKey(t.col, t.row)));
-    // Beds: the bottom footprint row of a placed item, where it can be stood on.
-    const bedTiles = new Set<string>();
+    // Beds: placed items in the Center a character can stand all over (every
+    // row background), two tiles wide or more.
+    const placements: BedPlacement[] = [];
     for (const item of this.layout.furniture) {
       const entry = getCatalogEntry(item.type);
-      if (!entry) continue;
-      const bottom = item.row + entry.footprintH - 1;
-      for (let dc = 0; dc < entry.footprintW; dc++) bedTiles.add(tileKey(item.col + dc, bottom));
+      if (!entry || (entry.backgroundTiles ?? 0) < entry.footprintH) continue;
+      const blanket = foregroundSprite(placedSprite(item, entry.sprite));
+      placements.push({
+        col: item.col,
+        row: item.row,
+        w: entry.footprintW,
+        h: entry.footprintH,
+        blanket: blanket
+          ? { sprite: blanket, x: item.col * TILE_SIZE, y: item.row * TILE_SIZE }
+          : null,
+      });
     }
+    const beds = townBeds(placements, roles.center);
+    const bedTiles = new Set(beds.flatMap((b) => [...b.tiles]));
     const centerTiles = walkableIn(roles.center);
     const lecternSeats = new Set<string>();
     const seatRoom = new Map<string, number>();
@@ -254,13 +456,25 @@ export class OfficeState {
       roles,
       meadowTiles: walkableIn(roles.meadow),
       centerTiles,
-      restSpots: centerTiles.filter((t) => bedTiles.has(tileKey(t.col, t.row))),
+      beds,
+      bedTiles,
       centerClearance: centerClearance(roles.center),
       lecternSeats,
       seatRoom,
       tileMap: this.tileMap,
       blockedTiles: this.blockedTiles,
+      pathBlocked: this.townPathBlocked(roles),
     };
+  }
+
+  /** The town's walk-behind tiles outside its role areas, added to the
+   *  blocked tiles: where town walks never go (see townPath). */
+  private townPathBlocked(roles: AreaRoleTiles): Set<string> {
+    const out = new Set(this.blockedTiles);
+    for (const key of this.walkBehindTiles()) {
+      if (!roles.meadow.has(key) && !roles.center.has(key) && !roles.lectern.has(key)) out.add(key);
+    }
+    return out;
   }
 
   /** In the town, a character away from its desk (Meadow, Center) keeps its
@@ -392,16 +606,21 @@ export class OfficeState {
 
     // Reconcile pets against the layout roster (handles editor add/remove)
     this.rebuildPetsFromLayout(layout);
+    this.strayTiles.clear();
+    this.rebuildStaticLayer();
   }
 
-  /** Tiles other characters stand on or are walking to (town destinations avoid them). */
-  private occupiedTiles(excludeId: number): Set<string> {
-    const out = new Set<string>();
+  /** Where the other characters are settling: the tile each is walking to,
+   *  or stands on when it isn't walking (town destinations avoid them and
+   *  keep apart from them), each with how far its occupant's resting pose
+   *  rises. A walker's passing tile doesn't count. */
+  private occupiedTiles(excludeId: number): Map<string, number> {
+    const out = new Map<string, number>();
     for (const other of this.characters.values()) {
       if (other.id === excludeId || other.matrixEffect === 'despawn') continue;
-      out.add(tileKey(other.tileCol, other.tileRow));
-      const end = other.path[other.path.length - 1];
-      if (end) out.add(tileKey(end.col, end.row));
+      const rise = other.isErrored ? this.townRestFit(other).rise : 0;
+      const end = other.path[other.path.length - 1] ?? { col: other.tileCol, row: other.tileRow };
+      out.set(tileKey(end.col, end.row), rise);
     }
     return out;
   }
@@ -928,10 +1147,10 @@ export class OfficeState {
     if (target) this.moveTownSeat(ch, target);
   }
 
-  /** Tiles of Center a resting character's sprite needs to each side of its own. */
-  private townClearance(ch: Character): number {
-    const halfW = pokemonRestHalfWidth(ch);
-    return halfW === null ? 0 : townRoomNeeded(halfW);
+  /** How far a resting character's pose reaches (a Pokémon's held faint
+   *  pose); a human, theme off, fits anywhere. */
+  private townRestFit(ch: Character): RestFit {
+    return pokemonRestPose(ch) ?? NO_REST_FIT;
   }
 
   /** During its spawn grace, put a character whose status just arrived as idle
@@ -942,7 +1161,7 @@ export class OfficeState {
       ch.townSpawnGrace = undefined;
       const area = goal === 'meadow' ? town.roles.meadow : town.roles.center;
       if (area.has(tileKey(ch.tileCol, ch.tileRow))) return;
-      const tile = townSpawnTile(goal, town, this.occupiedTiles(ch.id), this.townClearance(ch));
+      const tile = townSpawnTile(goal, town, this.occupiedTiles(ch.id), this.townRestFit(ch));
       if (!tile) return;
       ch.tileCol = tile.col;
       ch.tileRow = tile.row;
@@ -1183,14 +1402,19 @@ export class OfficeState {
       (item) => getAmbientAnimationFrames(item.type) !== null,
     );
 
+    // The static layer's items are drawn with the ground, not here.
+    const zSorted =
+      this.staticUids.size === 0
+        ? this.layout.furniture
+        : this.layout.furniture.filter((item) => !this.staticUids.has(item.uid));
     if (autoOnTiles.size === 0 && !hasAmbient) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture);
+      this.furniture = layoutToFurnitureInstances(zSorted);
       return;
     }
 
     // Build modified furniture list with auto-state and animation applied
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
-    const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
+    const modifiedFurniture: PlacedFurniture[] = zSorted.map((item) => {
       const ambient = getAmbientAnimationFrames(item.type);
       if (ambient) return { ...item, type: ambient[ambientFrame % ambient.length] };
       if (autoOnTiles.size === 0) return item;
@@ -1744,6 +1968,7 @@ export class OfficeState {
       this.greeter = null;
     }
 
+    this.keepStaticLayerHonest();
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
       if (this.town && ch.townSpawnGrace !== undefined) this.placeFreshInTown(ch, this.town, dt);
@@ -1765,6 +1990,7 @@ export class OfficeState {
       if (town) this.stewardTownSeat(ch, town);
       const goal = town ? townGoalFor(ch, town.roles) : null;
       if (town || ch.townGoal !== undefined) setTownGoal(ch, goal);
+      if (goal !== 'center') leaveBed(ch);
       const restInPlace =
         goal === null &&
         pokemon &&
@@ -1776,7 +2002,7 @@ export class OfficeState {
           stepTownCharacter(ch, dt, goal, town, {
             asleep: pokemon && isPokemonAsleep(ch),
             occupied: () => this.occupiedTiles(ch.id),
-            clearance: goal === 'center' ? this.townClearance(ch) : 0,
+            fit: goal === 'center' ? this.townRestFit(ch) : NO_REST_FIT,
           });
         } else {
           // Temporarily unblock own seat so character can pathfind to it

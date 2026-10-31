@@ -24,7 +24,7 @@ import {
 import type { Character } from '../types.js';
 import { TILE_SIZE } from '../types.js';
 import type { FrameRef } from './frameCanvas.js';
-import { frameOutline, frameSilhouette, frameTinted } from './frameCanvas.js';
+import { frameGreyed, frameOutline, frameSilhouette } from './frameCanvas.js';
 import { renderPokeballEffect } from './pokeballEffect.js';
 import {
   choosePokemonAnim,
@@ -130,7 +130,7 @@ export function pushPokemonDrawables(
       c.save();
       c.globalAlpha = alpha;
       if (errored) {
-        c.drawImage(frameTinted(frame, POKEMON_FAINT_TINT), drawX, drawY, dw, dh);
+        c.drawImage(frameGreyed(frame, POKEMON_FAINT_TINT), drawX, drawY, dw, dh);
       } else {
         c.drawImage(frame.image, frame.sx, frame.sy, frame.sw, frame.sh, drawX, drawY, dw, dh);
       }

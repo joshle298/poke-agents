@@ -25,6 +25,7 @@ import type {
   SelectionRenderState,
 } from '../engine/renderer.js';
 import { renderFrame } from '../engine/renderer.js';
+import { clampPanAxis } from '../projection.js';
 import { getShowConnections } from '../showConnections.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
@@ -181,8 +182,15 @@ export function OfficeCanvas({
           const layout = officeState.getLayout();
           const mapW = layout.cols * TILE_SIZE * zoom;
           const mapH = layout.rows * TILE_SIZE * zoom;
-          const targetX = mapW / 2 - cameraFocus.x * zoom;
-          const targetY = mapH / 2 - cameraFocus.y * zoom;
+          let targetX = mapW / 2 - cameraFocus.x * zoom;
+          let targetY = mapH / 2 - cameraFocus.y * zoom;
+          // In the town, following a character (opening its Pokédex) never
+          // pulls the map off the canvas: each axis stays centred when the
+          // map fits, and stops at the map's edge when it doesn't.
+          if (followCh && officeState.town) {
+            targetX = clampPanAxis(targetX, mapW, w);
+            targetY = clampPanAxis(targetY, mapH, h);
+          }
           const dx = targetX - panRef.current.x;
           const dy = targetY - panRef.current.y;
           if (
@@ -238,6 +246,11 @@ export function OfficeCanvas({
           activeAreaLabel,
           officeState.pets,
           connections,
+          {
+            items: officeState.staticFurniture,
+            walls: officeState.staticWallTiles,
+            version: officeState.staticLayerVersion,
+          },
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 

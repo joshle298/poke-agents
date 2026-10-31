@@ -9,7 +9,7 @@
  * on either. DOM: only the renderer imports this.
  */
 
-import { POKEMON_OUTLINE_COLOR } from '../../constants.js';
+import { FRAME_GREY, POKEMON_OUTLINE_COLOR } from '../../constants.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import type { SpriteData } from '../types.js';
 
@@ -97,9 +97,16 @@ export function frameSilhouette(frame: FrameRef, color: string): HTMLCanvasEleme
   });
 }
 
-/** The frame with a translucent colour laid over its opaque pixels. */
-export function frameTinted(frame: FrameRef, tint: string): HTMLCanvasElement {
-  return derivedCanvas(frame, `tint:${tint}`, frame.sw, frame.sh, (ctx) => {
+/** The frame in greys (its saturation removed, its lightness kept), with a
+ *  translucent colour laid over: a fainted Pokémon, grey rather than muddy. */
+export function frameGreyed(frame: FrameRef, tint: string): HTMLCanvasElement {
+  return derivedCanvas(frame, `grey:${tint}`, frame.sw, frame.sh, (ctx) => {
+    drawFrameAt(ctx, frame, 0, 0);
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = FRAME_GREY;
+    ctx.fillRect(0, 0, frame.sw, frame.sh);
+    // the blend painted the transparent margin grey too: cut back to the shape
+    ctx.globalCompositeOperation = 'destination-in';
     drawFrameAt(ctx, frame, 0, 0);
     ctx.globalCompositeOperation = 'source-atop';
     ctx.fillStyle = tint;

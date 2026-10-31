@@ -20,24 +20,36 @@ import {
   OVERLAY_BUBBLE_Z_INDEX,
   OVERLAY_LABEL_SELECTED_Z_INDEX,
   OVERLAY_LABEL_Z_INDEX,
+  PIXEL_FONT_ADVANCE_EM,
   SPEECH_BUBBLE_MAX_WIDTH_PX,
   SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
   SPEECH_BUBBLE_RISE_PX,
   STATUS_BADGE_COLORS,
   STATUS_BADGE_TEXT_COLOR,
+  TOWN_COMPACT_LABEL_BADGE_FONT_PX,
   TOWN_COMPACT_LABEL_CHARS,
+  TOWN_COMPACT_LABEL_CHROME_PX,
+  TOWN_COMPACT_LABEL_FONT_PX,
   TOWN_COMPACT_LABEL_MAX_SCALE,
-  TOWN_FAINT_CHIP_LIFT_PX,
+  TOWN_FAINT_CHIP_FONT_MAX_PX,
+  TOWN_FAINT_CHIP_FONT_MIN_PX,
+  TOWN_FAINT_CHIP_FONT_PER_SCALE,
+  TOWN_FAINT_CHIP_GAP_PX,
+  TOWN_FAINT_CHIP_PAD_MIN_PX,
+  TOWN_FAINT_CHIP_PAD_PER_FONT,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
-import { isPokemonCharacter, overlayAnchorY } from '../engine/pokemonCharacter.js';
+import { bodyTopY, isPokemonCharacter, overlayAnchorY } from '../engine/pokemonCharacter.js';
 import type { OverlayProjection } from '../projection.js';
 import { overlayProjection } from '../projection.js';
 import { BUBBLE_ALERT_SPRITE, BUBBLE_SLEEP_SPRITE } from '../sprites/pokemonUiSprites.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
 import type { Character, SpriteData, ToolActivity } from '../types.js';
+import { getActivityText, WAITING_INPUT_ACTIVITY_TEXT } from './activityText.js';
+import type { OverlayBox } from './overlayLayout.js';
+import { liftOverlapping } from './overlayLayout.js';
 import {
   CONDITION_BADGE,
   hpColor,
@@ -46,12 +58,6 @@ import {
   pokemonLabel,
   themedRoleLabel,
 } from './pokemonOverlay.js';
-
-// Both turn-end states show the green checkmark bubble. A finished turn (Stop)
-// shows ONLY the checkmark (the label falls through to its normal idle text);
-// going idle waiting on the user (Notification(idle_prompt)) additionally
-// surfaces this label. Driven by Character.waitingAwaitingInput.
-const WAITING_INPUT_ACTIVITY_TEXT = 'Waiting for input';
 
 interface ToolOverlayProps {
   officeState: OfficeState;
@@ -64,41 +70,6 @@ interface ToolOverlayProps {
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
   alwaysShowOverlay: boolean;
-}
-
-/** Derive a short human-readable activity string from tools/status */
-function getActivityText(
-  agentId: number,
-  agentTools: Record<number, ToolActivity[]>,
-  isActive: boolean,
-  bubbleType: 'permission' | 'waiting' | null,
-  waitingAwaitingInput: boolean,
-  errorMessage?: string,
-): string {
-  // Only stream sessions report errors; upstream agents never reach this.
-  if (errorMessage !== undefined) return errorMessage || 'Error';
-  if (bubbleType === 'permission') return 'Needs approval';
-  // Only the idle case ("Waiting for input") gets a dedicated label. A finished
-  // turn (Stop, waitingAwaitingInput=false) falls through so the checkmark alone
-  // signals "done", same as the original behavior.
-  if (bubbleType === 'waiting' && waitingAwaitingInput) return WAITING_INPUT_ACTIVITY_TEXT;
-
-  const tools = agentTools[agentId];
-  if (tools && tools.length > 0) {
-    // Find the latest non-done tool
-    const activeTool = [...tools].reverse().find((t) => !t.done);
-    if (activeTool) {
-      if (activeTool.permissionWait) return 'Needs approval';
-      return activeTool.status;
-    }
-    // All tools done but agent still active (mid-turn) — keep showing last tool status
-    if (isActive) {
-      const lastTool = tools[tools.length - 1];
-      if (lastTool) return lastTool.status;
-    }
-  }
-
-  return 'Idle';
 }
 
 function getFuelColor(ratio: number): string {
@@ -156,17 +127,54 @@ function bubbleFor(ch: Character, themed: boolean): { sprite: SpriteData; alpha:
   return null;
 }
 
-/** A fainted character resting in the town's Pokémon Center: a small FNT
- *  chip over its head, so it reads without hovering (theme on or off). */
-function FaintChip({ left, top }: { left: number; top: number }) {
+/** Font size of a town FNT chip at this CSS scale: it grows with the sprites. */
+function faintChipFontPx(scale: number): number {
+  return Math.min(
+    TOWN_FAINT_CHIP_FONT_MAX_PX,
+    Math.max(TOWN_FAINT_CHIP_FONT_MIN_PX, Math.round(TOWN_FAINT_CHIP_FONT_PER_SCALE * scale)),
+  );
+}
+
+/** Horizontal padding of a FNT chip (each side), in proportion to its font. */
+function faintChipPadPx(fontPx: number): number {
+  return Math.max(TOWN_FAINT_CHIP_PAD_MIN_PX, Math.round(fontPx * TOWN_FAINT_CHIP_PAD_PER_FONT));
+}
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+const textWidths = new Map<string, number>();
+
+/** Width in CSS px of `text` in the pixel font at `fontPx` (cached; an
+ *  estimate when no canvas is available). */
+function textWidth(text: string, fontPx: number): number {
+  const key = `${fontPx}|${text}`;
+  const held = textWidths.get(key);
+  if (held !== undefined) return held;
+  if (measureCtx === undefined) measureCtx = document.createElement('canvas').getContext('2d');
+  let width = text.length * fontPx * PIXEL_FONT_ADVANCE_EM;
+  if (measureCtx) {
+    measureCtx.font = `${fontPx}px 'FS Pixel Sans'`;
+    width = measureCtx.measureText(text).width;
+  }
+  textWidths.set(key, width);
+  return width;
+}
+
+/** A fainted character resting in the town's Pokémon Center: a FNT chip just
+ *  over the body as it is drawn (lying down), scaled with the zoom, so it
+ *  reads without hovering (theme on or off). (left, top) is its bottom
+ *  centre. */
+function FaintChip({ left, top, fontPx }: { left: number; top: number; fontPx: number }) {
+  const pad = faintChipPadPx(fontPx);
   return (
     <div
-      className="absolute pointer-events-none leading-none px-2"
+      className="absolute pointer-events-none leading-none"
       style={{
         left,
         top,
         transform: 'translate(-50%, -100%)',
-        fontSize: '14px',
+        fontSize: `${fontPx}px`,
+        paddingLeft: pad,
+        paddingRight: pad,
         background: STATUS_BADGE_COLORS.fainted,
         color: STATUS_BADGE_TEXT_COLOR,
         zIndex: OVERLAY_LABEL_Z_INDEX,
@@ -175,6 +183,26 @@ function FaintChip({ left, top }: { left: number; top: number }) {
       {CONDITION_BADGE.fainted}
     </div>
   );
+}
+
+/** Whether a character shows a FNT chip (no label shown): fainted and in, or
+ *  on its way to, the town's Pokémon Center. */
+function showsFaintChip(ch: Character): boolean {
+  return ch.isErrored === true && ch.townGoal === 'center';
+}
+
+const COMPACT = TOWN_COMPACT_LABEL_CHROME_PX;
+
+/** Screen box of a one-line town label: its text plus CompactLabel's chrome. */
+function compactLabelSize(ch: Character): { w: number; h: number } {
+  const label = pokemonLabel(ch);
+  const name = shortName(label.nickname ?? '', TOWN_COMPACT_LABEL_CHARS);
+  let w = textWidth(name, TOWN_COMPACT_LABEL_FONT_PX) + 2 * (COMPACT.padX + COMPACT.border);
+  if (label.condition) {
+    const badge = textWidth(CONDITION_BADGE[label.condition], TOWN_COMPACT_LABEL_BADGE_FONT_PX);
+    w += badge + 2 * COMPACT.badgePadX + COMPACT.gap;
+  }
+  return { w, h: TOWN_COMPACT_LABEL_FONT_PX + COMPACT.padBottom + 2 * COMPACT.border };
 }
 
 /** A nickname cut to `max` characters, with an ellipsis when cut. */
@@ -199,12 +227,16 @@ function CompactLabel({
   const label = pokemonLabel(ch);
   return (
     <div
-      className="absolute flex items-center gap-3 px-4 pb-2 pixel-panel whitespace-nowrap leading-none pointer-events-none"
+      className="absolute flex items-center pixel-panel whitespace-nowrap leading-none pointer-events-none"
       style={{
         left,
         top,
         transform: 'translate(-50%, -100%)',
-        fontSize: '14px',
+        fontSize: `${TOWN_COMPACT_LABEL_FONT_PX}px`,
+        gap: COMPACT.gap,
+        paddingLeft: COMPACT.padX,
+        paddingRight: COMPACT.padX,
+        paddingBottom: COMPACT.padBottom,
         opacity: 0.85,
         zIndex: OVERLAY_LABEL_Z_INDEX,
       }}
@@ -213,9 +245,11 @@ function CompactLabel({
     >
       {label.condition && (
         <span
-          className="shrink-0 px-2 leading-none"
+          className="shrink-0 leading-none"
           style={{
-            fontSize: '12px',
+            paddingLeft: COMPACT.badgePadX,
+            paddingRight: COMPACT.badgePadX,
+            fontSize: `${TOWN_COMPACT_LABEL_BADGE_FONT_PX}px`,
             background: STATUS_BADGE_COLORS[label.condition],
             color: STATUS_BADGE_TEXT_COLOR,
           }}
@@ -471,6 +505,39 @@ export function ToolOverlay({
   // All character IDs
   const allIds = [...agents, ...subagentCharacters.map((s) => s.id)];
 
+  // In the town, FNT chips and one-line labels are nudged up so none covers
+  // another (the same choices as the render below make).
+  const scale = zoom / dpr;
+  const compact = officeState.town !== null && scale <= TOWN_COMPACT_LABEL_MAX_SCALE;
+  const chipFontPx = faintChipFontPx(scale);
+  const boxes: OverlayBox[] = [];
+  for (const id of allIds) {
+    const ch = officeState.characters.get(id);
+    if (!ch) continue;
+    const focused = id === selectedId || id === hoveredId;
+    if (!alwaysShowOverlay && !focused) {
+      if (!showsFaintChip(ch)) continue;
+      boxes.push({
+        id,
+        cx: project.toScreenX(ch.x),
+        bottom: project.toScreenY(bodyTopY(ch)) - TOWN_FAINT_CHIP_GAP_PX,
+        w: textWidth(CONDITION_BADGE.fainted, chipFontPx) + 2 * faintChipPadPx(chipFontPx),
+        h: chipFontPx,
+      });
+      continue;
+    }
+    const isDone = ch.bubbleType === 'waiting' && !ch.waitingAwaitingInput;
+    if (focused || isDone || !compact || !isThemedOverlay(ch)) continue;
+    boxes.push({
+      id,
+      cx: project.toScreenX(ch.x),
+      bottom: project.toScreenY(overlayAnchorY(ch, 'label')),
+      ...compactLabelSize(ch),
+    });
+  }
+  const lifts = liftOverlapping(boxes);
+  const lifted = (id: number) => lifts.get(id) ?? 0;
+
   return (
     <>
       <SpeechBubbles officeState={officeState} project={project} zoom={zoom} dpr={dpr} />
@@ -517,13 +584,13 @@ export function ToolOverlay({
         // always-show is on) — the bubble renders regardless. A fainted
         // character resting in the town shows a FNT chip instead.
         if (!alwaysShowOverlay && !isSelected && !isHovered) {
-          const faintChip =
-            ch.isErrored && ch.townGoal === 'center' ? (
-              <FaintChip
-                left={project.toScreenX(ch.x)}
-                top={project.toScreenY(overlayAnchorY(ch, 'bubble')) - TOWN_FAINT_CHIP_LIFT_PX}
-              />
-            ) : null;
+          const faintChip = showsFaintChip(ch) ? (
+            <FaintChip
+              left={project.toScreenX(ch.x)}
+              top={project.toScreenY(bodyTopY(ch)) - TOWN_FAINT_CHIP_GAP_PX - lifted(id)}
+              fontPx={chipFontPx}
+            />
+          ) : null;
           if (!bubbleNode && !faintChip) return null;
           return (
             <Fragment key={id}>
@@ -559,17 +626,11 @@ export function ToolOverlay({
         }
 
         // In the town at low zoom, always-shown labels shrink to one line.
-        if (
-          themed &&
-          !isSelected &&
-          !isHovered &&
-          officeState.town !== null &&
-          zoom / dpr <= TOWN_COMPACT_LABEL_MAX_SCALE
-        ) {
+        if (themed && !isSelected && !isHovered && compact) {
           return (
             <Fragment key={id}>
               {bubbleNode}
-              <CompactLabel ch={ch} id={id} left={screenX} top={screenY} />
+              <CompactLabel ch={ch} id={id} left={screenX} top={screenY - lifted(id)} />
             </Fragment>
           );
         }

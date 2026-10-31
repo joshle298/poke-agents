@@ -28,6 +28,20 @@ export function hasForegroundPixels(sprite: SpriteData): boolean {
   return sprite.some((row) => row.some(isForegroundPixel));
 }
 
+/** A sprite's foreground pixels alone, opaque (the rest transparent), or null
+ *  when it has none: a bed's blanket, drawn again over its sleeper. */
+export function foregroundSprite(sprite: SpriteData): SpriteData | null {
+  let any = false;
+  const out = sprite.map((row) =>
+    row.map((pixel) => {
+      if (!isForegroundPixel(pixel)) return '';
+      any = true;
+      return pixel.slice(0, 7);
+    }),
+  );
+  return any ? out : null;
+}
+
 /** The two halves of a tile's foreground, opaque, or null when a half is empty. */
 export interface FloorForegroundSprites {
   /** Rows above FLOOR_FOREGROUND_BELOW_ROW: in front of the tile's own occupant. */

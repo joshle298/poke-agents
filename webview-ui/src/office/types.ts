@@ -314,10 +314,24 @@ export interface Character {
   /** Seconds left in which a status that sends it to the Meadow or the Center
    *  places it there directly (just created); undefined once over. */
   townSpawnGrace?: number;
+  /** The bed a fainted character lies in (centred on it, head on the pillow,
+   *  `x` moved to the bed's middle); undefined when it isn't lying in one. */
+  bedRest?: BedRest;
 }
 
 /** Where an inactive character belongs in a layout with Area roles. */
 export type TownGoal = 'meadow' | 'center' | 'stay';
+
+/** A bed in the Pokémon Center, as a character lying in it needs it drawn. */
+export interface BedRest {
+  /** The end the pillow is at: the sleeper's head points there. */
+  pillow: 'left' | 'right';
+  /** World x of the bed's middle, where the sleeper is centred. */
+  midX: number;
+  /** The bed's blanket (its foreground pixels, opaque) and where it is drawn
+   *  (world px, top-left), laid over the sleeper; null when it has none. */
+  blanket: { sprite: SpriteData; x: number; y: number } | null;
+}
 
 /** One-shot animations: a tool burst, sending a message, a finished turn,
  *  waking up, and the hurt flinch that leads into a faint. */

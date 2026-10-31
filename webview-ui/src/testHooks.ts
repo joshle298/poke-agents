@@ -273,7 +273,7 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
   hooks.getFurnitureCount = () => {
     const os = officeStateRef.current;
     if (!os) return 0;
-    return os.furniture.length;
+    return os.furniture.length + os.staticFurniture.length;
   };
 
   hooks.getTiles = () => {

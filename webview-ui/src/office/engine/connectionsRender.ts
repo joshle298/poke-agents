@@ -4,11 +4,12 @@
  *
  * Links lie on the floor under everyone: pixel-art dashes between two
  * characters' tiles, marching from sender to receiver — spawned as dashes,
- * messaged as dots, watched faint. Projectiles fly above everyone on an arc
+ * messaged as dots, watched faint — each lit pixel over a dark casing pixel. Projectiles fly above everyone on an arc
  * from chest to chest: a Poké Ball while themed, an envelope otherwise.
  */
 
 import {
+  LINK_CASING_COLOR,
   LINK_COLORS,
   LINK_DIM_ALPHA,
   LINK_MARCH_PX_PER_SEC,
@@ -45,12 +46,24 @@ export function renderLinks(
   ctx.save();
   for (const { from, to, kind, dim } of links) {
     const { period, on } = LINK_PATTERNS[kind];
-    ctx.fillStyle = LINK_COLORS[kind];
     ctx.globalAlpha = dim ? LINK_DIM_ALPHA : 1;
-    forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
-      if (!isDashLit(step, march, period, on)) return;
-      ctx.fillRect(Math.round(offsetX + x * zoom), Math.round(offsetY + y * zoom), zoom, zoom);
-    });
+    // A dark casing one pixel under every lit pixel first, so the line reads
+    // on light ground (sand, the Lab's floor) as well as on dark.
+    for (const [color, dy] of [
+      [LINK_CASING_COLOR, 1],
+      [LINK_COLORS[kind], 0],
+    ] as const) {
+      ctx.fillStyle = color;
+      forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
+        if (!isDashLit(step, march, period, on)) return;
+        ctx.fillRect(
+          Math.round(offsetX + x * zoom),
+          Math.round(offsetY + (y + dy) * zoom),
+          zoom,
+          zoom,
+        );
+      });
+    }
   }
   ctx.restore();
 }

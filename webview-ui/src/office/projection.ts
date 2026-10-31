@@ -36,6 +36,18 @@ export function mapOffset(
   };
 }
 
+/**
+ * Clamp a camera pan on one axis so the map never leaves empty canvas on that
+ * axis it could have filled: a map that fits (`mapPx` ≤ `viewPx`) stays
+ * centred (pan 0); a larger one may follow its target only until a map edge
+ * reaches the viewport's edge. Device px, like the pan itself.
+ */
+export function clampPanAxis(pan: number, mapPx: number, viewPx: number): number {
+  const slack = (mapPx - viewPx) / 2;
+  if (slack <= 0) return 0;
+  return Math.max(-slack, Math.min(slack, pan));
+}
+
 /** Projects world points into CSS pixels within the overlay container that
  *  sits on top of the canvas. */
 export interface OverlayProjection {

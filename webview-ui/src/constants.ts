@@ -35,6 +35,18 @@ export const TOWN_WALL_OVERLAP_PX = 6;
  *  fainted still places it straight in the Meadow or the Center (the status
  *  follows agentCreated within a message or two). */
 export const TOWN_SPAWN_GRACE_SEC = 1.5;
+/** Meadow destinations prefer tiles at least this many tiles (Chebyshev) from
+ *  every other character's tile and destination, so wanderers spread out. */
+export const TOWN_SPREAD_TILES = 2;
+/** World px a sleeper's body may reach over the bottom edge of the bed above
+ *  it before that bed counts as covered (the blanket's front drape). */
+export const TOWN_BED_OVERLAP_PX = 4;
+/** World px above its tile's centre that a human lying in bed (theme off) is
+ *  centred: the middle of the mattress. */
+export const BED_SLEEPER_LIFT_PX = 7;
+/** A bed's blanket sorts this far after its sleeper (and before anything on
+ *  the next row). */
+export const BED_BLANKET_Z_OFFSET = 0.1;
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
@@ -67,6 +79,10 @@ export const FLOOR_FOREGROUND_MAX_COVER = 0.4;
 /** Foreground sorts just after the characters of its row (CHARACTER_Z_SORT_OFFSET)
  *  and before anything on the next row. */
 export const FLOOR_FOREGROUND_Z_OFFSET = 0.75;
+/** How far any character's sprite may reach from its ground point (world px,
+ *  generous: wide and tall Pokémon, attack poses): the town's static layer
+ *  only takes items no such sprite can be drawn behind. */
+export const STATIC_LAYER_REACH = { halfW: 40, rise: 64, below: 8 } as const;
 /** Largest ground layer (device pixels) kept as one cached canvas; bigger
  *  layouts at high zoom draw their floor and carpets tile by tile. */
 export const GROUND_CACHE_MAX_PIXELS = 12_000_000;
@@ -654,9 +670,12 @@ export const POKEMON_DECODE_ORDER = [
   'Wake',
   'Pose',
 ] as const;
-/** Fainted (errored) Pokémon: alpha and grey tint. */
+/** Fainted (errored) Pokémon: alpha, and the cool tint laid over the sprite
+ *  once it is turned to greys (so yellow species go grey, not olive). */
 export const POKEMON_FAINT_ALPHA = 0.6;
-export const POKEMON_FAINT_TINT = 'rgba(112, 112, 120, 0.6)';
+export const POKEMON_FAINT_TINT = 'rgba(120, 140, 190, 0.22)';
+/** Any grey: the colour a 'saturation' blend takes the saturation of. */
+export const FRAME_GREY = '#808080';
 /** Evolution: a white-silhouette flash; the species swaps at the midpoint. */
 export const POKEMON_EVOLVE_SEC = 1.2;
 /** Flicker rate of the evolution flash (on/off cycles per second). */
@@ -709,7 +728,9 @@ export const LINK_COLORS = {
   watched: 'rgba(255, 255, 255, 0.3)',
 } as const;
 /** Opacity of a faint link (the town's, unless its family is hovered or selected). */
-export const LINK_DIM_ALPHA = 0.3;
+export const LINK_DIM_ALPHA = 0.55;
+/** Drawn one pixel under every lit link pixel, so links read on light ground. */
+export const LINK_CASING_COLOR = 'rgba(48, 30, 12, 0.5)';
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
@@ -753,8 +774,32 @@ export const TOWN_COMPACT_LABEL_MAX_SCALE = 2;
 /** Nickname characters a one-line town chip shows: about 11 fit the 64 CSS px
  *  between neighboring desks at zoom 2. */
 export const TOWN_COMPACT_LABEL_CHARS = 11;
-/** CSS px a town FNT chip floats above the head (clear of hair and horns). */
-export const TOWN_FAINT_CHIP_LIFT_PX = 4;
+/** Font sizes (CSS px) of a one-line town label and of its status badge. */
+export const TOWN_COMPACT_LABEL_FONT_PX = 14;
+export const TOWN_COMPACT_LABEL_BADGE_FONT_PX = 12;
+/** A one-line town label's chrome (CSS px): padding, the gap after its badge,
+ *  the badge's padding, and the panel border (.pixel-panel's 2px). The label
+ *  is drawn with these and nudged apart by its measured size. */
+export const TOWN_COMPACT_LABEL_CHROME_PX = {
+  padX: 4,
+  padBottom: 2,
+  gap: 3,
+  badgePadX: 2,
+  border: 2,
+} as const;
+/** Advance of the pixel font per em, for sizing text when no canvas can
+ *  measure it. */
+export const PIXEL_FONT_ADVANCE_EM = 0.6;
+/** CSS px between a town FNT chip and the top of the body it belongs to. */
+export const TOWN_FAINT_CHIP_GAP_PX = 2;
+/** A town FNT chip's font size per unit of CSS scale (zoom ÷ device pixel
+ *  ratio), and its bounds: it grows with the sprites it labels. */
+export const TOWN_FAINT_CHIP_FONT_PER_SCALE = 7;
+export const TOWN_FAINT_CHIP_FONT_MIN_PX = 12;
+export const TOWN_FAINT_CHIP_FONT_MAX_PX = 32;
+/** A FNT chip's side padding: this share of its font size, at least the minimum. */
+export const TOWN_FAINT_CHIP_PAD_PER_FONT = 1 / 7;
+export const TOWN_FAINT_CHIP_PAD_MIN_PX = 2;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',

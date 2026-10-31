@@ -24,7 +24,8 @@ export interface Box {
 interface FakeSheet extends DecodedSheet {
   frameWidth: number;
   frameHeight: number;
-  box?: Box;
+  /** Opaque boxes, in sheet pixels. */
+  boxes: Box[];
 }
 
 export interface FakeAnim {
@@ -32,7 +33,7 @@ export interface FakeAnim {
   frameHeight: number;
   durations: number[];
   directions?: number;
-  /** Opaque box in frame 0 (only Idle / Walk are measured). */
+  /** Opaque box in frame 0 of the Down row (only Idle / Walk are measured). */
   box?: Box;
 }
 
@@ -96,7 +97,7 @@ export function speciesMessage(
  */
 export function installFakeLoader(
   msgs: PokemonSpeciesLoaded[],
-  opts: { fail?: string[]; shrink?: string[]; boxes?: Record<string, Box> } = {},
+  opts: { fail?: string[]; shrink?: string[]; boxes?: Record<string, Box | Box[]> } = {},
 ): { loads: string[]; closed: string[] } {
   const byUrl = new Map<string, FakeSheet>();
   for (const msg of msgs) {
@@ -108,7 +109,7 @@ export function installFakeLoader(
         height: small ? a.frameHeight : a.frameHeight * a.directions,
         frameWidth: a.frameWidth,
         frameHeight: a.frameHeight,
-        box: opts.boxes?.[name] ?? DEFAULT_ANIMS[name]?.box,
+        boxes: [opts.boxes?.[name] ?? DEFAULT_ANIMS[name]?.box ?? []].flat(),
       });
     }
   }
@@ -125,15 +126,14 @@ export function installFakeLoader(
     readPixels(sheet, sx, sy, sw, sh) {
       const fake = sheet as FakeSheet;
       const rgba = new Uint8ClampedArray(sw * sh * 4);
-      const box = fake.box;
-      if (!box) return rgba;
       for (let y = 0; y < sh; y++) {
         for (let x = 0; x < sw; x++) {
           const fx = sx + x;
           const fy = sy + y;
-          if (fx >= box.x0 && fx <= box.x1 && fy >= box.y0 && fy <= box.y1) {
-            rgba[(y * sw + x) * 4 + 3] = 255;
-          }
+          const opaque = fake.boxes.some(
+            (box) => fx >= box.x0 && fx <= box.x1 && fy >= box.y0 && fy <= box.y1,
+          );
+          if (opaque) rgba[(y * sw + x) * 4 + 3] = 255;
         }
       }
       return rgba;
