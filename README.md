@@ -1,27 +1,22 @@
-<h1 align="center">
-  <a href="https://github.com/pixel-agents-hq/pixel-agents/discussions">
-    <img src="webview-ui/public/banner.png" alt="Pixel Agents">
-  </a>
-</h1>
+# Poke Agents
 
-<h2 align="center">The most playful way to orchestrate your agents</h2>
+Poke Agents is a pixel-art office for [Conductor](https://conductor.build) sessions, where each session appears as a Pokémon. When an orchestrator session delegates work to other sessions, the office will show the connections between them and the messages they exchange. It is meant to run in a small desktop window that opens alongside Conductor.
 
-<div align="center">
+> [!NOTE]
+> The Conductor and Pokémon features are in progress and do not work yet. Today this repository behaves like upstream Pixel Agents, described below.
 
-[![version](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fpablodelucca%2F3cd28398fa4a2c0a636e1d51d41aee39%2Fraw%2Fversion.json)](https://github.com/pixel-agents-hq/pixel-agents/releases)
-[![marketplaces](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fpablodelucca%2F3cd28398fa4a2c0a636e1d51d41aee39%2Fraw%2Finstalls.json)](https://marketplace.visualstudio.com/items?itemName=pablodelucca.pixel-agents)
-[![npm downloads](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fpablodelucca%2F3cd28398fa4a2c0a636e1d51d41aee39%2Fraw%2Fnpm-downloads.json)](https://www.npmjs.com/package/pixel-agents)
-[![stars](https://img.shields.io/github/stars/pixel-agents-hq/pixel-agents?logo=github&color=0183ff&style=flat)](https://github.com/pixel-agents-hq/pixel-agents/stargazers)
-[![license](https://img.shields.io/github/license/pixel-agents-hq/pixel-agents?color=0183ff&style=flat)](https://github.com/pixel-agents-hq/pixel-agents/blob/main/LICENSE)
-[![discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white&style=flat)](https://discord.gg/Yk7jXebv9H)
+Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, available under the [MIT License](LICENSE).
 
-</div>
+## In Progress
 
-<div align="center">
-<a href="https://marketplace.visualstudio.com/items?itemName=pablodelucca.pixel-agents">🛒 VS Code Marketplace</a> • <a href="https://open-vsx.org/extension/pablodelucca/pixel-agents">🛒 Open VSX</a> • <a href="https://www.npmjs.com/package/pixel-agents">📦 npm</a> • <a href="https://discord.gg/Yk7jXebv9H">👾 Discord</a> • <a href="https://github.com/pixel-agents-hq/pixel-agents/discussions">💬 Discussions</a> • <a href="CONTRIBUTING.md">🤝 Contributing</a> • <a href="CHANGELOG.md">📋 Changelog</a>
-</div>
+- **Conductor sessions** — each Conductor session gets its own character.
+- **Pokémon characters** — sessions are drawn as Pokémon instead of the upstream office workers.
+- **Delegation view** — connections between an orchestrator and the sessions it delegated to, with the messages between them.
+- **Desktop window** — a light window that opens alongside Conductor.
 
-<br/>
+## Current Upstream Behavior
+
+The rest of this README describes Pixel Agents as it works upstream today. Install commands, the Marketplace listing, and the `pixel-agents` package still refer to upstream.
 
 Pixel Agents turns the AI coding agents running in your terminals into animated pixel-art characters working in a tiny office. They walk to their desks, sit down, type when they're editing files, read when they're searching, and flag you visually when they're stuck waiting for input.
 
@@ -165,8 +160,8 @@ The extension and CLI are bundled with esbuild; the webview is built with Vite. 
 ## Development
 
 ```bash
-git clone https://github.com/pixel-agents-hq/pixel-agents.git
-cd pixel-agents
+git clone https://github.com/joshle298/pixel-agents.git poke-agents
+cd poke-agents
 npm install
 npm run build
 ```
@@ -235,6 +230,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and read ou
  </picture>
 </a>
 
+## Disclaimer
+
+Poke Agents is an unofficial fan project and is not affiliated with Nintendo, Creatures Inc., GAME FREAK, or The Pokémon Company. Pokémon and Pokémon character names are trademarks of Nintendo.
+
+Pokémon sprites will be loaded at runtime from their community sources, with credit to those sources. They are not redistributed in this repository.
+
 ## License
 
-Pixel Agents is available under the [MIT License](LICENSE).
+Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca. Both are available under the [MIT License](LICENSE).

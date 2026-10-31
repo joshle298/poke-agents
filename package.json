@@ -1,7 +1,7 @@
 {
   "name": "pixel-agents",
-  "displayName": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
+  "displayName": "Poke Agents",
+  "description": "Pixel art office where your Conductor sessions appear as Pokémon (in progress). Fork of Pixel Agents.",
   "version": "1.5.0",
   "publisher": "pablodelucca",
   "repository": {
