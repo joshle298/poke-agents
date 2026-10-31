@@ -17,6 +17,7 @@ import {
 } from '../../server/src/fileWatcher.js';
 import { loadLayout } from '../../server/src/layoutPersistence.js';
 import { assignPaletteIfNeeded } from '../../server/src/paletteAssigner.js';
+import { restoredPokemonFields } from '../../server/src/pokemon/speciesAssigner.js';
 import { CLAUDE_TERMINAL_NAME_PREFIX } from '../../server/src/providers/hook/claude/constants.js';
 import { claudeProvider } from '../../server/src/providers/index.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from '../../server/src/timerManager.js';
@@ -373,6 +374,7 @@ export function restoreAgents(
       teamUsesTmux: p.teamUsesTmux,
       palette: p.palette,
       hueShift: p.hueShift,
+      ...restoredPokemonFields(p),
     });
 
     assignPaletteIfNeeded(agent, store);

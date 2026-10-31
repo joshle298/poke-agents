@@ -725,9 +725,9 @@ export function scanForTeammateFiles(
     if (parentAgent?.palette !== undefined) {
       agent.palette = parentAgent.palette;
       agent.hueShift = parentAgent.hueShift ?? 0;
-    } else {
-      assignPaletteIfNeeded(agent, agents);
     }
+    // Keeps a copied palette; still gives the teammate a species of its own.
+    assignPaletteIfNeeded(agent, agents);
     agents.set(id, agent);
     persistAgents();
 
@@ -864,9 +864,9 @@ export function scanForBackgroundAgentFiles(
     if (lead.palette !== undefined) {
       agent.palette = lead.palette;
       agent.hueShift = lead.hueShift ?? 0;
-    } else {
-      assignPaletteIfNeeded(agent, agents);
     }
+    // Keeps a copied palette; still gives the teammate a species of its own.
+    assignPaletteIfNeeded(agent, agents);
     agents.set(id, agent);
 
     // Derived team: spawning a named agent makes the spawner a Lead, whether

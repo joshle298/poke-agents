@@ -1,4 +1,5 @@
 import type { StateAdapter } from '../../core/src/adapter.js';
+import type { AgentSeatMeta } from '../../core/src/messages.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { resendAgentActivity } from './agentActivityResend.js';
 import { buildAgentDiagnostics } from './agentDiagnostics.js';
@@ -657,7 +658,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   const directoryNames: Record<number, string> = {};
   const externalAgents: Record<number, boolean> = {};
   const persistedSeats = adapter?.loadSeats() ?? {};
-  const agentMeta: Record<number, { palette?: number; hueShift?: number; seatId?: string }> = {};
+  const agentMeta: Record<number, AgentSeatMeta> = {};
   for (const [id, agent] of store) {
     agentIds.push(id);
     if (agent.directoryName) {
@@ -671,6 +672,8 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
       palette: agent.palette,
       hueShift: agent.hueShift,
       seatId: persisted?.seatId,
+      species: agent.species,
+      shiny: agent.shiny,
     };
   }
   send({

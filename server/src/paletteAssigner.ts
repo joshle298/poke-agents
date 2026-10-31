@@ -8,6 +8,7 @@
 import { pickDiversePalette } from '../../core/src/paletteUtils.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { PALETTE_COUNT } from './constants.js';
+import { assignSpeciesIfNeeded } from './pokemon/speciesAssigner.js';
 import type { AgentState } from './types.js';
 
 /**
@@ -25,14 +26,21 @@ export function setPaletteCount(count: number): void {
 }
 
 /**
- * Assign palette and hueShift to an agent if not already set.
- * Uses the diversity algorithm to pick a palette that's least used among
- * existing agents.
+ * Assign palette and hueShift to an agent if not already set, then its Pokémon
+ * species (assignSpeciesIfNeeded), so every creation path gets both. The
+ * species step runs even when the palette is already set: a restored agent
+ * keeps its palette but may have no species yet.
  *
  * @param agent - The agent to assign a palette to (mutated in place)
  * @param store - The agent state store (used to count existing palettes)
  */
 export function assignPaletteIfNeeded(agent: AgentState, store: AgentStateStore): void {
+  assignPalette(agent, store);
+  assignSpeciesIfNeeded(agent, store);
+}
+
+/** Pick the least-used palette among existing agents (the diversity algorithm). */
+function assignPalette(agent: AgentState, store: AgentStateStore): void {
   if (agent.palette !== undefined) return;
 
   const count = currentPaletteCount;

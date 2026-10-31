@@ -21,6 +21,8 @@ import {
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import { registerPokemonRoutes } from './pokemon/routes.js';
+import { createSpeciesDelivery } from './pokemon/speciesDelivery.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { registerTerminalRoutes } from './terminal/terminalRoutes.js';
 import type { AgentState } from './types.js';
@@ -122,6 +124,10 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     allowedHostnames,
     ptyManager: options.ptyManager,
   });
+  // Pokémon sprites are standalone-only: VS Code keeps the upstream characters.
+  if (!options.embedded) {
+    registerPokemonRoutes(app, { allowedHostnames, store: options.store });
+  }
 
   // ── Listen ──────────────────────────────────────────────────
 
@@ -233,18 +239,29 @@ function registerWebSocketRoute(
 
     const { store } = options;
 
+    // Every message to this client goes through `send`. In standalone it also
+    // announces each Pokémon species the client needs (pokemonSpeciesLoaded)
+    // around the messages that introduce it.
+    const species = options.embedded
+      ? null
+      : createSpeciesDelivery(store, (m) => safeSend(socket, m));
+    const send = (message: Record<string, unknown>): void => {
+      if (species) species.send(message);
+      else safeSend(socket, message);
+    };
+
     // Pipe store events to WebSocket client
     const onAgentAdded = (id: number, agent: AgentState) => {
       const seatId = store.getAdapter()?.loadSeats()[String(id)]?.seatId;
-      safeSend(socket, { ...agentCreatedMessage(id, agent, seatId) });
+      send({ ...agentCreatedMessage(id, agent, seatId) });
     };
 
     const onAgentRemoved = (id: number) => {
-      safeSend(socket, { type: 'agentClosed', id });
+      send({ type: 'agentClosed', id });
     };
 
     const onBroadcast = (message: Record<string, unknown>) => {
-      safeSend(socket, message);
+      send(message);
     };
 
     store.on('agentAdded', onAgentAdded);
@@ -258,7 +275,7 @@ function registerWebSocketRoute(
         if (!options.embedded && msg.type) {
           console.log('[Pixel Agents] WS client message:', msg.type);
         }
-        handleClientMessage(msg, (m) => safeSend(socket, m), {
+        handleClientMessage(msg, send, {
           store,
           runtime: options.runtime,
           cache: options.assetCache ?? null,
@@ -278,6 +295,7 @@ function registerWebSocketRoute(
       store.off('agentAdded', onAgentAdded);
       store.off('agentRemoved', onAgentRemoved);
       store.off('broadcast', onBroadcast);
+      species?.dispose();
     });
   });
 }
