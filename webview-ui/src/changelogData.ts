@@ -42,6 +42,36 @@ export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
  *  is built on. */
 export const changelogEntries: ChangelogEntry[] = [
   {
+    version: '0.4',
+    sections: [
+      {
+        title: 'Features',
+        items: [
+          'Switch model: continue a session in its workspace with another agent or model',
+          "Change Pokémon: choose a session's evolution line, or make it shiny",
+          "The Pokédex shows each session's agent, model and effort",
+        ],
+      },
+      {
+        title: 'Changes',
+        items: [
+          'Pokémon breathe calmly at their desks, asleep ones lie still with SLP everywhere, and loading sprites wait as a capsule instead of a person',
+          'A new app icon: the Poke Agents capsule with a gold C',
+          'A key pasted twice still connects, and a Conductor CLI sign-in made later is picked up on its own',
+          'Dialogs and tabs work with the keyboard and screen readers',
+        ],
+      },
+    ],
+    contributors: [
+      {
+        name: '@joshle298',
+        url: 'https://github.com/joshle298',
+        description:
+          'Poke Agents: Switch model, Change Pokémon, the calmer office and the new icon',
+      },
+    ],
+  },
+  {
     version: '0.3',
     sections: [
       {
@@ -61,7 +91,6 @@ export const changelogEntries: ChangelogEntry[] = [
           'A new app icon, Promptling, and an original capsule for throws, recalls and messages',
           'New flags --no-sounds and --no-radio',
           'Working sessions read Working, fainted Pokémon turn grey, and a Lead with many sessions keeps them in place',
-          'Pokémon breathe calmly at their desks, asleep ones lie still with SLP everywhere, and loading sprites wait as a capsule instead of a person',
         ],
       },
     ],

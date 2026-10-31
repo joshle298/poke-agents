@@ -1,6 +1,8 @@
 # Changelog
 
-## Poke Agents (unreleased)
+## Poke Agents v0.4.0
+
+Switch model and Change Pokémon in the Pokédex, calmer offices, and a new icon.
 
 ### Features
 
@@ -11,13 +13,13 @@
 
 ### Changes
 
-- **A key pasted twice still connects.** The Connect card tries one copy of a key that was pasted twice (once Conductor accepts it) instead of saying it was rejected.
-- **Signed in elsewhere, connected here.** While the office shows Connect to Conductor on a Mac, it looks every 30 seconds (and the Mac app whenever its window comes to the front) for a sign-in saved by `conductor auth login`, and connects when one turns up. A Keychain prompt you denied isn't asked again until you click Reconnect.
 - **Calm desks.** A Pokémon at work breathes at its desk instead of shaking: no looping power-up shiver, and a tool start, a message or a turn end plays at most one short gesture every 6 seconds.
 - **Asleep means asleep.** The office and the party bar decide `SLP` with one rule (done or idle, no activity for two minutes), so they always agree; an asleep Pokémon lies still with a Zzz until something wakes it.
 - **Only Pokémon.** With the Pokémon theme on, no Pixel Agents person appears any more: a session whose sprites are still loading waits as a closed capsule that opens when they arrive, one whose sprites can't load stays a capsule ("Sprite unavailable"), sub-agents are their parent's Pokémon, and the first-run greeter is Promptling.
 - A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor in place of its collar, replacing Promptling in the Mac app, the favicon and the installed web app. At 16 and 48 px it shows a dark C on a gold collar.
 - The browser and installed web app's window colour is the office's night blue instead of red, to match the icon.
+- **A key pasted twice still connects.** The Connect card tries one copy of a key that was pasted twice (once Conductor accepts it) instead of saying it was rejected.
+- **Signed in elsewhere, connected here.** While the office shows Connect to Conductor on a Mac, it looks every 30 seconds (and the Mac app whenever its window comes to the front) for a sign-in saved by `conductor auth login`, and connects when one turns up. A Keychain prompt you denied isn't asked again until you click Reconnect.
 
 ## Poke Agents v0.3.1
 

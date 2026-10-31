@@ -1,7 +1,7 @@
 {
   "name": "poke-agents-desktop",
   "productName": "Poke Agents",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "Poke Agents as a macOS app: your Conductor cloud sessions as Pokémon in a pixel-art office.",
   "author": "Josh Le",
