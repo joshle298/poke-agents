@@ -39,6 +39,32 @@ export function modelLabel(model?: string, harness?: string): string {
 const CONDUCTOR_SIGN_IN_TEXT =
   'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.';
 
+/** One sign-in step: text around at most one highlighted command or menu item. */
+export interface SignInStep {
+  lead: string;
+  accent?: string;
+  tail?: string;
+}
+
+/**
+ * The steps to sign in to Conductor, worded for where the office runs. The
+ * desktop app starts from Finder without the shell's environment, so it can't
+ * see CONDUCTOR_API_KEY; it reads the Keychain login and can reconnect from
+ * its menu. A terminal-started server reads both, and restarts to pick them up.
+ */
+export function signInSteps(desktopApp: boolean): SignInStep[] {
+  if (desktopApp) {
+    return [
+      { lead: 'Run ', accent: 'conductor auth login', tail: ' in Terminal.' },
+      { lead: 'Choose ', accent: 'Poke Agents > Reconnect to Conductor', tail: '.' },
+    ];
+  }
+  return [
+    { lead: 'Run ', accent: 'conductor auth login', tail: ', or set CONDUCTOR_API_KEY.' },
+    { lead: 'Restart Poke Agents.' },
+  ];
+}
+
 /** Why a session the user expects may be missing from the office. */
 export const CLOUD_ONLY_NOTE =
   'Only cloud workspaces appear: local (Mac) workspaces have no API. The Conductor API needs Conductor Pro.';

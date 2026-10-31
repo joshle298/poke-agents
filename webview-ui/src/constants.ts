@@ -759,6 +759,9 @@ export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
 /** Deep links the UI will hand to openExternal (the server re-validates). */
 export const CONDUCTOR_DEEP_LINK_PROTOCOL = /^conductor(-[a-z0-9-]+)?:$/;
 export const CONDUCTOR_DEEP_LINK_HOST = 'workspace';
+/** User-agent product the Poke Agents desktop app adds to its window
+ *  (desktop/src/constants.ts), so the office words its steps for the app. */
+export const DESKTOP_APP_USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
 /** Sessions modal scope choices: activity window in hours (0 = no limit) and
  *  the cap on characters. */
 export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;

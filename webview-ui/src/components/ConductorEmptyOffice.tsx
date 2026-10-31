@@ -4,6 +4,7 @@ import { useConductor } from '../conductor/conductorStore.js';
 import { CLOUD_ONLY_NOTE, conductorStatusLine, needsSignIn } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
+import { ConductorSignInSteps } from './ConductorSignInSteps.js';
 import { PokeBallIcon } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 
@@ -27,14 +28,7 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
   let body: ReactNode;
   if (needsSignIn(status)) {
     title = state === 'unauthorized' ? 'Conductor sign-in rejected' : 'Sign in to Conductor';
-    body = (
-      <ol className="m-0 pl-20 flex flex-col gap-4 text-xs text-left">
-        <li>
-          Run <span className="text-accent">conductor auth login</span>, or set CONDUCTOR_API_KEY.
-        </li>
-        <li>Restart Poke Agents.</li>
-      </ol>
-    );
+    body = <ConductorSignInSteps className="m-0 pl-20 flex flex-col gap-4 text-xs text-left" />;
   } else if (state === 'connected') {
     title = 'No sessions in scope';
     body = (

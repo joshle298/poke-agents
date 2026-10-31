@@ -9,11 +9,13 @@ import {
   needsSignIn,
   safeHttpsUrl,
   shortAge,
+  signInSteps,
   windowLabel,
   workspaceLabel,
 } from '../src/conductor/format.js';
 import { readBoolPref, writeBoolPref } from '../src/conductor/preferences.js';
 import { archivedSessions, groupSessions, leadSessionIds } from '../src/conductor/sessionsView.js';
+import { isDesktopAppUserAgent } from '../src/desktopApp.js';
 
 const scope = { creator: 'me' as const, activeWithinHours: 6, showIdle: true, maxSessions: 24 };
 
@@ -193,5 +195,43 @@ describe('per-device preferences', () => {
     });
     expect(readBoolPref('k', true)).toBe(true);
     expect(() => writeBoolPref('k', false)).not.toThrow();
+  });
+});
+
+describe('signInSteps', () => {
+  const text = (desktopApp: boolean) =>
+    signInSteps(desktopApp).map((step) => `${step.lead}${step.accent ?? ''}${step.tail ?? ''}`);
+
+  it('tells a terminal-started office to log in or set the key, then restart', () => {
+    expect(text(false)).toEqual([
+      'Run conductor auth login, or set CONDUCTOR_API_KEY.',
+      'Restart Poke Agents.',
+    ]);
+  });
+
+  it('tells the desktop app to log in from Terminal and reconnect from the menu', () => {
+    const steps = text(true);
+    expect(steps).toEqual([
+      'Run conductor auth login in Terminal.',
+      'Choose Poke Agents > Reconnect to Conductor.',
+    ]);
+    // An app opened from Finder never sees the shell's environment.
+    expect(steps.join(' ')).not.toContain('CONDUCTOR_API_KEY');
+  });
+});
+
+describe('isDesktopAppUserAgent', () => {
+  it('recognizes the product token the desktop app appends', () => {
+    expect(
+      isDesktopAppUserAgent(
+        'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/142.0 Electron/45.2.1 Safari/537.36 PokeAgentsDesktop/0.1.0',
+      ),
+    ).toBe(true);
+    expect(
+      isDesktopAppUserAgent(
+        'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/142.0 Safari/537.36',
+      ),
+    ).toBe(false);
+    expect(isDesktopAppUserAgent('Mozilla/5.0 NotPokeAgentsDesktop/1')).toBe(false);
   });
 });

@@ -28,6 +28,7 @@ import {
   CONDUCTOR_SCOPE_WINDOW_HOURS,
   CONDUCTOR_UI_TICK_MS,
 } from '../constants.js';
+import { ConductorSignInSteps } from './ConductorSignInSteps.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -194,12 +195,7 @@ function EmptyState({
     return (
       <div className="px-10 py-8 text-sm flex flex-col gap-6">
         <span>Poke Agents needs your Conductor sign-in.</span>
-        <ol className="m-0 pl-20 flex flex-col gap-4 text-xs">
-          <li>
-            Run <span className="text-accent">conductor auth login</span>, or set CONDUCTOR_API_KEY.
-          </li>
-          <li>Restart Poke Agents.</li>
-        </ol>
+        <ConductorSignInSteps className="m-0 pl-20 flex flex-col gap-4 text-xs" />
       </div>
     );
   }
