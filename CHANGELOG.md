@@ -6,23 +6,39 @@ A polish pass from running the office against real Conductor sessions. Poke Agen
 
 ### Features
 
-- **Chat tab in the Pokédex.** The session's conversation as a scrollable thread: your messages, the agent's replies, collapsed tool steps and messages to and from other sessions. **Load earlier** pages back through older messages, fetched from Conductor on demand within the request budget. Reply from the box at the bottom (Enter sends, Shift+Enter starts a new line); the box shows when a reply is sending and whether Conductor accepted it. Markdown links show as their text, and nothing is rendered as HTML.
-- **Pending questions.** When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Pokédex shows the question and its options. **Reply with this option** sends the option's text as a normal message.
-- **Real levels on arrival.** Every visible session's level is read from its message count soon after it walks in, so idle sessions no longer sit at Lv 1 until you open their Pokédex.
+- **Chat tab in the Pokédex.** The session's conversation as a scrollable thread: your messages, the agent's replies, each turn's tool steps folded into one line, and messages to and from other sessions. **Load earlier** pages back through older messages, fetched from Conductor on demand within the request budget. Reply from the box at the bottom (Enter sends, Shift+Enter starts a new line; on a phone, Send sends); the box shows when a reply is sending and whether Conductor accepted it. Markdown links show as their text, and nothing is rendered as HTML. A view-only office (no token) doesn't load conversations.
+- **Pending questions.** When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Chat tab shows the question and its options, and Overview offers **Answer in Chat**. **Reply with this option** sends the option's text as a normal message.
+- **Real levels on arrival.** A session walks in once its message count is read, at its real level and with its last activity time, so it no longer appears at Lv 1 and then "evolves" when you open its Pokédex. Idle sessions fall asleep as they should.
+- **Tool names in the Pokédex.** Recent tool steps read "Bash · 41s" instead of "Used · 41s".
 - **PC Box portraits.** Archived sessions show their Pokémon's portrait after a reload or a restart, not only when this page saw them in the office.
+- **`--claude` agents level up.** Claude Code agents gain levels from their tool calls and keep them across restarts.
+- **About.** Settings → **About & credits** says what Poke Agents is and credits Pixel Agents and the sprite artists.
 
 ### Fixes
 
-- **Privacy: DNS rebinding.** The office's live connection is refused under host names other than `localhost`, IP addresses, `--host` and `--allowed-host`. Before, a web page that pointed its own domain at your computer could open a read-only connection on port 41510 and read your session list and message previews.
-- **Withdraw from the PC Box** brings the session back into the office even when its last activity is older than the activity window. Before, it vanished from both the office and the PC Box.
-- **Smoother polling.** Closing the Pokédex releases its session from the fastest polling tier, instead of keeping it and its linked sessions polled every few seconds for the rest of the run, so working sessions get the request budget.
+- **Privacy: DNS rebinding.** The office's live connection is refused under host names other than `localhost`, IP addresses, `--host` and `--allowed-host`. Before, a web page that pointed its own domain at your computer could open a read-only connection on port 41510 and read your session list and message previews. A LAN viewer that uses a name like `my-mac.local` now needs `--allowed-host my-mac.local`; the office says so instead of reconnecting forever.
+- **Privacy: the token stays off command lines.** `--open` and `npm start` open a one-time link that the office swaps for the tokened URL, so the token never appears in the browser's command line.
+- **Sprites:** other web sites can no longer make the office download sprites, and only species the office can show are served. A species that failed to download is retried while a Pokémon still needs it.
+- **Withdraw from the PC Box** keeps the session in the office and the lists even when its last activity is older than the activity window. Before, it vanished from both.
+- **The PC Box fills while the office is busy.** Opening it lists the deposits in your most recently active workspaces within seconds. Before, on a busy request budget, those listings could wait behind steady polls indefinitely and the PC Box stayed empty.
+- **"All" in the Sessions modal** really widens the window (to the last 30 days, shown as **All (30d)**). Before, it narrowed it to 1 hour.
+- **Smoother polling.** Closing the Pokédex releases its session from the fastest polling tier within about 10 seconds; it no longer keeps it and every linked session polled every few seconds for the rest of the run. Selecting a Lead no longer slows the Lead itself down, a busy workspace no longer keeps its idle sessions on the fast tier, and one rate-limit reply halves the request rate once instead of once per request in flight.
+- **Short turns show.** A turn that starts and finishes between two polls still shows a brief working burst and the turn-end hop.
+- **No chime on startup** for sessions that were already waiting on you; they still show `!`.
+- **Seats:** sessions keep their desk across restarts, even before they walk back in.
+- **A session that leaves and comes back during its recall** reappears instead of vanishing until a reload.
+- **A spawned session's name** shows once on its label.
 - **Escape** closes the window on top, one at a time: a confirmation, then an open modal such as Sessions or Settings, then the Pokédex. Before, Escape closed the Pokédex hidden under an open modal and left the modal up.
-- **First install.** `npm ci` says when it builds `dist/`, how long the build took and to run `npm start` next. Installing without devDependencies (`--omit=dev`, `NODE_ENV=production`) stops with the command that fixes it instead of a stack trace.
+- **Enter that confirms an IME composition** no longer sends the message.
+- **Memory:** sprites of species nobody has shown for 5 minutes are released.
+- **One office polls Conductor.** A second office on the same machine (another mode) runs without Conductor and says which office has it, instead of doubling the API traffic and overwriting the first one's state.
+- **First install.** `npm ci` says when it builds `dist/`, how long the build took and to run `npm start` next. Installing without devDependencies (`--omit=dev`, `NODE_ENV=production`) stops with the command that fixes it instead of a stack trace. With no Conductor sign-in, the terminal now says how to sign in, a failed `--open` prints one line, and a first run no longer shows "Updated to v0.1!".
 
 ### Changes
 
 - Poke Agents is its own project, inspired by and based on Pixel Agents by Pablo De Lucca. The license keeps the upstream copyright notice.
 - The README says what Poke Agents reads from Conductor, what it can ask Conductor to do, and what it never does.
+- `conductor-state.json` is written less often and drops sessions nothing touched for 30 days.
 
 ## Poke Agents v0.1.0
 

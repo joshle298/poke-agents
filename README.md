@@ -69,7 +69,7 @@ The first run downloads about 125 MB of build tools and builds the app. It takes
 
 The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
 
-Without a Conductor sign-in, the office opens with the steps to sign in. Run `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart Poke Agents.
+Without a Conductor sign-in, the office opens with the steps to sign in, and the terminal says the same. Run `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart Poke Agents.
 
 ## Using the Office
 
@@ -79,7 +79,7 @@ Without a Conductor sign-in, the office opens with the steps to sign in. Run `co
 - **Sessions** in the toolbar opens the Sessions modal. **PC** opens the PC Box.
 - The × on a Pokémon or its party slot hides the session. Find it again in Sessions.
 - **Escape** closes the window on top: a confirmation, then a modal, then the Pokédex.
-- **Settings** has the Pokémon theme, Show connections and Battle log toggles, and Credits for the sprites in use.
+- **Settings** has the Pokémon theme, Show connections and Battle log toggles, and **About & credits**: what Poke Agents is, and the artists of the sprites in use.
 
 Actions that change a session are the only writes Poke Agents makes to Conductor, and each one happens only when you click it in a tokened office:
 
@@ -97,12 +97,12 @@ Actions that change a session are the only writes Poke Agents makes to Conductor
 Poke Agents polls Conductor for sessions in scope and shows up to a cap of them. Change all of this in the Sessions modal; the choices are saved.
 
 - **Scope:** your workspaces (default) or the whole organization.
-- **Activity window:** workspaces and sessions active in the last 6 hours by default.
+- **Activity window:** workspaces and sessions active in the last 6 hours by default. **All (30d)** covers the last 30 days.
 - **Show idle:** on by default. Off keeps only working, waiting and errored sessions.
 - **Cap:** 24 sessions by default. When more are in scope, they are ranked in this order: pinned, waiting for you, working, errored, Leads with visible active sessions, then most recent activity. A shown session stays until it falls 4 places past the cap, so the office doesn't flicker. At most 12 sessions per Lead are shown; the rest are listed in the Sessions modal.
 - **Hide** removes a session from the office until you show it again. **Pin** always shows it.
 
-Sessions that never started (no name, no model and no messages) are ignored. The session whose Pokédex is open, and the sessions linked to it, update every few seconds; the others are polled less often the longer they are idle.
+Sessions that never started (no name, no model and no messages) are ignored. A session walks into the office once its level (its message count) is known, so the first start on a machine fills the office over a minute or two; later starts are faster. The session whose Pokédex is open updates every few seconds, along with up to 4 sessions in the office that it worked with in the last 15 minutes; about 10 seconds after you close the Pokédex it goes back to normal. The others are polled less often the longer they are idle.
 
 ### Leads and Links
 
@@ -114,19 +114,19 @@ A session becomes a Lead when it creates another session with a first message, f
 
 ## Configuration
 
-| Flag                     | Default      | Effect                                                                                                                                                                         |
-| ------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--open`, `--app`        | off          | Open the office in a Chromium app window. macOS tries Chrome, Edge, Brave, Chromium, Vivaldi and Chrome Canary in that order, then the default browser. Linux uses `xdg-open`. |
-| `--browser <id>`         | first found  | Use this browser for `--open`. `poke-agents --help` lists the ids.                                                                                                             |
-| `--port`, `-p <number>`  | `41510`      | Port to listen on. When 41510 is busy and no `--port` was given, a free port is used instead.                                                                                  |
-| `--host <address>`       | `127.0.0.1`  | Address to bind to. `0.0.0.0` exposes the office to your network; other devices can watch it by IP address.                                                                    |
-| `--allowed-host <name>`  | none         | Also accept the tokened URL under this host name, such as a reverse proxy's (Tailscale Serve). Repeatable.                                                                     |
-| `--rotate-token`         | off          | Replace the office token. Every URL that carried the old one stops working.                                                                                                    |
-| `--no-conductor`         | Conductor on | Don't connect to Conductor.                                                                                                                                                    |
-| `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                        |
-| `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                              |
-| `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                             |
-| `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                             |
+| Flag                     | Default      | Effect                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--open`, `--app`        | off          | Open the office in a Chromium app window, through a one-time link so the token never appears on the browser's command line. macOS tries Chrome, Edge, Brave, Chromium, Vivaldi and Chrome Canary in that order, then the default browser. Linux uses `xdg-open`. |
+| `--browser <id>`         | first found  | Use this browser for `--open`. `poke-agents --help` lists the ids.                                                                                                                                                                                               |
+| `--port`, `-p <number>`  | `41510`      | Port to listen on. When 41510 is busy and no `--port` was given, a free port is used instead.                                                                                                                                                                    |
+| `--host <address>`       | `127.0.0.1`  | Address to bind to. `0.0.0.0` exposes the office to your network; other devices can watch it by IP address (a host name needs `--allowed-host`).                                                                                                                 |
+| `--allowed-host <name>`  | none         | Also accept this host name, such as a reverse proxy's (Tailscale Serve) or `my-mac.local`, for watching and for the tokened URL. Repeatable. Other host names are refused.                                                                                       |
+| `--rotate-token`         | off          | Replace the office token. Every URL that carried the old one stops working.                                                                                                                                                                                      |
+| `--no-conductor`         | Conductor on | Don't connect to Conductor.                                                                                                                                                                                                                                      |
+| `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                                                                                                          |
+| `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                                                                                                                |
+| `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                               |
+| `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                                                                                                               |
 
 | Environment variable           | Effect                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -141,21 +141,23 @@ Without either token variable, Poke Agents on macOS reads the token that `conduc
 
 Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents. None of it is a Conductor setting, and none of it holds the Conductor token:
 
-| File                    | Contents                                                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------------------------- |
-| `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`).                      |
-| `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, and where Poke Agents last read each session. |
-| `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                  |
-| `config.json`           | Settings such as the Pokémon theme and sounds.                                                        |
-| `layout.json`           | The office layout.                                                                                    |
-| `cache/pmd/`            | Downloaded sprites and portraits.                                                                     |
+| File                    | Contents                                                                                                                                                             |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`). With `--claude`, each agent's tool-call count (its level).                          |
+| `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, recent withdrawals, and where Poke Agents last read each session. Entries untouched for 30 days are dropped. |
+| `conductor.lock`        | Which office polls Conductor. Only one office per machine does.                                                                                                      |
+| `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                                                                                 |
+| `config.json`           | Settings such as the Pokémon theme and sounds.                                                                                                                       |
+| `layout.json`           | The office layout.                                                                                                                                                   |
+| `cache/pmd/`            | Downloaded sprites and portraits.                                                                                                                                    |
 
 ## Privacy
 
 - Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`) and, for sprites, to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
-- The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions.
+- The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions, and other sites can't make it download sprites.
+- `--open` and `npm start` open a one-time link, so the token never appears on the browser's command line.
 - There is no telemetry or analytics.
 
 ## Troubleshooting
@@ -165,6 +167,8 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 - **`npm ci` stops with "Can't build dist/".** npm left out the build tools because of `--omit=dev` or `NODE_ENV=production`. Run `npm ci --include=dev`.
 - **`npx` stops with `EALLOWGIT`.** npm 12 refuses git packages unless you add `--allow-git=all`.
 - **`npm start` prints "Could not open a window".** No browser could be opened, for example over SSH. Open the printed URL yourself.
+- **The office says "This address isn't allowed".** You opened it under a host name the office doesn't accept, such as `my-mac.local`. Restart with `--allowed-host my-mac.local`, or open it by IP address.
+- **The terminal says Conductor sessions are already tracked by another office.** Only one office per machine polls Conductor. Open that office, or stop it and start this one again.
 - **Sessions update slowly, or the status line reports rate limiting.** Conductor limits API requests, and the limit may be shared with your sessions' own `conductor` CLI calls. Poke Agents halves its request rate after a rate-limit reply and recovers slowly. Lower the rate with `--conductor-budget`, or narrow the scope and cap in Sessions.
 - **macOS asks to allow access to a Keychain item.** That is the token `conductor auth login` saved. Choose Allow, or set `CONDUCTOR_API_KEY` to skip the Keychain.
 - **The office opens in a normal browser tab.** No supported Chromium browser was found. Install Chrome, or pick one with `--browser`.
