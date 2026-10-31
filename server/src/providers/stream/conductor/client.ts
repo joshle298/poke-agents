@@ -3,7 +3,8 @@
  *
  * - A token bucket meters every request (default 120/min). Waiters are served
  *   by priority, so user actions and focused sessions go first.
- * - A general 429 halves the effective budget, pauses the whole client for
+ * - A general 429 halves the effective budget (once per episode: further 429s
+ *   during the pause only extend it), pauses the whole client for
  *   `retry-after` plus 0-1 s of jitter, and the budget then recovers by 10 % of
  *   the configured value per minute.
  * - A per-session `/status` 429 pauses only that session's status checks.
@@ -481,10 +482,14 @@ export class ConductorClient {
   }
 
   private noteGeneralRateLimit(now: number, pauseMs: number): void {
-    this.recover(now);
-    this.budget = Math.max(MIN_BUDGET_PER_MINUTE, Math.floor(this.budget / 2));
-    this.budgetAtLimit = this.budget;
-    this.lastLimitAt = now;
+    // One halving per rate-limit episode: requests already in flight when the
+    // limit tripped come back 429 together, and each must not halve again.
+    if (now >= this.rateLimitedUntilMs) {
+      this.recover(now);
+      this.budget = Math.max(MIN_BUDGET_PER_MINUTE, Math.floor(this.budget / 2));
+      this.budgetAtLimit = this.budget;
+      this.lastLimitAt = now;
+    }
     this.tokens = Math.min(this.tokens, this.capacity());
     this.pausedUntilMs = Math.max(this.pausedUntilMs, now + pauseMs);
     this.rateLimitedUntilMs = Math.max(this.rateLimitedUntilMs, now + pauseMs);

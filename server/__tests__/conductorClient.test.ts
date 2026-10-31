@@ -154,6 +154,52 @@ describe('ConductorClient', () => {
     expect(client.effectiveBudget).toBe(120);
   });
 
+  it('halves once when the requests in flight all come back 429 together', async () => {
+    const clock = manualClock();
+    let limited = true;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const api = fakeFetch(clock, async () => {
+      await gate;
+      return limited
+        ? json(
+            429,
+            { userMessage: 'Rate limit exceeded for API requests.' },
+            { 'retry-after': '9' },
+          )
+        : json(200, {});
+    });
+    const client = new ConductorClient({
+      baseUrl: BASE,
+      token: 't',
+      fetchImpl: api.fetch,
+      budgetPerMinute: 120,
+      clock,
+    });
+    // Eight units have their requests out when the shared limit trips.
+    const inFlight = Array.from({ length: 8 }, (_, i) =>
+      client.getSession(`s${i}`).catch((e: unknown) => e),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(api.calls).toHaveLength(8);
+    release();
+    const errors = await Promise.all(inFlight);
+    expect(errors.every((e) => e instanceof ConductorApiError && e.kind === 'rateLimited')).toBe(
+      true,
+    );
+    expect(client.effectiveBudget).toBe(60);
+
+    // A 429 after the pause is a new episode and halves again (from 62: ten
+    // seconds of recovery at 12/min).
+    limited = true;
+    clock.t += 10_000;
+    await client.getSession('again').catch(() => undefined);
+    expect(client.effectiveBudget).toBe(31);
+    limited = false;
+  });
+
   it('pauses only that session on a per-session status 429', async () => {
     const clock = manualClock();
     const api = fakeFetch(clock, (call) =>
