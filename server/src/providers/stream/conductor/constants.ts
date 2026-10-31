@@ -54,6 +54,10 @@ export const SIGN_IN_SETTLE_TIMEOUT_MS = KEYCHAIN_TIMEOUT_MS + 10_000;
  *  find the key (it is in memory, or in the Keychain the write just
  *  unlocked); sessions keep arriving after the reply either way. */
 export const CONNECT_SETTLE_TIMEOUT_MS = 15_000;
+/** While signed out on macOS, how often the provider looks again for a key
+ *  saved outside the office (`conductor auth login`, or Poke Agents' own
+ *  Keychain item). The Mac app also asks whenever its window gains focus. */
+export const SIGN_IN_RECHECK_MS = 30_000;
 export const AUTH_REQUIRED_MESSAGE =
   'Open the office and connect with a Conductor API key, or set CONDUCTOR_API_KEY.';
 export const UNAUTHORIZED_MESSAGE =

@@ -427,6 +427,10 @@ function createOfficeWindow(url: string): BrowserWindow {
   });
   // The page would rename the window to its <title>; the window is the app.
   window.on('page-title-updated', (event) => event.preventDefault());
+  // Back from Terminal after `conductor auth login`: look for the sign-in now.
+  window.on('focus', () => {
+    if (office?.ownsServer) office.recheckConductorSignIn();
+  });
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   const scheduleSave = (): void => {

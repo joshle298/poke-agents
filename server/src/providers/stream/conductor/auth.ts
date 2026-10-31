@@ -19,6 +19,7 @@ import {
   KEYCHAIN_SERVICE,
   KEYCHAIN_TIMEOUT_MS,
   SECURITY_BIN,
+  SECURITY_ITEM_NOT_FOUND_EXIT,
 } from './constants.js';
 import type { ConductorKeyStore } from './keyStore.js';
 
@@ -35,6 +36,10 @@ export interface ConductorAuth {
   source?: ConductorAuthSource;
   /** The variable the key came from, when `source` is `env`. */
   envName?: ConductorAuthEnv;
+  /** The Conductor CLI's Keychain item is there but couldn't be read (access
+   *  denied, the prompt dismissed or timed out): reading it again would only
+   *  ask again. */
+  cliUnreadable?: true;
 }
 
 export const defaultExecFile: ExecFileFn = (file, args, opts) =>
@@ -80,6 +85,41 @@ export function envKeyName(env: NodeJS.ProcessEnv): ConductorAuthEnv | undefined
   return ([ENV_API_KEY, ENV_API_TOKEN] as const).find((name) => !!env[name]?.trim());
 }
 
+/** A Keychain read: the value, or none, `unreadable` when the item may be
+ *  there but `security` was refused it (access denied, the prompt dismissed
+ *  or timed out) rather than finding no such item (or no Keychain). */
+export type KeychainRead =
+  { value: string; unreadable?: undefined } | { value?: undefined; unreadable: boolean };
+
+/** Reads a generic password from the Keychain. Never throws. */
+export async function readKeychainItem(
+  execFile: ExecFileFn,
+  service: string,
+  account: string,
+  timeoutMs = KEYCHAIN_TIMEOUT_MS,
+): Promise<KeychainRead> {
+  try {
+    const { stdout } = await execFile(
+      SECURITY_BIN,
+      ['find-generic-password', '-s', service, '-a', account, '-w'],
+      { timeout: timeoutMs },
+    );
+    const value = stdout.replace(/\r?\n$/, '').trim();
+    return value ? { value } : { unreadable: false };
+  } catch (err) {
+    const { code, killed, signal } = (err ?? {}) as {
+      code?: unknown;
+      killed?: boolean;
+      signal?: unknown;
+    };
+    const refused =
+      (typeof code === 'number' && code !== SECURITY_ITEM_NOT_FOUND_EXIT) ||
+      killed === true ||
+      typeof signal === 'string';
+    return { unreadable: refused };
+  }
+}
+
 /** A generic password from the Keychain, or undefined when there is none (or
  *  access was denied, or there is no Keychain). Never throws. */
 export async function readKeychainPassword(
@@ -88,18 +128,7 @@ export async function readKeychainPassword(
   account: string,
   timeoutMs = KEYCHAIN_TIMEOUT_MS,
 ): Promise<string | undefined> {
-  try {
-    const { stdout } = await execFile(
-      SECURITY_BIN,
-      ['find-generic-password', '-s', service, '-a', account, '-w'],
-      { timeout: timeoutMs },
-    );
-    const value = stdout.replace(/\r?\n$/, '').trim();
-    return value || undefined;
-  } catch {
-    // Not found, access denied, or no Keychain: treated the same as no token.
-    return undefined;
-  }
+  return (await readKeychainItem(execFile, service, account, timeoutMs)).value;
 }
 
 export async function resolveConductorAuth(opts: {
@@ -108,6 +137,8 @@ export async function resolveConductorAuth(opts: {
   execFile: ExecFileFn;
   /** Poke Agents' own store for a key connected in the office. */
   keyStore?: ConductorKeyStore;
+  /** False skips the Conductor CLI's item (an earlier read was refused). */
+  readCli?: boolean;
 }): Promise<ConductorAuth> {
   const baseUrl = resolveBaseUrl(opts.env);
   const envName = envKeyName(opts.env);
@@ -116,11 +147,8 @@ export async function resolveConductorAuth(opts: {
   }
   const saved = await opts.keyStore?.read(baseUrl);
   if (saved) return { baseUrl, token: saved.key, source: saved.source };
-  if (opts.platform !== 'darwin') return { baseUrl };
-  const token = await readKeychainPassword(
-    opts.execFile,
-    KEYCHAIN_SERVICE,
-    keychainAccount(baseUrl),
-  );
-  return token ? { baseUrl, token, source: 'cli' } : { baseUrl };
+  if (opts.platform !== 'darwin' || opts.readCli === false) return { baseUrl };
+  const read = await readKeychainItem(opts.execFile, KEYCHAIN_SERVICE, keychainAccount(baseUrl));
+  if (read.value) return { baseUrl, token: read.value, source: 'cli' };
+  return read.unreadable ? { baseUrl, cliUnreadable: true } : { baseUrl };
 }

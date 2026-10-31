@@ -63,6 +63,7 @@ import {
   GPT_MODEL_PREFIX,
   LOG_PREFIX,
   PRIORITY_USER,
+  SIGN_IN_RECHECK_MS,
   STATE_FILE_NAME,
   UNAUTHORIZED_MESSAGE,
 } from './constants.js';
@@ -126,6 +127,7 @@ type ConductorControls = Required<
     | 'setFocus'
     | 'getModelCatalog'
     | 'continueWithModel'
+    | 'recheckSignIn'
   >
 >;
 
@@ -266,6 +268,14 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   let stopped = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let connectFailures = 0;
+  /** While signed out: the next look for a sign-in (macOS only). */
+  let recheckTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The look in flight: a Keychain read may wait on the user's answer. */
+  let rechecking: Promise<void> | undefined;
+  /** False once reading the Conductor CLI's Keychain item was refused (access
+   *  denied, the prompt dismissed or timed out): another read would only ask
+   *  again, so this provider leaves it until Reconnect starts a new one. */
+  let readCli = true;
   /** The favorites last read (GET /v0/favorite-models) and when. */
   let favorites: { raw: unknown; at: number } | undefined;
   /** After a failed favorites read: not before this (epoch ms). */
@@ -350,6 +360,68 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   const requirePoller = (): ConductorPoller => {
     if (!poller) throw new Error('Conductor is not connected');
     return poller;
+  };
+
+  /** Every sign-in the office may use, in order (auth.ts), remembering a
+   *  refused read of the CLI's item. */
+  const resolveAuth = async (): Promise<ConductorAuth> => {
+    const auth = await resolveConductorAuth({ env, platform, execFile, keyStore, readCli });
+    if (auth.cliUnreadable) readCli = false;
+    return auth;
+  };
+
+  /** Connect with a key resolveAuth found: /me, then the poller. */
+  const signIn = async (auth: ConductorAuth & { token: string }): Promise<void> => {
+    log(`using ${describeSource(auth)}; budget ${budget}/min`);
+    client = new ConductorClient({
+      baseUrl: auth.baseUrl,
+      token: auth.token,
+      fetchImpl: opts.fetchImpl ?? fetch,
+      budgetPerMinute: budget,
+      clock,
+    });
+    await connect();
+  };
+
+  /** Still signed out, with nothing connecting. */
+  const signedOut = (): boolean => !stopped && !client && ownStatus?.state === 'authRequired';
+
+  /**
+   * While signed out, look again for a sign-in saved outside the office
+   * (`conductor auth login`, or Poke Agents' own Keychain item), and connect
+   * when one turns up. On macOS only, where those live: elsewhere a key
+   * arrives only through the Connect card, which starts a new provider.
+   */
+  const scheduleRecheck = (): void => {
+    if (platform !== 'darwin' || !signedOut() || recheckTimer || rechecking) return;
+    recheckTimer = setTimeout(() => {
+      recheckTimer = undefined;
+      void recheckSignIn();
+    }, SIGN_IN_RECHECK_MS);
+    recheckTimer.unref?.();
+  };
+
+  const recheckSignIn = (): Promise<void> => {
+    if (rechecking || !signedOut()) return rechecking ?? Promise.resolve();
+    clearTimeout(recheckTimer);
+    recheckTimer = undefined;
+    rechecking = (async () => {
+      try {
+        const auth = await resolveAuth();
+        if (!auth.token || !signedOut()) return;
+        authSource = auth.source;
+        authEnv = auth.envName;
+        log('found a sign-in made outside the office');
+        setStatus({ state: 'connecting' });
+        await signIn({ ...auth, token: auth.token });
+      } catch (err) {
+        log(`sign-in check failed: ${(err as Error).message}`);
+      } finally {
+        rechecking = undefined;
+        scheduleRecheck();
+      }
+    })();
+    return rechecking;
   };
 
   /** Run a user action; failures become short, user-facing rejections. */
@@ -442,6 +514,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       stopped = false;
       authSource = undefined;
       authEnv = undefined;
+      readCli = true;
       settle = opts.onSignInSettled;
       const settled = (source: ConductorAuthSource | undefined): void => {
         const notify = settle;
@@ -450,7 +523,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       };
       try {
         setStatus({ state: 'connecting' });
-        const auth = await resolveConductorAuth({ env, platform, execFile, keyStore });
+        const auth = await resolveAuth();
         if (stopped) {
           settled(undefined);
           return;
@@ -463,17 +536,10 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
           // where a first run is usually watched.
           log(`no sign-in found. ${AUTH_REQUIRED_MESSAGE}`);
           setStatus({ state: 'authRequired', message: AUTH_REQUIRED_MESSAGE });
+          scheduleRecheck();
           return;
         }
-        log(`using ${describeSource(auth)}; budget ${budget}/min`);
-        client = new ConductorClient({
-          baseUrl: auth.baseUrl,
-          token: auth.token,
-          fetchImpl: opts.fetchImpl ?? fetch,
-          budgetPerMinute: budget,
-          clock,
-        });
-        await connect();
+        await signIn({ ...auth, token: auth.token });
       } catch (err) {
         settled(undefined);
         log(`start failed: ${(err as Error).message}`);
@@ -487,6 +553,8 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       settle = undefined;
       notify?.(undefined);
       if (retryTimer) clearTimeout(retryTimer);
+      clearTimeout(recheckTimer);
+      recheckTimer = undefined;
       poller?.stop();
       client?.close();
       state.flush();
@@ -554,6 +622,10 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     setFocus(sessionIds: string[]): void {
       poller?.setFocus(sessionIds);
+    },
+
+    recheckSignIn(): void {
+      void recheckSignIn();
     },
 
     async getModelCatalog(): Promise<StreamModelCatalog> {

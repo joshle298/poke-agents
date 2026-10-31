@@ -247,6 +247,14 @@ describe('the Connect to Conductor card', () => {
     }
   });
 
+  it('lets a key pasted twice through for the server to try one copy', () => {
+    // 47 characters twice is still key-shaped; 120 twice is too long for one key.
+    const long = `pa_${'y'.repeat(117)}`;
+    expect(apiKeyFromText(`${KEY}${KEY}`)).toBe(`${KEY}${KEY}`);
+    expect(apiKeyFromText(` ${long}${long}\n`)).toBe(`${long}${long}`);
+    expect(apiKeyFromText(`${long}${long}x`)).toBeNull();
+  });
+
   it('never tells the office to restart for a sign-in it can fix itself', () => {
     // The server's message mentions CONDUCTOR_API_KEY for the terminal; the
     // office points at its own Connect card instead.

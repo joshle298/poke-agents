@@ -47,6 +47,7 @@ import { openWithSystem } from './openAppWindow.js';
 import { setEvolutionPreloader } from './pokemon/agentLevel.js';
 import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
+import type { ExecFileFn } from './providers/stream/conductor/auth.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
 import { SIGN_IN_SETTLE_TIMEOUT_MS } from './providers/stream/conductor/constants.js';
 import {
@@ -113,11 +114,12 @@ export interface StandaloneOptions {
    *  agents persist apart from the real office's (`demo-state.json`). */
   demo?: { seed?: number; speed?: number };
   /** Injected for tests: Conductor's fetch, environment, platform (whether
-   *  the Keychain is consulted) and key store. */
+   *  the Keychain is consulted), /usr/bin/security and key store. */
   conductorDeps?: {
     fetchImpl?: typeof fetch;
     env?: NodeJS.ProcessEnv;
     platform?: NodeJS.Platform;
+    execFile?: ExecFileFn;
     keyStore?: ConductorKeyStore;
   };
 }
@@ -151,6 +153,9 @@ export interface StandaloneOffice {
    *  found (undefined: none). Rejects with a message for the user when this
    *  office can't poll Conductor (off, reused, or another office polls it). */
   reconnectConductor(): Promise<ConductorAuthSource | undefined>;
+  /** While Conductor polling here waits for a sign-in, look for one now (the
+   *  Mac app's window focus); it also looks every SIGN_IN_RECHECK_MS. */
+  recheckConductorSignIn(): void;
   /** Stop polling, terminals, the runtime and the server (when owned). Idempotent. */
   stop(): Promise<void>;
 }
@@ -449,8 +454,10 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   // this process, so the office and its open windows stay up.
   const conductorEnv = opts.conductorDeps?.env ?? process.env;
   const conductorPlatform = opts.conductorDeps?.platform ?? process.platform;
+  const conductorExecFile = opts.conductorDeps?.execFile;
   const keyStore =
-    opts.conductorDeps?.keyStore ?? createConductorKeyStore({ platform: conductorPlatform });
+    opts.conductorDeps?.keyStore ??
+    createConductorKeyStore({ platform: conductorPlatform, execFile: conductorExecFile });
   let conductor: StreamProvider | null = null;
   let conductorLock: PollerLock | null = null;
   let ownsServer = false;
@@ -466,6 +473,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
         budgetPerMinute: opts.conductorBudget,
         env: conductorEnv,
         platform: conductorPlatform,
+        execFile: conductorExecFile,
         fetchImpl: opts.conductorDeps?.fetchImpl,
         keyStore,
         onSignInSettled,
@@ -724,6 +732,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
         .find((driver) => driver.provider.id === conductor?.id)
         ?.statusMessage() ?? null,
     reconnectConductor: () => restartConductor(),
+    recheckConductorSignIn: () => conductor?.recheckSignIn?.(),
     stop,
   };
 }

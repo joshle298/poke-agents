@@ -338,4 +338,8 @@ export interface StreamProvider {
    *  model), and link it to `sessionId`. Resolves with the new session's id;
    *  rejects with a user-facing message. */
   continueWithModel?(sessionId: string, choice: ModelChoice): Promise<{ sessionId: string }>;
+  /** While signed out (`authRequired`), look for a sign-in now instead of at
+   *  the next periodic check, and connect if one turned up (the Mac app asks
+   *  when its window gains focus). A no-op otherwise. */
+  recheckSignIn?(): void;
 }

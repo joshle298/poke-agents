@@ -75,6 +75,29 @@ describe('Conductor auth resolution', () => {
     expect(execFile).not.toHaveBeenCalled();
   });
 
+  it('tells a refused read of the CLI item from a missing one, and can skip it', async () => {
+    const throwing = (err: object) =>
+      vi.fn(async () => {
+        throw Object.assign(new Error('security failed'), err);
+      }) as unknown as ExecFileFn;
+    const resolve = (execFile: ExecFileFn, readCli?: boolean) =>
+      resolveConductorAuth({ env: {}, platform: 'darwin', execFile, readCli });
+    // errSecItemNotFound (44), or no security binary: nothing to read.
+    for (const missing of [{ code: 44 }, { code: 'ENOENT' }]) {
+      expect(await resolve(throwing(missing))).toEqual({ baseUrl: 'https://api.conductor.build' });
+    }
+    // Denied (51), the prompt dismissed (128), or timed out (killed): it is there.
+    for (const refused of [{ code: 51 }, { code: 128 }, { killed: true, signal: 'SIGTERM' }]) {
+      expect(await resolve(throwing(refused))).toEqual({
+        baseUrl: 'https://api.conductor.build',
+        cliUnreadable: true,
+      });
+    }
+    const execFile = execReturning('kc-token\n');
+    expect(await resolve(execFile, false)).toEqual({ baseUrl: 'https://api.conductor.build' });
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
   it('normalizes the base URL the way the CLI does for the Keychain account', () => {
     expect(resolveBaseUrl({})).toBe('https://api.conductor.build');
     expect(resolveBaseUrl({ CONDUCTOR_API_URL: 'https://api.example.test///' })).toBe(

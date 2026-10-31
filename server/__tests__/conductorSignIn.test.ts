@@ -158,6 +158,49 @@ describe('ConductorSignIn.connect', () => {
     }
   });
 
+  it('connects with one copy of a key pasted twice, once Conductor accepts it', async () => {
+    const h = harness({ next: 'session' });
+    await expect(h.signIn.connect(` ${KEY}${KEY}\n`)).resolves.toEqual({
+      message: 'Connected as user@example.com',
+      account: 'user@example.com',
+    });
+    expect(h.calls.map((c) => c.auth)).toEqual([`Bearer ${KEY}`]);
+    expect(await h.keyStore.read(BASE)).toEqual({ key: KEY, source: 'session' });
+    expect(h.logs).toContain('the pasted key was one key twice; connected with a single copy');
+    expect(h.logs.join('\n')).not.toContain(KEY);
+  });
+
+  it('keeps text that only looks doubled when Conductor takes it as pasted', async () => {
+    const doubled = `${KEY}${KEY}`;
+    const h = harness({
+      respond: (auth) => (auth === `Bearer ${doubled}` ? json(200, ME) : json(401, {})),
+    });
+    await h.signIn.connect(doubled);
+    expect(h.calls.map((c) => c.auth)).toEqual([`Bearer ${KEY}`, `Bearer ${doubled}`]);
+    expect(await h.keyStore.read(BASE)).toMatchObject({ key: doubled });
+    expect(h.logs.join('\n')).not.toContain('single copy');
+  });
+
+  it('says a key pasted twice was rejected when neither form works, and keeps nothing', async () => {
+    const rejected = harness({ respond: () => json(401, {}) });
+    await expect(rejected.signIn.connect(`${KEY}${KEY}`)).rejects.toThrow(
+      'That key was rejected by Conductor.',
+    );
+    expect(rejected.calls).toHaveLength(2);
+    // Unreachable is not a rejection: the other form isn't tried.
+    const down = harness({
+      respond: () => {
+        throw new TypeError('fetch failed');
+      },
+    });
+    await expect(down.signIn.connect(`${KEY}${KEY}`)).rejects.toThrow("Couldn't reach Conductor.");
+    expect(down.calls).toHaveLength(1);
+    for (const h of [rejected, down]) {
+      expect(await h.keyStore.read(BASE)).toBeUndefined();
+      expect(h.restart).not.toHaveBeenCalled();
+    }
+  });
+
   it('refuses a malformed key before any request', async () => {
     const h = harness();
     for (const bad of ['short', 42, null, `${KEY}"`, 'x'.repeat(1001)]) {

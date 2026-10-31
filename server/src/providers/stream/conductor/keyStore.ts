@@ -26,11 +26,11 @@
 
 import { spawn } from 'child_process';
 
+import { conductorKeyCandidates } from '../../../../../core/src/conductorKey.js';
 import type { ConductorAuthSource } from '../../../../../core/src/messages.js';
 import { defaultExecFile, type ExecFileFn, keychainAccount, readKeychainPassword } from './auth.js';
 import {
   API_KEY_PATTERN,
-  API_KEY_WIRE_MAX_LENGTH,
   APP_KEYCHAIN_LABEL,
   APP_KEYCHAIN_SERVICE,
   KEYCHAIN_READ_BACK_TIMEOUT_MS,
@@ -70,11 +70,11 @@ export const defaultRunWithInput: RunWithInputFn = (file, args, input, opts) =>
     child.stdin.end(input);
   });
 
-/** The key from a client message: trimmed, and only when it has a key's shape. */
-export function normalizeApiKey(raw: unknown): string | null {
-  if (typeof raw !== 'string' || raw.length > API_KEY_WIRE_MAX_LENGTH) return null;
-  const key = raw.trim();
-  return API_KEY_PATTERN.test(key) ? key : null;
+/** The keys to try from a client message, in order (conductorKeyCandidates:
+ *  trimmed, a key pasted twice tries one copy first); empty when it isn't a
+ *  key. */
+export function apiKeyCandidates(raw: unknown): string[] {
+  return typeof raw === 'string' ? conductorKeyCandidates(raw) : [];
 }
 
 /** Characters a value in the `security -i` line may hold: no quotes,

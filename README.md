@@ -239,7 +239,7 @@ To sign in with the Conductor CLI instead: on a Mac the CLI ships inside the Con
 "$HOME/Library/Application Support/com.conductor.app/bin/conductor" auth login
 ```
 
-Then open **Prefer the CLI?** on the card and click **Reconnect** in the Mac app (or choose **Poke Agents → Reconnect to Conductor**), or restart `npm start`. When macOS asks whether `security` may use `com.conductor.cli`, choose **Allow**. **Always Allow** stops the prompt, but it adds `/usr/bin/security` to the item's access list, so any app you run can then read your Conductor token without asking, as it can read the key connected in the office.
+While the office shows **Connect to Conductor** it looks for that sign-in every 30 seconds, and the Mac app also looks whenever you switch back to its window, so your sessions walk in on their own. **Reconnect** in the Mac app (**Prefer the CLI?** on the card, or **Poke Agents → Reconnect to Conductor**) looks at once. When macOS asks whether `security` may use `com.conductor.cli`, choose **Allow**. **Always Allow** stops the prompt, but it adds `/usr/bin/security` to the item's access list, so any app you run can then read your Conductor token without asking, as it can read the key connected in the office.
 
 ## Configuration
 
@@ -311,7 +311,7 @@ The Mac app also keeps its window position in `~/Library/Application Support/Pok
 
 - **My local Conductor workspaces don't appear.** Conductor's public API only covers cloud workspaces. Local workspaces have no API.
 - **The office shows Connect to Conductor.** No key was found. See [Sign In](#sign-in).
-- **"That key was rejected by Conductor."** The key was mistyped or revoked. Create a new one with **Get an API key**.
+- **"That key was rejected by Conductor."** The key was mistyped or revoked. Create a new one with **Get an API key**. A key pasted twice by mistake is fine: Poke Agents tries one copy.
 - **The card says Conductor rejected the key in `CONDUCTOR_API_KEY` (or `CONDUCTOR_API_TOKEN`).** A key in the environment comes first, so the office can't replace it. Update the variable, then restart Poke Agents.
 - **`conductor: command not found`.** On a Mac the Conductor CLI ships inside the Conductor app and isn't on your `PATH`. Connect in the office, or run the CLI by its full path (see [Sign In](#sign-in)).
 - **`npm ci` stops with "Can't build dist/".** npm left out the build tools because of `--omit=dev` or `NODE_ENV=production`. Run `npm ci --include=dev`.

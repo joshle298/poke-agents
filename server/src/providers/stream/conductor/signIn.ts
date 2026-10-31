@@ -5,7 +5,8 @@
  * login` itself opens the API keys page, takes a pasted key, checks it with
  * GET /me and saves it. The office does the same with its own store: a key the
  * user pastes (connectConductor) is checked with GET /me against the
- * configured base URL, saved where keyStore.ts keeps it (Poke Agents' own
+ * configured base URL (text that is one key pasted twice tries a single copy
+ * first, conductorKeyCandidates), saved where keyStore.ts keeps it (Poke Agents' own
  * Keychain item on macOS, memory elsewhere; never the Conductor CLI's item),
  * and Conductor polling restarts in this process so sessions walk in without
  * restarting the office. Signing out (disconnectConductor) forgets only that
@@ -26,11 +27,18 @@ import {
   KEYCHAIN_SAVE_FAILED_NOTE,
   REQUEST_TIMEOUT_MS,
 } from './constants.js';
-import { type ConductorKeyStore, normalizeApiKey } from './keyStore.js';
+import { apiKeyCandidates, type ConductorKeyStore } from './keyStore.js';
 import type { ConductorMe } from './types.js';
 
 /** A refusal whose message is safe to show the user as is. */
 export class SignInError extends Error {}
+
+/** Conductor answered 401 or 403: it doesn't take this key. */
+class KeyRejectedError extends SignInError {
+  constructor() {
+    super(KEY_REJECTED_MESSAGE);
+  }
+}
 
 export interface SignInResult {
   /** What the office shows: "Connected as …", or what signing out left. */
@@ -86,7 +94,7 @@ export async function verifyConductorKey(
     } catch {
       throw new SignInError(KEY_UNREACHABLE_MESSAGE);
     }
-    if (res.status === 401 || res.status === 403) throw new SignInError(KEY_REJECTED_MESSAGE);
+    if (res.status === 401 || res.status === 403) throw new KeyRejectedError();
     if (!res.ok) throw new SignInError(KEY_CHECK_FAILED_MESSAGE);
     let me: Partial<ConductorMe> | null;
     try {
@@ -138,8 +146,8 @@ export class ConductorSignIn implements ConductorSignInControl {
   }
 
   private async runConnect(rawKey: unknown): Promise<SignInResult> {
-    const key = normalizeApiKey(rawKey);
-    if (!key) throw new SignInError(KEY_INVALID_MESSAGE);
+    const candidates = apiKeyCandidates(rawKey);
+    if (candidates.length === 0) throw new SignInError(KEY_INVALID_MESSAGE);
     const refusal = this.opts.refusal();
     if (refusal) throw new SignInError(refusal);
     const envName = envKeyName(this.opts.env);
@@ -150,12 +158,10 @@ export class ConductorSignIn implements ConductorSignInControl {
       );
     }
     const baseUrl = resolveBaseUrl(this.opts.env);
-    const me = await verifyConductorKey(
-      baseUrl,
-      key,
-      this.opts.fetchImpl ?? fetch,
-      this.opts.timeoutMs,
-    );
+    const { key, me } = await this.firstAccepted(baseUrl, candidates);
+    if (typeof rawKey === 'string' && key !== rawKey.trim()) {
+      this.log('the pasted key was one key twice; connected with a single copy');
+    }
     const stored = await this.opts.keyStore.save(baseUrl, key);
     const fellBack = stored === 'session' && this.opts.keyStore.storage === 'keychain';
     this.log(
@@ -172,6 +178,31 @@ export class ConductorSignIn implements ConductorSignInControl {
       message: fellBack ? `${connected}\n${KEYCHAIN_SAVE_FAILED_NOTE}` : connected,
       account,
     };
+  }
+
+  /**
+   * The first candidate Conductor accepts (GET /me), and its account. Only a
+   * rejection moves on to the next one (a key pasted twice tries one copy,
+   * then the text as pasted); an unreachable Conductor stops at once.
+   */
+  private async firstAccepted(
+    baseUrl: string,
+    candidates: string[],
+  ): Promise<{ key: string; me: ConductorMe }> {
+    for (const key of candidates) {
+      try {
+        const me = await verifyConductorKey(
+          baseUrl,
+          key,
+          this.opts.fetchImpl ?? fetch,
+          this.opts.timeoutMs,
+        );
+        return { key, me };
+      } catch (err) {
+        if (!(err instanceof KeyRejectedError)) throw err;
+      }
+    }
+    throw new KeyRejectedError();
   }
 
   private async runDisconnect(): Promise<SignInResult> {

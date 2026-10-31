@@ -4,6 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { ExecFileFn } from '../src/providers/stream/conductor/auth.js';
+
 // Isolated HOME: the office writes its token, registry entry and settings
 // under ~/.pixel-agents/.
 let tmpBase: string;
@@ -669,6 +671,40 @@ describe('startStandalone: connecting to Conductor from the office', () => {
     expect(client.socket.readyState).toBe(WebSocket.OPEN);
     const page = await fetch(office.url);
     expect(page.status).toBe(200);
+  });
+
+  it('picks up a Conductor CLI sign-in made later when the Mac app asks, without a restart', async () => {
+    const { fetchImpl } = conductorApi();
+    // A Mac with no key yet: both Keychain items are missing.
+    let cliKey: string | undefined;
+    const execFile: ExecFileFn = async (_file, args) => {
+      const service = args[args.indexOf('-s') + 1];
+      if (service === 'com.conductor.cli' && cliKey) return { stdout: `${cliKey}\n` };
+      throw Object.assign(new Error('not found'), { code: 44 });
+    };
+    const office = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: true,
+      claude: false,
+      sprites: false,
+      sounds: false,
+      conductorDeps: { env: {}, platform: 'darwin', fetchImpl, execFile },
+    });
+    started.push(office);
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({ state: 'authRequired' }),
+    );
+    const client = await openSocket(office);
+    // `conductor auth login` in Terminal, then back to the app's window.
+    cliKey = KEY;
+    office.recheckConductorSignIn();
+    const created = await client.next((m) => m.type === 'agentCreated');
+    expect(created).toMatchObject({ providerId: 'conductor', label: 'Fix flaky tests' });
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({ state: 'connected', authSource: 'cli' }),
+    );
+    expect(client.socket.readyState).toBe(WebSocket.OPEN);
   });
 
   it('refuses to connect while another office polls Conductor', async () => {

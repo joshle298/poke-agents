@@ -2,10 +2,7 @@
  * Pure text helpers for the Conductor chrome (DOM-free, Node-tested).
  */
 
-import {
-  CONDUCTOR_KEY_PATTERN,
-  CONDUCTOR_KEY_WIRE_MAX_LENGTH,
-} from '../../../core/src/constants.js';
+import { conductorKeyCandidates } from '../../../core/src/conductorKey.js';
 import type { ConductorKeyStorage, ConductorStatus } from '../../../core/src/messages.js';
 import {
   CONDUCTOR_DEEP_LINK_HOST,
@@ -73,13 +70,11 @@ export function modelLabel(model?: string, harness?: string): string {
 export const CONDUCTOR_CLI_LOGIN_COMMAND =
   '"$HOME/Library/Application Support/com.conductor.app/bin/conductor" auth login';
 
-/** A pasted Conductor API key, trimmed, when it has a key's shape; else null.
- *  The server checks the same shape and then the key itself (GET /me). */
+/** Pasted text, trimmed, when it has a Conductor API key's shape or is one
+ *  key pasted twice (conductorKeyCandidates); else null. The server checks
+ *  the same shape and then the key itself (GET /me), a single copy first. */
 export function apiKeyFromText(text: string): string | null {
-  const key = text.trim();
-  return key.length <= CONDUCTOR_KEY_WIRE_MAX_LENGTH && CONDUCTOR_KEY_PATTERN.test(key)
-    ? key
-    : null;
+  return conductorKeyCandidates(text).length > 0 ? text.trim() : null;
 }
 
 /** A key's prefix and last four characters, to show which key the Mac app

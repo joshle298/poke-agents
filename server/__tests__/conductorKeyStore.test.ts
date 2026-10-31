@@ -10,9 +10,9 @@ import {
   KEYCHAIN_WRITE_TIMEOUT_MS,
 } from '../src/providers/stream/conductor/constants.js';
 import {
+  apiKeyCandidates,
   createConductorKeyStore,
   keychainAddLine,
-  normalizeApiKey,
   type RunWithInputFn,
 } from '../src/providers/stream/conductor/keyStore.js';
 
@@ -71,11 +71,20 @@ function fakeSecurity(opts: { items?: Record<string, string>; refuseWrites?: boo
   return { items, execFile, runWithInput, execCalls, inputCalls, timeouts, at };
 }
 
-describe('normalizeApiKey', () => {
+describe('apiKeyCandidates', () => {
   it('accepts key-shaped text, trimmed, with no fixed prefix', () => {
-    expect(normalizeApiKey(`  ${KEY}\n`)).toBe(KEY);
-    expect(normalizeApiKey('x'.repeat(20))).toBe('x'.repeat(20));
-    expect(normalizeApiKey('abc-DEF_123'.repeat(3))).toBe('abc-DEF_123'.repeat(3));
+    expect(apiKeyCandidates(`  ${KEY}\n`)).toEqual([KEY]);
+    expect(apiKeyCandidates('x'.repeat(20))).toEqual(['x'.repeat(20)]);
+    expect(apiKeyCandidates('abc-DEF_123'.repeat(3))).toEqual(['abc-DEF_123'.repeat(3)]);
+  });
+
+  it('tries one copy first of a key pasted twice, then the text as pasted', () => {
+    expect(apiKeyCandidates(` ${KEY}${KEY}\n`)).toEqual([KEY, `${KEY}${KEY}`]);
+    // Too long for one key twice over: only the copy is key-shaped.
+    const long = `pa_${'z'.repeat(117)}`;
+    expect(apiKeyCandidates(`${long}${long}`)).toEqual([long]);
+    // A copy too short to be a key is never tried.
+    expect(apiKeyCandidates('x'.repeat(30))).toEqual(['x'.repeat(30)]);
   });
 
   it('refuses anything else, and oversize payloads before trimming', () => {
@@ -91,7 +100,7 @@ describe('normalizeApiKey', () => {
       'x'.repeat(201),
       `${' '.repeat(990)}${KEY}`,
     ]) {
-      expect(normalizeApiKey(bad)).toBeNull();
+      expect(apiKeyCandidates(bad)).toEqual([]);
     }
   });
 });
