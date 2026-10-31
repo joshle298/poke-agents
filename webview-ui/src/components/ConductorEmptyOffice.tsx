@@ -6,7 +6,7 @@ import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
 import { isDesktopApp } from '../desktopApp.js';
 import { ConductorReconnectButton, ConductorSignInSteps } from './ConductorSignInSteps.js';
-import { PokeBallIcon } from './PokemonPortrait.js';
+import { CapsuleIcon } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 
 interface ConductorEmptyOfficeProps {
@@ -54,7 +54,7 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-16">
       <div className="pixel-panel pointer-events-auto flex flex-col items-center gap-8 py-12 px-16 max-w-[420px] text-center">
-        <PokeBallIcon size={32} />
+        <CapsuleIcon size={32} />
         <span className="text-lg">{title}</span>
         {body}
         {state === 'connected' && onOpenSessions && (
@@ -77,7 +77,7 @@ export function NothingTrackedOffice() {
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-16">
       <div className="pixel-panel pointer-events-auto flex flex-col items-center gap-8 py-12 px-16 max-w-[420px] text-center">
-        <PokeBallIcon size={32} />
+        <CapsuleIcon size={32} />
         <span className="text-lg">Nothing to track</span>
         <span className="text-xs text-text-muted">
           Restart without <span className="text-accent">--no-conductor</span>, or add{' '}

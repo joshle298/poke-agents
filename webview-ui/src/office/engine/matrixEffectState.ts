@@ -2,7 +2,7 @@
  * The spawn/despawn effect's STATE half: starting one, advancing its timer,
  * and reporting when it finished.
  *
- * Deliberately separate from `matrixEffect.ts` / `pokeballEffect.ts`, which
+ * Deliberately separate from `matrixEffect.ts` / `capsuleEffect.ts`, which
  * draw it: drawing needs a CanvasRenderingContext2D, and OfficeState — a pure
  * state container the Node-runner unit tests import directly — has no
  * business pulling a DOM type into its module graph just to reset three
@@ -10,29 +10,29 @@
  *
  * Two looks share the one `matrixEffect` field (its name and values are an
  * e2e contract): the upstream matrix rain, and — for a Pokémon while the
- * theme is on — a Poké Ball thrown open on spawn and a red recall on
+ * theme is on — a capsule thrown open on spawn and a beam back into it on
  * despawn. Each has its own duration.
  */
 
-import { MATRIX_SPRITE_COLS, POKEBALL_RECALL_SEC, POKEBALL_SPAWN_SEC } from '../../constants.js';
+import { CAPSULE_RECALL_SEC, CAPSULE_SPAWN_SEC, MATRIX_SPRITE_COLS } from '../../constants.js';
 import type { Character } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
 import { hasPokemonIdentity } from './pokemonCharacter.js';
 
-export type SpawnEffectStyle = 'matrix' | 'pokeball';
+export type SpawnEffectStyle = 'matrix' | 'capsule';
 
-/** Poké Ball for a known Pokémon while the theme is on (even before its
- *  sheets decode — the ball then opens on the upstream character). The
+/** The capsule for a known Pokémon while the theme is on (even before its
+ *  sheets decode — the capsule then opens on the upstream character). The
  *  greeter, theme-off characters and hosts without species keep the matrix
  *  rain. */
 export function spawnEffectStyle(ch: Character): SpawnEffectStyle {
-  return hasPokemonIdentity(ch) ? 'pokeball' : 'matrix';
+  return hasPokemonIdentity(ch) ? 'capsule' : 'matrix';
 }
 
 /** How long the character's current effect runs. */
 export function matrixEffectDurationSec(ch: Character): number {
   if (spawnEffectStyle(ch) === 'matrix') return MATRIX_EFFECT_DURATION;
-  return ch.matrixEffect === 'despawn' ? POKEBALL_RECALL_SEC : POKEBALL_SPAWN_SEC;
+  return ch.matrixEffect === 'despawn' ? CAPSULE_RECALL_SEC : CAPSULE_SPAWN_SEC;
 }
 
 /** Per-column stagger seeds. The rain renderer reuses them modulo their count

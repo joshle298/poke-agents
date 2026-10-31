@@ -1,35 +1,37 @@
 /**
- * The Poké Ball spawn/despawn effect (drawing only; matrixEffectState.ts
- * owns the timer). It rides the same `matrixEffect` field as the matrix rain.
+ * The capsule spawn/despawn effect (drawing only; matrixEffectState.ts owns
+ * the timer). It rides the same `matrixEffect` field as the matrix rain. The
+ * capsule is our own design (sprites/capsule.json): a teal-and-cream pill
+ * that opens by pulling its two halves apart.
  *
- * Spawn: the ball is thrown from `effectOrigin` (the Lead) on an arc, or
+ * Spawn: the capsule is thrown from `effectOrigin` (the Lead) on an arc, or
  * drops from above; it pops open in a ring of white pixels; the body grows
  * out of it as a white silhouette and fades to its colours.
- * Despawn (recall): a red beam from a ball over the head shrinks the body to
- * a red point, then the ball flies up and away.
+ * Despawn (recall): a teal beam from the open capsule over the head shrinks
+ * the body to a teal point, then the closed capsule flies up and away.
  *
  * Works on any frame: a Pokémon sheet frame, or the upstream character while
  * its species' sheets are still decoding.
  */
 
 import {
-  POKEBALL_BURST_POINTS,
-  POKEBALL_BURST_RADIUS_PX,
-  POKEBALL_DROP_HEIGHT_PX,
-  POKEBALL_FLASH_COLOR,
-  POKEBALL_GROW_SHARE,
-  POKEBALL_MATERIALIZE_MIN_SCALE,
-  POKEBALL_OPEN_END,
-  POKEBALL_RECALL_BEAM_COLOR,
-  POKEBALL_RECALL_BEAM_END,
-  POKEBALL_RECALL_EXIT_PX,
-  POKEBALL_RECALL_HOVER_PX,
-  POKEBALL_THROW_ARC_PX,
-  POKEBALL_THROW_END,
+  CAPSULE_BURST_POINTS,
+  CAPSULE_BURST_RADIUS_PX,
+  CAPSULE_DROP_HEIGHT_PX,
+  CAPSULE_FLASH_COLOR,
+  CAPSULE_GROW_SHARE,
+  CAPSULE_MATERIALIZE_MIN_SCALE,
+  CAPSULE_OPEN_END,
+  CAPSULE_RECALL_BEAM_COLOR,
+  CAPSULE_RECALL_BEAM_END,
+  CAPSULE_RECALL_EXIT_PX,
+  CAPSULE_RECALL_HOVER_PX,
+  CAPSULE_THROW_ARC_PX,
+  CAPSULE_THROW_END,
   POKEMON_RECALL_COLOR,
   POKEMON_SILHOUETTE_COLOR,
 } from '../../constants.js';
-import { POKEBALL_CLOSED_SPRITE, POKEBALL_OPEN_SPRITE } from '../sprites/pokemonUiSprites.js';
+import { CAPSULE_CLOSED_SPRITE, CAPSULE_OPEN_SPRITE } from '../sprites/pokemonUiSprites.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import type { Character, SpriteData } from '../types.js';
 import type { FrameRef } from './frameCanvas.js';
@@ -76,7 +78,7 @@ function fillWorldPixel(
  * @param ground   World point the frame's anchor sits on.
  * @param headRise World px from that point to the top of the body.
  */
-export function renderPokeballEffect(
+export function renderCapsuleEffect(
   ctx: CanvasRenderingContext2D,
   ch: Character,
   frame: FrameRef,
@@ -88,14 +90,17 @@ export function renderPokeballEffect(
   alpha: number,
 ): void {
   const p = Math.min(1, Math.max(0, ch.matrixEffectTimer / matrixEffectDurationSec(ch)));
-  const ballHalf = POKEBALL_CLOSED_SPRITE.length / 2;
+  const capsuleHalf = CAPSULE_CLOSED_SPRITE.length / 2;
   ctx.save();
   ctx.globalAlpha = alpha;
   if (ch.matrixEffect === 'despawn') {
-    const ball = { x: ground.x, y: ground.y - headRise - POKEBALL_RECALL_HOVER_PX - ballHalf };
-    if (p < POKEBALL_RECALL_BEAM_END) {
-      const q = p / POKEBALL_RECALL_BEAM_END;
-      // The body, a red silhouette shrinking to a point at its feet.
+    const capsule = {
+      x: ground.x,
+      y: ground.y - headRise - CAPSULE_RECALL_HOVER_PX - capsuleHalf,
+    };
+    if (p < CAPSULE_RECALL_BEAM_END) {
+      const q = p / CAPSULE_RECALL_BEAM_END;
+      // The body, a teal silhouette shrinking to a point at its feet.
       drawFrameScaled(
         ctx,
         frame,
@@ -108,42 +113,42 @@ export function renderPokeballEffect(
         1,
         POKEMON_RECALL_COLOR,
       );
-      // The beam from the ball down to the middle of the body.
-      ctx.fillStyle = POKEBALL_RECALL_BEAM_COLOR;
+      // The beam from the capsule's open seam down to the middle of the body.
+      ctx.fillStyle = CAPSULE_RECALL_BEAM_COLOR;
       const chestY = ground.y - Math.round((headRise * (1 - q)) / 2);
-      forEachLinePixel(ball.x, ball.y + ballHalf, ground.x, chestY, (x, y) =>
+      forEachLinePixel(capsule.x, capsule.y + capsuleHalf, ground.x, chestY, (x, y) =>
         fillWorldPixel(ctx, x, y, offsetX, offsetY, zoom),
       );
-      drawCenteredSprite(ctx, POKEBALL_OPEN_SPRITE, ball, offsetX, offsetY, zoom);
+      drawCenteredSprite(ctx, CAPSULE_OPEN_SPRITE, capsule, offsetX, offsetY, zoom);
     } else {
-      const q = (p - POKEBALL_RECALL_BEAM_END) / (1 - POKEBALL_RECALL_BEAM_END);
+      const q = (p - CAPSULE_RECALL_BEAM_END) / (1 - CAPSULE_RECALL_BEAM_END);
       ctx.globalAlpha = alpha * (1 - q);
-      const at = { x: ball.x, y: ball.y - POKEBALL_RECALL_EXIT_PX * q * q };
-      drawCenteredSprite(ctx, POKEBALL_CLOSED_SPRITE, at, offsetX, offsetY, zoom);
+      const at = { x: capsule.x, y: capsule.y - CAPSULE_RECALL_EXIT_PX * q * q };
+      drawCenteredSprite(ctx, CAPSULE_CLOSED_SPRITE, at, offsetX, offsetY, zoom);
     }
     ctx.restore();
     return;
   }
 
-  const rest = { x: ground.x, y: ground.y - ballHalf };
-  if (p < POKEBALL_THROW_END) {
-    const q = p / POKEBALL_THROW_END;
+  const rest = { x: ground.x, y: ground.y - capsuleHalf };
+  if (p < CAPSULE_THROW_END) {
+    const q = p / CAPSULE_THROW_END;
     const origin = ch.effectOrigin;
     const at = origin
       ? {
           x: lerp(origin.x, rest.x, q),
-          y: lerp(origin.y, rest.y, q) - POKEBALL_THROW_ARC_PX * 4 * q * (1 - q),
+          y: lerp(origin.y, rest.y, q) - CAPSULE_THROW_ARC_PX * 4 * q * (1 - q),
         }
-      : { x: rest.x, y: rest.y - POKEBALL_DROP_HEIGHT_PX * (1 - q * q) };
-    drawCenteredSprite(ctx, POKEBALL_CLOSED_SPRITE, at, offsetX, offsetY, zoom);
-  } else if (p < POKEBALL_OPEN_END) {
-    const q = (p - POKEBALL_THROW_END) / (POKEBALL_OPEN_END - POKEBALL_THROW_END);
-    drawCenteredSprite(ctx, POKEBALL_OPEN_SPRITE, rest, offsetX, offsetY, zoom);
-    const radius = Math.max(1, Math.round(q * POKEBALL_BURST_RADIUS_PX));
+      : { x: rest.x, y: rest.y - CAPSULE_DROP_HEIGHT_PX * (1 - q * q) };
+    drawCenteredSprite(ctx, CAPSULE_CLOSED_SPRITE, at, offsetX, offsetY, zoom);
+  } else if (p < CAPSULE_OPEN_END) {
+    const q = (p - CAPSULE_THROW_END) / (CAPSULE_OPEN_END - CAPSULE_THROW_END);
+    drawCenteredSprite(ctx, CAPSULE_OPEN_SPRITE, rest, offsetX, offsetY, zoom);
+    const radius = Math.max(1, Math.round(q * CAPSULE_BURST_RADIUS_PX));
     ctx.globalAlpha = alpha * (1 - q);
-    ctx.fillStyle = POKEBALL_FLASH_COLOR;
-    for (let k = 0; k < POKEBALL_BURST_POINTS; k++) {
-      const angle = (k * 2 * Math.PI) / POKEBALL_BURST_POINTS;
+    ctx.fillStyle = CAPSULE_FLASH_COLOR;
+    for (let k = 0; k < CAPSULE_BURST_POINTS; k++) {
+      const angle = (k * 2 * Math.PI) / CAPSULE_BURST_POINTS;
       fillWorldPixel(
         ctx,
         Math.round(rest.x + Math.cos(angle) * radius),
@@ -154,13 +159,13 @@ export function renderPokeballEffect(
       );
     }
   } else {
-    const q = (p - POKEBALL_OPEN_END) / (1 - POKEBALL_OPEN_END);
-    const grow = Math.min(1, q / POKEBALL_GROW_SHARE);
-    const scale = POKEBALL_MATERIALIZE_MIN_SCALE + (1 - POKEBALL_MATERIALIZE_MIN_SCALE) * grow;
+    const q = (p - CAPSULE_OPEN_END) / (1 - CAPSULE_OPEN_END);
+    const grow = Math.min(1, q / CAPSULE_GROW_SHARE);
+    const scale = CAPSULE_MATERIALIZE_MIN_SCALE + (1 - CAPSULE_MATERIALIZE_MIN_SCALE) * grow;
     const white =
-      q < POKEBALL_GROW_SHARE
+      q < CAPSULE_GROW_SHARE
         ? 1
-        : Math.max(0, 1 - (q - POKEBALL_GROW_SHARE) / (1 - POKEBALL_GROW_SHARE));
+        : Math.max(0, 1 - (q - CAPSULE_GROW_SHARE) / (1 - CAPSULE_GROW_SHARE));
     drawFrameScaled(
       ctx,
       frame,

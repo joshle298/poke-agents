@@ -1,7 +1,7 @@
 /**
  * The Pokémon theme switch, as module state.
  *
- * Read every frame by the renderer and every tick by OfficeState (Poké Ball
+ * Read every frame by the renderer and every tick by OfficeState (capsule
  * vs matrix effect, species hit boxes), so it lives outside React — same
  * shape as the renderer's ghost setting. DOM-free: OfficeState imports it and
  * the Node test runner imports OfficeState.

@@ -58,10 +58,6 @@
   --color-hp-low: #f05038;
   --color-hp-bg: #304030;
   --color-status-asleep: #8888a8;
-  /* In-house Poké Ball placeholder (generic red/white shape, no official art) */
-  --color-ball-top: #dc0a2d;
-  --color-ball-bottom: #f8f8f0;
-  --color-ball-band: #1a1c2c;
 
   /* Shadow */
   --shadow-pixel: 2px 2px 0px #0a0a14;
@@ -437,31 +433,6 @@
 /* A party slot whose session needs you blinks (hard steps, no easing). */
 .party-attention {
   animation: party-attention 1s steps(1, end) infinite;
-}
-
-/* In-house pixel Poké Ball: red top, white bottom, dark band and button,
-   chamfered to an octagon so it reads round at pixel scale. */
-.pokeball-icon {
-  position: relative;
-  background: linear-gradient(
-    to bottom,
-    var(--color-ball-band) 0 8%,
-    var(--color-ball-top) 8% 42%,
-    var(--color-ball-band) 42% 58%,
-    var(--color-ball-bottom) 58% 92%,
-    var(--color-ball-band) 92% 100%
-  );
-  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
-}
-.pokeball-icon::after {
-  content: '';
-  position: absolute;
-  left: 36%;
-  top: 36%;
-  width: 28%;
-  height: 28%;
-  background: var(--color-ball-bottom);
-  box-shadow: 0 0 0 2px var(--color-ball-band);
 }
 
 @media (prefers-reduced-motion: reduce) {

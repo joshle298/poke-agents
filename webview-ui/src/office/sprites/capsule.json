@@ -1,0 +1,40 @@
+{
+  "name": "capsule",
+  "description": "In-house capsule (original design): a pill with a teal cap printed with a '>' and a cream body, joined by a gold collar. Each row is a string, one palette key per pixel. 'closed' (16x8) is thrown, recalled and flown as a message; 'open' (23x8) is the two halves pulled apart with light between them, the gap on the sprite's centre.",
+  "palette": {
+    "_": "",
+    "K": "#1B2A36",
+    "T": "#9AF2DD",
+    "t": "#45C9B4",
+    "d": "#2A9A9C",
+    "c": "#FDF3D2",
+    "C": "#E6CF9C",
+    "g": "#F2C23A",
+    "G": "#FFE58A",
+    "o": "#B07A1E",
+    "W": "#FFFFFF",
+    "L": "#C8FFF0"
+  },
+  "frames": {
+    "closed": [
+      "___KKKKKKKKKK___",
+      "_KKTTttGGccccKK_",
+      "KTtctttGgcccccCK",
+      "KtttcttggcccccCK",
+      "KttctttggccccCCK",
+      "KddddddoocccCCCK",
+      "_KKddddooCCCCKK_",
+      "___KKKKKKKKKK___"
+    ],
+    "open": [
+      "______KKKK_L__KKKKKK___",
+      "____KKTTtKLWLKGGccccKK_",
+      "___KTtcttKLWLKGgcccccCK",
+      "___KtttctKWWWKggcccccCK",
+      "___KttcttKWWWKggccccCCK",
+      "___KdddddKLWLKoocccCCCK",
+      "____KKdddKLWLKooCCCCKK_",
+      "______KKKK_L__KKKKKK___"
+    ]
+  }
+}
