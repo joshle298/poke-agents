@@ -94,7 +94,7 @@ A session becomes a Lead when it creates another session with a first message, f
 
 ## Sounds
 
-Each Pokémon makes sounds when something happens to its session. Sound is on by default and starts after your first click or key press in the office: browsers keep audio locked until then, and nothing that happened before is played late.
+Each Pokémon makes sounds when something happens to its session. Sound is on by default and starts after your first click, tap or key press in the office: browsers keep audio locked until then, and nothing that happened before is played late.
 
 | When                                                          | You hear                                              |
 | ------------------------------------------------------------- | ----------------------------------------------------- |
@@ -112,9 +112,9 @@ Each Pokémon makes sounds when something happens to its session. Sound is on by
 
 A busy office stays bearable: at most four sounds a second, one cry at a time, a cooldown per session, nothing for five seconds after the office connects, and no level-up sound while a session's real level is being filled in. With the Pokémon theme off, only the alert, faint and done tones play. Claude Code agents (`--claude`) keep the upstream chime.
 
-**Settings → Sound** has the on/off switch (**Sounds**), a volume slider, toggles for **Cries**, **Alerts** (needs you, faint, done) and **Effects** (everything else), and a button to test each sound. The volume and the toggles are saved per device.
+**Settings → Sound** has the on/off switch (**Sounds**), a volume slider, toggles for **Cries**, **Alerts** (needs you, faint, done) and **Effects** (everything else), and a button to test each sound. A sound that is switched off can't be tested. The volume and the toggles are saved per device.
 
-**Cries** are the official cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project, which collects them from Pokémon Showdown, Veekun and The Sounds Resource. Poke Agents downloads a species' cry from `raw.githubusercontent.com` the first time it's needed and keeps it in `~/.pixel-agents/cache/cries/`. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc. They are fetched on your computer and are not included in or redistributed by this repository. The other effects are original chiptune sounds synthesized in the app; none reuses music from the games.
+**Cries** are the official cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project, which collects them from Pokémon Showdown, Veekun and The Sounds Resource. After your first click in the office, Poke Agents downloads the cry of each species that is in it from `raw.githubusercontent.com`, once, and keeps it in `~/.pixel-agents/cache/cries/`. With **Cries** off, it downloads none. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc. They are fetched on your computer and are not included in or redistributed by this repository. The other effects are original chiptune sounds synthesized in the app; none reuses music from the games.
 
 **Sound pack.** To use your own sounds, put files in `~/.pixel-agents/sounds/` named after the effect they replace, with the extension `.ogg`, `.mp3` or `.wav`, for example `~/.pixel-agents/sounds/levelUp.ogg`:
 
@@ -169,8 +169,8 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 - **macOS asks to allow access to a Keychain item.** That is the token `conductor auth login` saved. Choose Allow, or set `CONDUCTOR_API_KEY` to skip the Keychain.
 - **The office opens in a normal browser tab.** No supported Chromium browser was found. Install Chrome, or pick one with `--browser`.
 - **An installed web app can't connect after a restart.** Port 41510 was busy, so the office started on another port. Stop whatever holds 41510, or always pass the same `--port`.
-- **No sound.** Click or press a key in the office once: browsers keep audio locked until then. Check that **Sounds** is on in Settings and the volume is up.
-- **No cries, but the other sounds play.** Cries download in the background from `raw.githubusercontent.com` and are mostly Ogg files: Chrome, Edge, Firefox and the Mac app play them; some Safari versions can't. They also need the Pokémon theme and sprites on.
+- **No sound.** Click, tap or press a key in the office once: browsers keep audio locked until then. Check that **Sounds** is on in Settings and the volume is up.
+- **No cries, but the other sounds play.** Cries download in the background from `raw.githubusercontent.com` after your first click, so a species new to the office can miss its first cry. They are mostly Ogg files: Chrome, Edge, Firefox and the Mac app play them; some Safari versions can't. They also need the Pokémon theme and sprites on.
 - **Pokémon show as office workers.** Sprites download in the background, and the upstream character shows until a sprite is ready. If it never changes, check that `raw.githubusercontent.com` or `cdn.jsdelivr.net` is reachable.
 
 ## Mac Verification Checklist
