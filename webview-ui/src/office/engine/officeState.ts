@@ -1202,6 +1202,16 @@ export class OfficeState {
   }
 
   private advanceOverlays(dt: number): void {
+    // Age what is on screen first, so a preview born this tick gets its full time.
+    this.messagePreviews = this.messagePreviews.filter((m) => {
+      m.timer -= dt;
+      return m.timer > 0 && this.liveCharacter(m.toId) !== undefined;
+    });
+    for (const [id, notice] of this.notices) {
+      notice.timer -= dt;
+      if (notice.timer <= 0 || !this.liveCharacter(id)) this.notices.delete(id);
+    }
+
     const flying: Projectile[] = [];
     for (const p of this.projectiles) {
       if (!this.liveCharacter(p.fromId) || !this.liveCharacter(p.toId)) continue;
@@ -1223,16 +1233,6 @@ export class OfficeState {
       }
     }
     this.projectiles = flying;
-
-    this.messagePreviews = this.messagePreviews.filter((m) => {
-      m.timer -= dt;
-      return m.timer > 0 && this.liveCharacter(m.toId) !== undefined;
-    });
-
-    for (const [id, notice] of this.notices) {
-      notice.timer -= dt;
-      if (notice.timer <= 0 || !this.liveCharacter(id)) this.notices.delete(id);
-    }
   }
 
   showPermissionBubble(id: number): void {

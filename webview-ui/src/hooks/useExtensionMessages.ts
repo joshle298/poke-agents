@@ -7,12 +7,8 @@ import type {
   HooksConsentRequest,
   PokemonSpeciesLoaded,
 } from '../../../core/src/messages.js';
-import {
-  playDoneSound,
-  playPermissionSound,
-  setSoundEnabled,
-  statusChimeFor,
-} from '../notificationSound.js';
+import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
+import { statusChimeFor } from '../office/chimePolicy.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
 import { applyPendingIdentity, reconcileExistingAgents } from '../office/engine/existingAgents.js';
 import type { AgentIdentity, OfficeState } from '../office/engine/officeState.js';
