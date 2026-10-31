@@ -396,6 +396,26 @@ describe('Conductor poller: ranking by a session own activity', () => {
   });
 });
 
+describe('Conductor poller: a turn longer than the scope window', () => {
+  it('keeps a session that has been working for hours in scope', async () => {
+    const id = uuid(0x4401);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({ id: uuid(0x4402), lastActivityAt: new Date(NOW).toISOString() });
+        api.addSession({
+          id,
+          workspaceId: uuid(0x4402),
+          items: workingFeed(id, NOW - 30_000),
+          // The status changed to working when the turn began, 7 h ago.
+          status: { status: 'working', updatedAt: new Date(NOW - 7 * HOUR).toISOString() },
+        });
+      },
+    });
+    expect(h.sink.adopted.has(id)).toBe(true);
+    await h.provider.stop();
+  });
+});
+
 describe('Conductor poller: withdrawing from the PC Box', () => {
   it('keeps a withdrawn session that finished hours ago in the office and the lists', async () => {
     const ws = uuid(0x5001);

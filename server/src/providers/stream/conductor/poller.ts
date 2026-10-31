@@ -1750,7 +1750,10 @@ export class ConductorPoller {
    */
   private ownActivityOf(rec: SessionRecord): number | undefined {
     const persisted = this.state.session(rec.id);
-    const own = rec.norm.lastItemAt ?? persisted?.lastActivityAt ?? rec.statusUpdatedAt;
+    // A working session is active as of its /status check; for it, updatedAt
+    // is when the (possibly hours-long) turn started.
+    const fromStatus = rec.runStatus === 'working' ? rec.statusAt : rec.statusUpdatedAt;
+    const own = rec.norm.lastItemAt ?? persisted?.lastActivityAt ?? fromStatus;
     const restored = persisted?.restoredAt;
     if (restored === undefined) return own;
     return own === undefined ? restored : Math.max(own, restored);
