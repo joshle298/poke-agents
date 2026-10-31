@@ -18,6 +18,24 @@ export const WANDER_MOVES_BEFORE_REST_MAX = 6;
 export const SEAT_REST_MIN_SEC = 120.0;
 export const SEAT_REST_MAX_SEC = 240.0;
 
+// ── Town areas (layouts with meadow / center Area roles) ─────
+/** Pause between a turn ending and the walk out to the Meadow, so a session
+ *  that goes idle for a moment between turns doesn't bounce out of the Lab. */
+export const TOWN_MEADOW_DELAY_SEC = 2.5;
+/** Wait before trying again when no Meadow / Center tile could be reached. */
+export const TOWN_RETRY_SEC = 3.0;
+/** Random destinations tried per attempt before waiting TOWN_RETRY_SEC. */
+export const TOWN_TARGET_TRIES = 6;
+/** How long a character the user walked somewhere stays before heading back. */
+export const TOWN_USER_WALK_HOLD_SEC = 30;
+/** Pixels a seated wide Pokémon may overlap the wall beside its desk before it
+ *  moves to a roomier desk (see townRoomNeeded). */
+export const TOWN_WALL_OVERLAP_PX = 6;
+/** After a character is created, how long a status saying it is idle or
+ *  fainted still places it straight in the Meadow or the Center (the status
+ *  follows agentCreated within a message or two). */
+export const TOWN_SPAWN_GRACE_SEC = 1.5;
+
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
 export const MATRIX_TRAIL_LENGTH = 6;
@@ -37,6 +55,21 @@ export const MATRIX_TRAIL_DIM_THRESHOLD = 0.66;
 // ── Rendering ────────────────────────────────────────────────
 export const CHARACTER_SITTING_OFFSET_PX = 6;
 export const CHARACTER_Z_SORT_OFFSET = 0.5;
+/** Floor pixels stored at this alpha are foreground (tall grass): drawn again
+ *  in front of whoever stands on the tile. 254 reads as opaque. */
+export const FLOOR_FOREGROUND_ALPHA = 254;
+/** Foreground rows from here down are blade tips that cover the occupant of
+ *  the tile below (feet sit near the top of their own tile). */
+export const FLOOR_FOREGROUND_BELOW_ROW = 12;
+/** Tall grass covers at most this share of a Pokémon's height (small species
+ *  would otherwise all but vanish in it). */
+export const FLOOR_FOREGROUND_MAX_COVER = 0.4;
+/** Foreground sorts just after the characters of its row (CHARACTER_Z_SORT_OFFSET)
+ *  and before anything on the next row. */
+export const FLOOR_FOREGROUND_Z_OFFSET = 0.75;
+/** Largest ground layer (device pixels) kept as one cached canvas; bigger
+ *  layouts at high zoom draw their floor and carpets tile by tile. */
+export const GROUND_CACHE_MAX_PIXELS = 12_000_000;
 export const OUTLINE_Z_SORT_OFFSET = 0.001;
 export const SELECTED_OUTLINE_ALPHA = 1.0;
 export const HOVERED_OUTLINE_ALPHA = 0.5;
@@ -190,6 +223,9 @@ export const PERMISSION_VOLUME = 0.12;
 
 // ── Furniture Animation ─────────────────────────────────────
 export const FURNITURE_ANIM_INTERVAL_SEC = 0.2;
+/** Frame time of ambient furniture animations (a pond's shimmer). A multiple of
+ *  FURNITURE_ANIM_INTERVAL_SEC, which is when furniture instances rebuild. */
+export const AMBIENT_ANIM_INTERVAL_SEC = 0.6;
 
 // ── Version Notice ──────────────────────────────────────────
 export const WHATS_NEW_AUTO_CLOSE_MS = 20000;
@@ -672,6 +708,8 @@ export const LINK_COLORS = {
   messaged: 'rgba(110, 170, 255, 0.9)',
   watched: 'rgba(255, 255, 255, 0.3)',
 } as const;
+/** Opacity of a faint link (the town's, unless its family is hovered or selected). */
+export const LINK_DIM_ALPHA = 0.3;
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
@@ -709,6 +747,14 @@ export const HP_BG = '#304030';
 export const HP_BAR_WIDTH_PX = 48;
 export const HP_BAR_HEIGHT_PX = 4;
 export const STATUS_BADGE_TEXT_COLOR = '#ffffff';
+/** In the town, always-shown labels at or below this CSS scale (zoom ÷ device
+ *  pixel ratio) are one-line chips; hover or select shows the full card. */
+export const TOWN_COMPACT_LABEL_MAX_SCALE = 2;
+/** Nickname characters a one-line town chip shows: about 11 fit the 64 CSS px
+ *  between neighboring desks at zoom 2. */
+export const TOWN_COMPACT_LABEL_CHARS = 11;
+/** CSS px a town FNT chip floats above the head (clear of hair and horns). */
+export const TOWN_FAINT_CHIP_LIFT_PX = 4;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',

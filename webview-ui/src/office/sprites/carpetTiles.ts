@@ -42,8 +42,16 @@ const carpetCache: Map<string, SpriteData> = new Map();
  */
 export function setCarpetSprites(sets: SpriteData[][]): void {
   carpetSets = sets;
+  carpetSpritesVersion++;
   carpetCache.clear();
   carpetVariantPalettes = sets.map((variantSprites) => classifyCarpetPalette(variantSprites));
+}
+
+/** Bumped whenever the carpet sprites change, so cached ground layers redraw. */
+let carpetSpritesVersion = 0;
+
+export function getCarpetSpritesVersion(): number {
+  return carpetSpritesVersion;
 }
 
 export function hasCarpetSprites(): boolean {

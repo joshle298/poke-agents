@@ -2,12 +2,12 @@ import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './a
 import {
   loadCarpetTiles,
   loadCharacterSprites,
-  loadDefaultLayout,
   loadExternalCharacterSprites,
   loadExternalPetSprites,
   loadFloorTiles,
   loadFurnitureAssets,
   loadPetSprites,
+  loadStandaloneDefaultLayout,
   loadWallTiles,
   mergeCharacterSprites,
   mergeLoadedAssets,
@@ -93,6 +93,6 @@ export async function buildAssetCache(
     wallTiles: await loadWallTiles(distRoot).then((t) => t?.sets ?? null),
     carpetTiles: await loadCarpetTiles(distRoot).then((t) => t?.sets ?? null),
     furniture: await loadAllFurniture(distRoot, externalDirs),
-    defaultLayout: loadDefaultLayout(distRoot),
+    defaultLayout: loadStandaloneDefaultLayout(distRoot),
   };
 }

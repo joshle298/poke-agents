@@ -229,6 +229,9 @@ export const LAYOUT_FILE_DIR = '.pixel-agents';
 export const LAYOUT_FILE_NAME = 'layout.json';
 export const LAYOUT_FILE_POLL_INTERVAL_MS = 2000;
 export const LAYOUT_REVISION_KEY = 'layoutRevision';
+/** The Pokémon Town, under `assets/`: the standalone office's layout until the
+ *  user saves one (VS Code keeps the classic default-layout-N.json). */
+export const TOWN_LAYOUT_FILE = 'layouts/pokemon-town.json';
 export const CONFIG_FILE_NAME = 'config.json';
 
 // ── Avatar Customization ────────────────────────────────────

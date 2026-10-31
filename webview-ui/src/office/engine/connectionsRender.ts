@@ -10,6 +10,7 @@
 
 import {
   LINK_COLORS,
+  LINK_DIM_ALPHA,
   LINK_MARCH_PX_PER_SEC,
   LINK_PATTERNS,
   PROJECTILE_ARC_LIFT_PX,
@@ -42,9 +43,10 @@ export function renderLinks(
 ): void {
   const march = time * LINK_MARCH_PX_PER_SEC;
   ctx.save();
-  for (const { from, to, kind } of links) {
+  for (const { from, to, kind, dim } of links) {
     const { period, on } = LINK_PATTERNS[kind];
     ctx.fillStyle = LINK_COLORS[kind];
+    ctx.globalAlpha = dim ? LINK_DIM_ALPHA : 1;
     forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
       if (!isDashLit(step, march, period, on)) return;
       ctx.fillRect(Math.round(offsetX + x * zoom), Math.round(offsetY + y * zoom), zoom, zoom);

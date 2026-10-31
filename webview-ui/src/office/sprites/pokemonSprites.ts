@@ -30,6 +30,7 @@ import type {
 import {
   PMD_GROUND_Y_OFFSET_PX,
   POKEMON_ALPHA_THRESHOLD,
+  POKEMON_ANIM_FALLBACKS,
   POKEMON_DECODE_ORDER,
   POKEMON_GEOMETRY_ANIMS,
   POKEMON_SHEET_RELEASE_AFTER_MS,
@@ -94,6 +95,8 @@ interface SpeciesEntry {
   epoch: number;
   /** When a sweep first found no character using it (sweep clock, ms). */
   unusedSince?: number;
+  /** Half-width of the held faint pose, and the anim it was measured on. */
+  rest?: { anim: string; halfW: number };
 }
 
 const entries = new Map<string, SpeciesEntry>();
@@ -431,6 +434,36 @@ export function getPokemonGeometry(dex: number, shiny: boolean): PokemonGeometry
 /** Ready to replace the upstream character: measured, so Idle or Walk is in. */
 export function isPokemonReady(dex: number, shiny: boolean): boolean {
   return getPokemonGeometry(dex, shiny) !== null;
+}
+
+/**
+ * How far a fainted Pokémon's held pose reaches sideways from its ground
+ * point, in its own pixels: measured once on the last frame (Down row) of the
+ * first faint anim it has decoded (lying down is wider than standing), else
+ * the standing body's half-width. Null until the species is measured.
+ */
+export function getPokemonRestHalfWidth(dex: number, shiny: boolean): number | null {
+  const entry = entries.get(pokemonSpeciesKey(dex, shiny));
+  if (!entry?.geometry) return null;
+  const name = POKEMON_ANIM_FALLBACKS.faint.find((n) => entry.sheets.has(n));
+  if (!name) return entry.geometry.bodyHalfW;
+  if (entry.rest?.anim === name) return entry.rest.halfW;
+  const anim = entry.info.anims[name];
+  const sheet = entry.sheets.get(name);
+  const rgba =
+    anim && sheet && loader
+      ? loader.readPixels(
+          sheet,
+          (anim.frames - 1) * anim.frameWidth,
+          0,
+          anim.frameWidth,
+          anim.frameHeight,
+        )
+      : null;
+  if (!anim || !rgba) return entry.geometry.bodyHalfW;
+  const halfW = computePokemonGeometry(rgba, anim.frameWidth, anim.frameHeight).bodyHalfW;
+  entry.rest = { anim: name, halfW };
+  return halfW;
 }
 
 export function getPokemonAnimMeta(

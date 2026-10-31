@@ -22,6 +22,7 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
 - **Mac app.** `npm run app:mac` builds Poke Agents as a macOS app with notifications when a session needs you and a Dock badge counting them. See [Mac App](#mac-app).
 - **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a Poké Ball pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
+- **The town.** A new office opens on a small town in a forest. Working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back.
 - **Browser window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
@@ -325,7 +326,7 @@ When sounds are on, the app also downloads Pokémon cries from the [PokéAPI cri
 
 The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork or cries.
 
-The office, its characters and furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
+The town's art (grass, tall grass, paths, trees, the pond, the buildings' fronts and signs, and the Lab and Pokémon Center furniture) is original to Poke Agents and drawn in code by `scripts/generate-world-assets.mjs`. The office, its characters and the rest of the furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
 
 <a href="https://github.com/sponsors/pablodelucca">
   <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github" alt="GitHub Sponsors">

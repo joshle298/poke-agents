@@ -99,6 +99,9 @@ export function buildFurnitureCatalog(assetsDir: string): CatalogEntry[] {
 
 // ── Asset index ───────────────────────────────────────────────────────────────
 
+/** The Pokémon Town layout, relative to the assets dir. */
+const TOWN_LAYOUT_PATH = 'layouts/pokemon-town.json';
+
 export function buildAssetIndex(assetsDir: string) {
   function listSorted(subdir: string, pattern: RegExp): string[] {
     const dir = path.join(assetsDir, subdir);
@@ -128,6 +131,11 @@ export function buildAssetIndex(assetsDir: string) {
     }
     if (!defaultLayout && fs.existsSync(path.join(assetsDir, 'default-layout.json'))) {
       defaultLayout = 'default-layout.json';
+    }
+    // The browser office (standalone, Vite dev) opens on the Pokémon Town when
+    // it is bundled; the classic default above stays VS Code's.
+    if (fs.existsSync(path.join(assetsDir, TOWN_LAYOUT_PATH))) {
+      defaultLayout = TOWN_LAYOUT_PATH;
     }
   }
 

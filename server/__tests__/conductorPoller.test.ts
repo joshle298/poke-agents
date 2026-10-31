@@ -741,6 +741,90 @@ describe('Conductor provider scope and visibility', () => {
     expect(h.provider.listSessions().filter((s) => s.leadSessionId === ORCH)).toHaveLength(14);
     await h.provider.stop();
   });
+
+  it("ranks a session by its own status time, not its workspace's activity", async () => {
+    // A busy workspace (a working session in it) must not lend its fresh
+    // activity to an idle session that has not moved for an hour: that made
+    // such sessions rank high, get shown, rank low once read, and leave.
+    const stateDir = tmpStateDir();
+    writeState(stateDir, {
+      version: 1,
+      scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 2 },
+      sessions: {},
+    });
+    const [busyWs, quietWs] = [uuid(0xa01), uuid(0xa02)];
+    const [working, stale, recent] = [uuid(0xa11), uuid(0xa12), uuid(0xa13)];
+    const at = (ms: number) => new Date(ms).toISOString();
+    const h = await boot({
+      stateDir,
+      prepare: (api) => {
+        api.addWorkspace({ id: busyWs, lastActivityAt: at(NOW - 5_000) });
+        api.addWorkspace({ id: quietWs, lastActivityAt: at(NOW - 600_000) });
+        api.addSession({
+          id: working,
+          workspaceId: busyWs,
+          items: workingFeed(working, NOW - 5_000),
+          status: { status: 'working', updatedAt: at(NOW - 60_000) },
+        });
+        // Idle sessions whose feeds hold nothing to read: only their status
+        // says when they last moved.
+        api.addSession({
+          id: stale,
+          workspaceId: busyWs,
+          status: { status: 'idle', updatedAt: at(NOW - 3_600_000) },
+        });
+        api.addSession({
+          id: recent,
+          workspaceId: quietWs,
+          status: { status: 'idle', updatedAt: at(NOW - 300_000) },
+        });
+      },
+    });
+    expect(h.sink.adopted.has(working)).toBe(true);
+    expect(h.sink.adopted.has(recent)).toBe(true);
+    expect(h.sink.adopted.has(stale)).toBe(false);
+    await h.provider.stop();
+  });
+
+  it('keeps a shown child of a Lead until it falls 4 places past the 12-child cap', async () => {
+    const childId = (i: number) => uuid(0x800 + i);
+    const childWs = (i: number) => uuid(0x900 + i);
+    const addChild = (api: FakeConductorApi, i: number, endMs: number) => {
+      const items = idleFeed(childId(i), endMs);
+      items[0].content.senderSessionId = ORCH;
+      api.addWorkspace({ id: childWs(i), lastActivityAt: items.at(-1)?.receivedAt });
+      api.addSession({ id: childId(i), workspaceId: childWs(i), items });
+    };
+    const h = await boot({
+      prepare: (api) => {
+        orchestration(api);
+        // Twelve children, newest first: all shown.
+        for (let i = 0; i < 12; i++) addChild(api, i, NOW - 30_000 - i * 1_000);
+      },
+    });
+    const shown = () => [...h.sink.adopted].filter((id) => id.startsWith('00000'));
+    expect(shown()).toHaveLength(12);
+
+    // A thirteenth child appears, newer than every other: it ranks first and
+    // the oldest shown child is now 13th among its Lead's children.
+    h.clock.t += 5_000;
+    addChild(h.api, 12, h.clock.t - 1_000);
+    h.clock.t += 16_000;
+    await settle(h.provider);
+    expect(h.sink.adopted.has(childId(12))).toBe(true);
+    expect(h.sink.adopted.has(childId(11))).toBe(true);
+    expect(h.sink.removed.filter(([id]) => id.startsWith('00000'))).toEqual([]);
+    expect(shown()).toHaveLength(13);
+
+    // Four more newer children push the oldest 4 places past the cap: it leaves.
+    for (let i = 13; i < 17; i++) addChild(h.api, i, h.clock.t - 1_000);
+    h.clock.t += 16_000;
+    await settle(h.provider);
+    expect(h.sink.adopted.has(childId(11))).toBe(false);
+    expect(h.sink.removed).toContainEqual([childId(11), 'scope']);
+    expect(shown()).toHaveLength(16);
+    await h.provider.stop();
+  });
 });
 
 describe('Conductor provider controls', () => {
@@ -845,6 +929,8 @@ describe('Conductor provider controls', () => {
           workspaceId: uuid(0xc02),
           name: 'Cold one',
           items: idleFeed(cold, NOW - 3 * 3_600_000),
+          // Idle for three hours: its status last changed then, too.
+          status: { status: 'idle', updatedAt: new Date(NOW - 3 * 3_600_000).toISOString() },
         });
       },
     });

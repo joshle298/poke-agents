@@ -25,7 +25,7 @@ export interface LoadedAssetData {
 }
 
 export type FurnitureCategory =
-  'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'wall' | 'misc';
+  'desks' | 'chairs' | 'storage' | 'decor' | 'electronics' | 'outdoor' | 'wall' | 'misc';
 
 /** @internal */
 export interface CatalogEntryWithCategory extends FurnitureCatalogEntry {
@@ -54,6 +54,9 @@ const onToOff = new Map<string, string>(); // on asset → off asset
 // ── Animation groups ────────────────────────────────────────────
 // Maps animation group ID → ordered list of asset IDs by frame index
 const animationGroups = new Map<string, string[]>();
+// Ambient animations (no on/off state: a pond's shimmer) loop all the time.
+// Maps every frame's asset ID → the group's ordered frames.
+const ambientFrames = new Map<string, string[]>();
 
 // Internal catalog (includes all variants for getCatalogEntry lookups)
 let internalCatalog: CatalogEntryWithCategory[] | null = null;
@@ -120,6 +123,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
   offToOn.clear();
   onToOff.clear();
   animationGroups.clear();
+  ambientFrames.clear();
 
   // Phase 1: Collect orientations per group (only "off" or stateless variants for rotation)
   // For mirrorSide assets with orientation "side", register as both "right" and virtual "left"
@@ -269,11 +273,24 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
       frames.map((f) => f.id),
     );
   }
+  // An animation group none of whose frames carries an on/off state is ambient.
+  const statefulGroups = new Set<string>();
+  for (const asset of assets.catalog) {
+    if (asset.animationGroup && asset.state) statefulGroups.add(asset.animationGroup);
+  }
+  for (const [groupId, ids] of animationGroups) {
+    if (statefulGroups.has(groupId) || ids.length < 2) continue;
+    for (const id of ids) ambientFrames.set(id, ids);
+  }
 
   // Track "on" variant IDs and animation frame IDs (non-first) to exclude from visible catalog
-  const onStateIds = new Set<string>();
+  const paletteHiddenIds = new Set<string>();
   for (const asset of assets.catalog) {
-    if (asset.state === 'on') onStateIds.add(asset.id);
+    if (asset.state === 'on') paletteHiddenIds.add(asset.id);
+    // Later frames of an animation are the same item: the palette shows frame 0.
+    if (asset.animationGroup && asset.frame !== undefined && asset.frame > 0) {
+      paletteHiddenIds.add(asset.id);
+    }
   }
 
   // Store full internal catalog (all variants — for getCatalogEntry lookups)
@@ -281,7 +298,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
 
   // Visible catalog: exclude non-front variants and "on" state variants
   const visibleEntries = allEntries.filter(
-    (e) => !nonFrontIds.has(e.type) && !onStateIds.has(e.type),
+    (e) => !nonFrontIds.has(e.type) && !paletteHiddenIds.has(e.type),
   );
 
   // Strip orientation/state suffix from labels for grouped variants
@@ -337,6 +354,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'storage', label: 'Storage' },
   { id: 'electronics', label: 'Tech' },
   { id: 'decor', label: 'Decor' },
+  { id: 'outdoor', label: 'Outdoor' },
   { id: 'wall', label: 'Wall' },
   { id: 'misc', label: 'Misc' },
 ];
@@ -373,6 +391,11 @@ export function getOnStateType(currentType: string): string {
 /** Returns true if the given furniture type is part of a rotation group. */
 export function isRotatable(type: string): boolean {
   return rotationGroups.has(type);
+}
+
+/** Frames of an ambient animation (no on/off state) the type belongs to, or null. */
+export function getAmbientAnimationFrames(type: string): readonly string[] | null {
+  return ambientFrames.get(type) ?? null;
 }
 
 /** Get ordered animation frame asset IDs for a given type, or null if not animated. */

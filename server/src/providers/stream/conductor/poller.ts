@@ -1912,13 +1912,16 @@ export class ConductorPoller {
         (activity.get(b.id) ?? -1) - (activity.get(a.id) ?? -1) ||
         a.firstSeen - b.firstSeen,
     );
-    // At most 12 children per Lead are shown; the rest stay in the Sessions modal.
+    // At most 12 children per Lead are shown; the rest stay in the Sessions
+    // modal. Like the overall cap, a shown child keeps its place until it falls
+    // CAP_HYSTERESIS past it, so children don't swap in and out as their
+    // activity re-ranks them.
     const perLead = new Map<string, number>();
     const capped = ranked.filter((rec) => {
       if (!rec.firstSender || pinned(rec) || !this.records.has(rec.firstSender)) return true;
       const n = perLead.get(rec.firstSender) ?? 0;
       perLead.set(rec.firstSender, n + 1);
-      return n < MAX_CHILDREN_PER_LEAD;
+      return n < MAX_CHILDREN_PER_LEAD || (rec.adopted && n < MAX_CHILDREN_PER_LEAD + hysteresis);
     });
     // Pinned sessions are always shown; the rest fill the cap in rank order. A
     // shown session keeps its place until it falls CAP_HYSTERESIS past the cap.
