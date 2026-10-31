@@ -599,6 +599,11 @@ export const POKEMON_ANIM_FALLBACKS = {
   wake: ['Wake', 'Hop'],
 } as const satisfies Record<string, readonly string[]>;
 /** Decode order: what the office needs first. Anything else follows. */
+/** A species no character has used this long has its decoded sheets closed
+ *  (it decodes again when one does). */
+export const POKEMON_SHEET_RELEASE_AFTER_MS = 5 * 60_000;
+/** How often (simulated seconds) OfficeState sweeps unused species. */
+export const POKEMON_SHEET_SWEEP_SEC = 30;
 export const POKEMON_DECODE_ORDER = [
   'Idle',
   'Walk',

@@ -90,12 +90,14 @@ export function speciesMessage(
 
 /**
  * A loader for `speciesMessage` URLs. `fail` names anims whose decode
- * rejects; `shrink` names anims whose decoded sheet is too small.
+ * rejects; `shrink` names anims whose decoded sheet is too small. Every load
+ * returns a fresh image whose close() (ImageBitmap.close) is recorded in
+ * `closed` by URL.
  */
 export function installFakeLoader(
   msgs: PokemonSpeciesLoaded[],
   opts: { fail?: string[]; shrink?: string[]; boxes?: Record<string, Box> } = {},
-): { loads: string[] } {
+): { loads: string[]; closed: string[] } {
   const byUrl = new Map<string, FakeSheet>();
   for (const msg of msgs) {
     for (const [name, a] of Object.entries(msg.anims)) {
@@ -111,13 +113,14 @@ export function installFakeLoader(
     }
   }
   const loads: string[] = [];
+  const closed: string[] = [];
   const loader: PokemonSheetLoader = {
     async load(url) {
       loads.push(url);
       const sheet = byUrl.get(url);
       const anim = url.split('-').pop() ?? '';
       if (!sheet || opts.fail?.includes(anim)) throw new Error(`no sheet for ${url}`);
-      return sheet;
+      return { ...sheet, image: { url, close: () => closed.push(url) } };
     },
     readPixels(sheet, sx, sy, sw, sh) {
       const fake = sheet as FakeSheet;
@@ -137,7 +140,7 @@ export function installFakeLoader(
     },
   };
   setPokemonSheetLoader(loader);
-  return { loads };
+  return { loads, closed };
 }
 
 /** Let pending sheet decodes settle. */

@@ -314,10 +314,15 @@ export function useExtensionMessages(
 
   // Same two-copies shape for the Pokémon theme: React state for the chrome,
   // the module flag for the render loop and OfficeState.
-  const applyPokemonTheme = useCallback((enabled: boolean) => {
-    setPokemonThemeState(enabled);
-    setPokemonThemeEnabled(enabled);
-  }, []);
+  const applyPokemonTheme = useCallback(
+    (enabled: boolean) => {
+      setPokemonThemeState(enabled);
+      setPokemonThemeEnabled(enabled);
+      // Theme back on: decode again whatever a sweep released meanwhile.
+      if (enabled) getOfficeState().sweepPokemonSheets();
+    },
+    [getOfficeState],
+  );
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false);
@@ -844,6 +849,8 @@ export function useExtensionMessages(
       } else if (msg.type === 'pokemonSpeciesLoaded') {
         installBrowserSheetLoader();
         setPokemonSpecies(msg as PokemonSpeciesLoaded);
+        // New species are when sheet memory grows; drop the long-unused ones.
+        os.sweepPokemonSheets();
       } else if (msg.type === 'petSpritesLoaded') {
         const pets = msg.pets;
         if (!Array.isArray(pets)) {
