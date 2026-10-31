@@ -114,7 +114,7 @@ import {
 } from './normalize/shared.js';
 import { pendingQuestion } from './question.js';
 import type { SessionLogStore } from './sessionLog.js';
-import type { ConductorStateStore } from './state.js';
+import { type ConductorStateStore, scopeWindowMs } from './state.js';
 import { formatConductorToolStatus } from './tools.js';
 import type {
   ConductorItem,
@@ -898,7 +898,7 @@ export class ConductorPoller {
     this.nextDiscoveryAt = now + DISCOVERY_INTERVAL_MS;
     try {
       const scope = this.state.scope;
-      const since = new Date(now - scope.activeWithinHours * 3_600_000).toISOString();
+      const since = new Date(now - scopeWindowMs(scope)).toISOString();
       const creator = scope.creator === 'me' ? this.me.userId : undefined;
       const seen = new Set<string>();
       let offset = 0;
@@ -1823,7 +1823,7 @@ export class ConductorPoller {
     const persisted = this.state.session(rec.id);
     if (persisted?.pinned) return true;
     const scope = this.state.scope;
-    const windowStart = now - scope.activeWithinHours * 3_600_000;
+    const windowStart = now - scopeWindowMs(scope);
     // Withdrawn from the PC Box within the window: the user asked for it,
     // whatever its feed or workspace says.
     if (persisted?.restoredAt !== undefined && persisted.restoredAt >= windowStart) return true;

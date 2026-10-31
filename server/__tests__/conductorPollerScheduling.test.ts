@@ -396,6 +396,34 @@ describe('Conductor poller: ranking by a session own activity', () => {
   });
 });
 
+describe('Conductor poller: the "All" activity window', () => {
+  it('keeps 0 as asked and serves it as the longest supported window', async () => {
+    const old = uuid(0x4501);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x4502),
+          lastActivityAt: new Date(NOW - 3 * 24 * HOUR).toISOString(),
+        });
+        api.addSession({
+          id: old,
+          workspaceId: uuid(0x4502),
+          items: idleFeed(old, NOW - 3 * 24 * HOUR),
+        });
+      },
+    });
+    expect(h.sink.adopted.has(old)).toBe(false);
+    h.provider.setScope({ creator: 'me', activeWithinHours: 0, showIdle: true, maxSessions: 24 });
+    expect(h.provider.getScope().activeWithinHours).toBe(0);
+    expect(h.sink.lastStatus()?.scope.activeWithinHours).toBe(0);
+    await settle(h.provider, 30);
+    expect(h.sink.adopted.has(old)).toBe(true);
+    const discovery = h.api.calls.filter((c) => c.path === '/v0/workspaces').at(-1);
+    expect(Date.parse(discovery?.query.since ?? '')).toBe(NOW - 30 * 24 * HOUR);
+    await h.provider.stop();
+  });
+});
+
 describe('Conductor poller: a turn longer than the scope window', () => {
   it('keeps a session that has been working for hours in scope', async () => {
     const id = uuid(0x4401);

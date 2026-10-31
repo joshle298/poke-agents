@@ -71,15 +71,24 @@ export function sanitizeScope(raw: unknown, base: ConductorScope = DEFAULT_SCOPE
   >;
   return {
     creator: r.creator === 'all' || r.creator === 'me' ? r.creator : base.creator,
+    // 0 is "All": kept as asked, and served as the longest supported window
+    // (scopeWindowMs). It used to be clamped to 1 h.
     activeWithinHours: clampInt(
       r.activeWithinHours,
-      1,
+      0,
       MAX_ACTIVE_WITHIN_HOURS,
       base.activeWithinHours,
     ),
     showIdle: typeof r.showIdle === 'boolean' ? r.showIdle : base.showIdle,
     maxSessions: clampInt(r.maxSessions, 1, MAX_SESSIONS_LIMIT, base.maxSessions),
   };
+}
+
+/** The activity window a scope selects, in ms. `activeWithinHours: 0` means
+ *  no chosen limit: the longest supported window (MAX_ACTIVE_WITHIN_HOURS), so
+ *  discovery never pages through an account's entire history every pass. */
+export function scopeWindowMs(scope: ConductorScope): number {
+  return (scope.activeWithinHours || MAX_ACTIVE_WITHIN_HOURS) * 3_600_000;
 }
 
 function sanitizeSession(raw: unknown): PersistedConductorSession | undefined {
