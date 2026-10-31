@@ -284,12 +284,16 @@ export interface OpenedTrack {
 export class MusicFolderLibrary {
   private last: { at: number; scan: FolderScan; byId: Map<string, FolderTrackEntry> } | null = null;
   private inflight: Promise<FolderScan> | null = null;
+  /** Absolute, so it can be handed to `open` as an argument. */
+  readonly root: string;
 
   constructor(
-    readonly root: string = defaultMusicDir(),
+    root: string = defaultMusicDir(),
     private readonly limits: ScanLimits = DEFAULT_LIMITS,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.root = path.resolve(root);
+  }
 
   /** The latest scan when it is younger than `maxAgeMs`, else a fresh one. */
   async scan(maxAgeMs: number = MUSIC_SCAN_REUSE_MS): Promise<FolderScan> {
@@ -331,7 +335,12 @@ export class MusicFolderLibrary {
       const real = await fs.promises.realpath(entry.absPath);
       const mimeType = audioMimeType(real);
       if (!isInsideDir(rootReal, real) || !mimeType) return null;
-      const handle = await fs.promises.open(real, 'r');
+      // `real` has no symlink left in it, so a link at its end can only be a
+      // file swapped for one since the realpath: refuse it (O_NOFOLLOW).
+      const handle = await fs.promises.open(
+        real,
+        fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+      );
       try {
         const stat = await handle.stat();
         if (!stat.isFile()) {

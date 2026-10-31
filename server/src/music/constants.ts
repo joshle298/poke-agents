@@ -46,10 +46,12 @@ export const MUSIC_ROUTE_CACHE_CONTROL = 'private, no-cache';
 
 // ── macOS apps ─────────────────────────────────────────────────
 export const OSASCRIPT_PATH = '/usr/bin/osascript';
-export const MAC_OPEN_PATH = '/usr/bin/open';
-export const LINUX_OPEN_COMMAND = 'xdg-open';
-/** Controls (play, pause, status) answer quickly or count as failed. */
+/** Controls (pause, next, status) answer quickly or count as failed. */
 export const OSASCRIPT_TIMEOUT_MS = 10_000;
+/** Commands that may launch the app first (play, resume, open a link). A cold
+ *  Spotify gets up to 10 s to answer before it is told to play, and the first
+ *  command also waits while macOS asks whether to allow control of the app. */
+export const OSASCRIPT_LAUNCH_TIMEOUT_MS = 30_000;
 /** Scanning a large Music library takes longer. */
 export const OSASCRIPT_SCAN_TIMEOUT_MS = 60_000;
 export const OSASCRIPT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;

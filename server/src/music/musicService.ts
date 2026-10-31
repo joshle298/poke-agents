@@ -8,7 +8,6 @@
  * through privileged client messages (musicMessages.ts) and the tokened route.
  */
 
-import { execFile } from 'child_process';
 import * as crypto from 'crypto';
 import * as os from 'os';
 
@@ -19,7 +18,7 @@ import type {
   MusicSourceId,
   MusicState,
 } from '../../../core/src/messages.js';
-import { OPEN_COMMAND_TIMEOUT_MS } from '../constants.js';
+import { type ExecFn, openWithSystem } from '../openAppWindow.js';
 import type { AppStatus, LibraryAlbum } from './appleScripts.js';
 import {
   appleMusicCommand,
@@ -27,7 +26,7 @@ import {
   parseStatus,
   spotifyCommand,
 } from './appleScripts.js';
-import { LINUX_OPEN_COMMAND, MAC_OPEN_PATH, MUSIC_ID_HEX_LENGTH } from './constants.js';
+import { MUSIC_ID_HEX_LENGTH } from './constants.js';
 import { JukeboxError } from './errors.js';
 import { displayMusicPath, MusicFolderLibrary } from './folderLibrary.js';
 import { parseAppleMusicLink, parseSpotifyLink } from './links.js';
@@ -300,31 +299,19 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Runs a program with arguments (execFile, no shell); injected in tests. */
-export type RunFile = (file: string, args: string[]) => Promise<void>;
-
-const runFile: RunFile = (file, args) =>
-  new Promise((resolve, reject) => {
-    execFile(file, args, { timeout: OPEN_COMMAND_TIMEOUT_MS }, (err) => {
-      if (err) reject(err);
-      else resolve();
-    });
-  });
-
-/** Open a folder in the file manager: `/usr/bin/open <dir>` on macOS,
- *  `xdg-open <dir>` on Linux, through execFile (no shell). */
+/** Open the music folder in the file manager: `/usr/bin/open <dir>` on macOS,
+ *  `xdg-open <dir>` on Linux (openWithSystem: execFile, no shell). `dir` is
+ *  the absolute music folder, so it can never read as an option. */
 export async function openFolderWithSystem(
   dir: string,
   platform: NodeJS.Platform,
-  run: RunFile = runFile,
+  exec?: ExecFn,
 ): Promise<void> {
-  const file =
-    platform === 'darwin' ? MAC_OPEN_PATH : platform === 'linux' ? LINUX_OPEN_COMMAND : null;
-  if (!file) {
+  if (platform !== 'darwin' && platform !== 'linux') {
     throw new UserError(`Open ${displayMusicPath(dir)} in your file manager to add music.`);
   }
   try {
-    await run(file, [dir]);
+    await openWithSystem(dir, { platform, exec });
   } catch {
     throw new UserError(`Couldn't open ${displayMusicPath(dir)}.`);
   }

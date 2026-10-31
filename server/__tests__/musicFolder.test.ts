@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   displayMusicPath,
@@ -148,6 +148,14 @@ describe('scanMusicFolder', () => {
     expect(paths.every((p) => p.startsWith(fs.realpathSync(root) + path.sep))).toBe(true);
   });
 
+  it('reads the file type from where a link leads, not from its name', async () => {
+    touch(path.join(root, 'Notes', 'notes.txt'));
+    fs.symlinkSync(path.join(root, 'Notes', 'notes.txt'), path.join(root, 'song.mp3'));
+    touch(path.join(root, 'Mine', '01 Mine.mp3'));
+    const scan = await scanMusicFolder(root);
+    expect(scan.albums.map((a) => a.name)).toEqual(['Mine']);
+  });
+
   it('does not loop on a symlink cycle and stops at the depth limit', async () => {
     touch(path.join(root, 'A', '01 a.mp3'));
     fs.symlinkSync(path.join(root, 'A'), path.join(root, 'A', 'again'));
@@ -193,6 +201,41 @@ describe('MusicFolderLibrary', () => {
     touch(outside, 'secret');
     fs.rmSync(path.join(root, 'Album', '01 Song.mp3'));
     fs.symlinkSync(outside, path.join(root, 'Album', '01 Song.mp3'));
+    expect(await library.openTrack(id)).toBeNull();
+  });
+
+  it('refuses a track swapped for a link after its path was resolved', async () => {
+    const track = path.join(root, 'Album', '01 Song.mp3');
+    touch(track, 'abcdef');
+    const library = new MusicFolderLibrary(root);
+    const id = (await library.scan()).albums[0].tracks[0].id;
+    const outside = path.join(base, 'secret.mp3');
+    touch(outside, 'secret');
+
+    // The swap lands between the realpath check and the open.
+    const realTrack = fs.realpathSync(track);
+    const realpath = fs.promises.realpath.bind(fs.promises);
+    const spy = vi.spyOn(fs.promises, 'realpath').mockImplementation(async (p) => {
+      const resolved = await realpath(p);
+      if (resolved !== realTrack) return resolved;
+      fs.rmSync(track);
+      fs.symlinkSync(outside, track);
+      return realTrack;
+    });
+    try {
+      expect(await library.openTrack(id)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('serves regular files only', async () => {
+    const track = path.join(root, 'Album', '01 Song.mp3');
+    touch(track);
+    const library = new MusicFolderLibrary(root);
+    const id = (await library.scan()).albums[0].tracks[0].id;
+    fs.rmSync(track);
+    fs.mkdirSync(track);
     expect(await library.openTrack(id)).toBeNull();
   });
 

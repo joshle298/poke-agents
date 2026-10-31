@@ -263,5 +263,36 @@ describe('MacMusicApp', () => {
     expect(mapOsaError('apple', { killed: true, signal: 'SIGTERM' }).kind).toBe('timeout');
     expect(mapOsaError('apple', { code: 'ENOENT' }).kind).toBe('unsupported');
     expect(mapOsaError('spotify', err('weird')).message).toBe("Spotify couldn't do that.");
+    // -2700 is AppleScript's catch-all: only a missing app is "not installed".
+    expect(
+      mapOsaError(
+        'spotify',
+        err('syntax error: Can’t get application id "com.spotify.client". (-2700)'),
+      ).kind,
+    ).toBe('notInstalled');
+    expect(mapOsaError('apple', err('execution error: Unknown error. (-2700)')).kind).toBe(
+      'failed',
+    );
+    // The first command may wait on macOS's Automation prompt.
+    expect(mapOsaError('apple', { killed: true, signal: 'SIGTERM' }).message).toContain(
+      'allow control of Music',
+    );
+  });
+
+  it('gives commands that may launch the app time to start it', () => {
+    const control = spotifyCommand('pause').timeoutMs;
+    for (const action of ['playUri', 'resume']) {
+      expect(spotifyCommand(action, { uri: URI }).timeoutMs).toBeGreaterThan(control);
+    }
+    // The Spotify wait-for-ready loop (40 × 0.25 s) fits with room to spare.
+    expect(spotifyCommand('playUri', { uri: URI }).script).toContain('repeat 40 times');
+    expect(spotifyCommand('playUri', { uri: URI }).timeoutMs).toBeGreaterThanOrEqual(20_000);
+    expect(appleMusicCommand('resume').timeoutMs).toBeGreaterThan(
+      appleMusicCommand('pause').timeoutMs,
+    );
+    expect(
+      appleMusicCommand('openLocation', { url: 'itmss://music.apple.com/us/album/x/1?app=music' })
+        .timeoutMs,
+    ).toBeGreaterThan(appleMusicCommand('next').timeoutMs);
   });
 });

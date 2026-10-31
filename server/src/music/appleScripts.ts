@@ -14,6 +14,7 @@
 import {
   APPLE_ALBUMS_MAX,
   OSASCRIPT_ARG_MAX_LENGTH,
+  OSASCRIPT_LAUNCH_TIMEOUT_MS,
   OSASCRIPT_SCAN_TIMEOUT_MS,
   OSASCRIPT_TIMEOUT_MS,
 } from './constants.js';
@@ -192,7 +193,8 @@ end run`,
 end run`,
 } as const;
 
-/** Waits for a just-launched Spotify to answer before driving it. */
+/** Waits for a just-launched Spotify to answer before driving it (up to
+ *  10 s; the commands that use it get OSASCRIPT_LAUNCH_TIMEOUT_MS). */
 const SPOTIFY_WAIT_READY = `repeat 40 times
 			try
 				get player state
@@ -319,11 +321,16 @@ export function appleMusicCommand(action: string, params: AppleMusicParams = {})
     default:
       break;
   }
-  const slow = a === 'listPokemonAlbums' || a === 'playAlbum' || a === 'playAllPokemon';
+  const scans = a === 'listPokemonAlbums' || a === 'playAlbum' || a === 'playAllPokemon';
+  const launches = a === 'resume' || a === 'openLocation';
   return {
     script: MUSIC_SCRIPTS[a],
     args,
-    timeoutMs: slow ? OSASCRIPT_SCAN_TIMEOUT_MS : OSASCRIPT_TIMEOUT_MS,
+    timeoutMs: scans
+      ? OSASCRIPT_SCAN_TIMEOUT_MS
+      : launches
+        ? OSASCRIPT_LAUNCH_TIMEOUT_MS
+        : OSASCRIPT_TIMEOUT_MS,
   };
 }
 
@@ -349,7 +356,12 @@ export function spotifyCommand(action: string, params: SpotifyParams = {}): OsaC
     default:
       break;
   }
-  return { script: SPOTIFY_SCRIPTS[a], args, timeoutMs: OSASCRIPT_TIMEOUT_MS };
+  const launches = a === 'playUri' || a === 'resume';
+  return {
+    script: SPOTIFY_SCRIPTS[a],
+    args,
+    timeoutMs: launches ? OSASCRIPT_LAUNCH_TIMEOUT_MS : OSASCRIPT_TIMEOUT_MS,
+  };
 }
 
 // ── Output parsers ─────────────────────────────────────────────

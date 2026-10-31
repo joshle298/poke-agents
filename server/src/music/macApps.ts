@@ -96,7 +96,10 @@ export function mapOsaError(app: MusicAppId, err: unknown): MusicAppError {
     return new MusicAppError('unsupported', 'AppleScript (osascript) is not available here.');
   }
   if (e.killed || e.signal === 'SIGTERM') {
-    return new MusicAppError('timeout', `${name} didn't answer in time.`);
+    return new MusicAppError(
+      'timeout',
+      `${name} didn't answer in time. If macOS is asking whether to allow control of ${name}, answer it and try again.`,
+    );
   }
   const stderr = typeof e.stderr === 'string' ? e.stderr : '';
   switch (osaErrorNumber(stderr)) {
@@ -109,8 +112,13 @@ export function mapOsaError(app: MusicAppId, err: unknown): MusicAppError {
     case -609:
       return new MusicAppError('notRunning', `${name} isn't running.`);
     case -10814:
-    case -2700:
       return new MusicAppError('notInstalled', `${name} isn't installed.`);
+    case -2700:
+      // AppleScript's catch-all number: only "Can't get application id …"
+      // means the app is missing.
+      return /application id/i.test(stderr)
+        ? new MusicAppError('notInstalled', `${name} isn't installed.`)
+        : new MusicAppError('failed', `${name} couldn't do that.`);
     case -128:
       return new MusicAppError('failed', 'Cancelled.');
     case SCRIPT_ERROR_ALBUM_GONE:
