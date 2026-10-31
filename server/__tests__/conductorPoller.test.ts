@@ -877,6 +877,50 @@ describe('Conductor provider scope and visibility', () => {
     await h.provider.stop();
   });
 
+  it("ranks a session by its own status time, not its workspace's activity", async () => {
+    // A busy workspace (a working session in it) must not lend its fresh
+    // activity to an idle session that has not moved for an hour: that made
+    // such sessions rank high, get shown, rank low once read, and leave.
+    const stateDir = tmpStateDir();
+    writeState(stateDir, {
+      version: 1,
+      scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 2 },
+      sessions: {},
+    });
+    const [busyWs, quietWs] = [uuid(0xa01), uuid(0xa02)];
+    const [working, stale, recent] = [uuid(0xa11), uuid(0xa12), uuid(0xa13)];
+    const at = (ms: number) => new Date(ms).toISOString();
+    const h = await boot({
+      stateDir,
+      prepare: (api) => {
+        api.addWorkspace({ id: busyWs, lastActivityAt: at(NOW - 5_000) });
+        api.addWorkspace({ id: quietWs, lastActivityAt: at(NOW - 600_000) });
+        api.addSession({
+          id: working,
+          workspaceId: busyWs,
+          items: workingFeed(working, NOW - 5_000),
+          status: { status: 'working', updatedAt: at(NOW - 60_000) },
+        });
+        // Idle sessions whose feeds hold nothing to read: only their status
+        // says when they last moved.
+        api.addSession({
+          id: stale,
+          workspaceId: busyWs,
+          status: { status: 'idle', updatedAt: at(NOW - 3_600_000) },
+        });
+        api.addSession({
+          id: recent,
+          workspaceId: quietWs,
+          status: { status: 'idle', updatedAt: at(NOW - 300_000) },
+        });
+      },
+    });
+    expect(h.sink.adopted.has(working)).toBe(true);
+    expect(h.sink.adopted.has(recent)).toBe(true);
+    expect(h.sink.adopted.has(stale)).toBe(false);
+    await h.provider.stop();
+  });
+
   it('keeps a shown child of a Lead until it falls 4 places past the 12-child cap', async () => {
     const childId = (i: number) => uuid(0x800 + i);
     const childWs = (i: number) => uuid(0x900 + i);
@@ -1012,6 +1056,8 @@ describe('Conductor provider controls', () => {
           workspaceId: uuid(0xc02),
           name: 'Cold one',
           items: idleFeed(cold, NOW - 3 * 3_600_000),
+          // Idle for three hours: its status last changed then, too.
+          status: { status: 'idle', updatedAt: new Date(NOW - 3 * 3_600_000).toISOString() },
         });
       },
     });

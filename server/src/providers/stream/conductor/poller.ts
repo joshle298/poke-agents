@@ -171,6 +171,8 @@ interface SessionRecord {
   norm: NormState;
   runStatus?: ConductorRunStatus;
   statusAt?: number;
+  /** When the session's run status last changed (/status `updatedAt`). */
+  statusUpdatedAt?: number;
   statusMessage?: string;
   lastErrorAt?: string;
   cursor?: { lastId: string; lastIndex: number };
@@ -972,6 +974,7 @@ export class ConductorPoller {
       const status = await this.client.getSessionStatus(rec.id, priority);
       rec.statusAt = this.clock.now();
       rec.runStatus = status?.status ?? 'idle';
+      rec.statusUpdatedAt = parseTime(status?.updatedAt) ?? rec.statusUpdatedAt;
       rec.statusMessage = clipError(status?.errorMessage ?? status?.lastError ?? undefined);
       return status;
     } catch (err) {
@@ -1483,10 +1486,18 @@ export class ConductorPoller {
     return seed.status === 'active' ? 'working' : seed.status === 'error' ? 'error' : 'idle';
   }
 
+  /**
+   * When the session last moved: its last item, else what was saved, else
+   * when its run status last changed. The workspace's activity is the last
+   * resort: every session in a busy workspace shares it, so an idle session
+   * next to a working one would rank as just active, be shown, rank low once
+   * read, and leave again.
+   */
   private activityOf(rec: SessionRecord): number {
     return (
       rec.norm.lastItemAt ??
       this.state.session(rec.id)?.lastActivityAt ??
+      rec.statusUpdatedAt ??
       this.workspaces.get(rec.workspaceId)?.lastActivityMs ??
       0
     );
