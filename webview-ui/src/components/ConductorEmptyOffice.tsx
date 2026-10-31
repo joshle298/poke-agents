@@ -1,38 +1,59 @@
 import type { ReactNode } from 'react';
 
 import { useConductor } from '../conductor/conductorStore.js';
-import { CLOUD_ONLY_NOTE, conductorStatusLine, needsSignIn } from '../conductor/format.js';
+import {
+  CLOUD_ONLY_NOTE,
+  conductorStatusLine,
+  needsSignIn,
+  splitConnectedMessage,
+} from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
-import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
-import { isDesktopApp } from '../desktopApp.js';
-import { ConductorReconnectButton, ConductorSignInSteps } from './ConductorSignInSteps.js';
+import { CONDUCTOR_CONNECTED_NOTICE_MS, CONDUCTOR_UI_TICK_MS } from '../constants.js';
+import { ConductorConnectCard } from './ConductorConnectCard.js';
 import { CapsuleIcon } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 
 interface ConductorEmptyOfficeProps {
   /** Null in a read-only office (it can't change the scope). */
   onOpenSessions: (() => void) | null;
+  /** A read-only office can watch but not connect. */
+  readOnly: boolean;
 }
 
 /**
- * Centred in an office with Conductor on and nobody in it: the sign-in steps
- * when there is no usable token, a connection problem, or "No sessions in
- * scope" with the way to widen it. Says that only cloud workspaces appear,
- * the first thing a Conductor user would otherwise suspect.
+ * Centred in an office with Conductor on and nobody in it: the Connect card
+ * when there is no usable key, "Connected as …" right after connecting, a
+ * connection problem, or "No sessions in scope" with the way to widen it.
+ * Says that only cloud workspaces appear, the first thing a Conductor user
+ * would otherwise suspect.
  */
-export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficeProps) {
+export function ConductorEmptyOffice({ onOpenSessions, readOnly }: ConductorEmptyOfficeProps) {
   const status = useConductor((s) => s.status);
+  const signIn = useConductor((s) => s.signIn);
   const now = useNow(CONDUCTOR_UI_TICK_MS);
   const state = status?.state ?? 'connecting';
+  const justConnected =
+    signIn?.action === 'connect' &&
+    signIn.ok &&
+    !needsSignIn(status) &&
+    now - signIn.at < CONDUCTOR_CONNECTED_NOTICE_MS;
 
   let title: string;
   let body: ReactNode;
   if (needsSignIn(status)) {
-    title = state === 'unauthorized' ? 'Conductor sign-in rejected' : 'Sign in to Conductor';
+    title = 'Connect to Conductor';
+    body = <ConductorConnectCard readOnly={readOnly} />;
+  } else if (justConnected) {
+    const { headline, note } = splitConnectedMessage(signIn.message);
+    title = headline;
     body = (
       <>
-        <ConductorSignInSteps className="m-0 pl-24 flex flex-col gap-4 text-xs text-left" />
-        <ConductorReconnectButton />
+        {note && <span className="text-xs">{note}</span>}
+        <span className="text-xs text-text-muted">
+          {state === 'connected'
+            ? 'Sessions active in your cloud workspaces walk in here.'
+            : conductorStatusLine(status, now)}
+        </span>
       </>
     );
   } else if (state === 'connected') {
@@ -44,16 +65,13 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
     );
   } else {
     title = state === 'connecting' ? 'Connecting to Conductor…' : 'Waiting for Conductor';
-    body = (
-      <span className="text-xs text-text-muted">
-        {conductorStatusLine(status, now, isDesktopApp)}
-      </span>
-    );
+    body = <span className="text-xs text-text-muted">{conductorStatusLine(status, now)}</span>;
   }
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 p-16">
-      <div className="pixel-panel pointer-events-auto flex flex-col items-center gap-8 py-12 px-16 max-w-[420px] text-center">
+      {/* Scrolls rather than clipping in a short window (the Connect card is tall). */}
+      <div className="pixel-panel pointer-events-auto flex flex-col items-center gap-8 py-12 px-16 max-w-[460px] max-h-full overflow-y-auto text-center">
         <CapsuleIcon size={32} />
         <span className="text-lg">{title}</span>
         {body}

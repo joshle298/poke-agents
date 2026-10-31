@@ -4,6 +4,7 @@ import type { PokemonSpeciesLoaded, ServerMessage } from '../../core/src/message
 import {
   agentBattleName,
   ConductorStore,
+  connectAnswer,
   crossesEvolutionLevel,
   currentActivity,
 } from '../src/conductor/conductorStore.js';
@@ -322,6 +323,62 @@ describe('ConductorStore', () => {
       });
       store.dismissToast(toasts[0].seq);
       expect(store.getState().toasts).toHaveLength(1);
+    });
+
+    it('keeps the newest connect or sign-out answer for the Connect card and Settings', () => {
+      expect(store.getState().signIn).toBeNull();
+      apply({
+        type: 'conductorActionResult',
+        action: 'connect',
+        ok: false,
+        message: 'That key was rejected by Conductor.',
+      });
+      const rejected = store.getState().signIn;
+      expect(rejected).toMatchObject({
+        action: 'connect',
+        ok: false,
+        message: 'That key was rejected by Conductor.',
+        at: clock,
+      });
+      // A failed connect shows on the card itself, not as a toast.
+      expect(store.getState().toasts).toEqual([]);
+
+      clock += 1_000;
+      apply({
+        type: 'conductorActionResult',
+        action: 'connect',
+        ok: true,
+        message: 'Connected as dev@example.com',
+      });
+      const connected = store.getState().signIn;
+      expect(connected).toMatchObject({ action: 'connect', ok: true, at: clock });
+      expect(connected!.seq).toBeGreaterThan(rejected!.seq);
+      apply(
+        { type: 'conductorActionResult', action: 'disconnect', ok: true, message: 'Signed out.' },
+        {
+          type: 'conductorActionResult',
+          action: 'disconnect',
+          ok: false,
+          message: "Couldn't remove the key from the Keychain.",
+        },
+      );
+      // A connect's answer shows on the card (and titles the empty office): no toast.
+      expect(store.getState().toasts.map((t) => [t.text, t.tone])).toEqual([
+        ['Signed out.', 'success'],
+        ["Couldn't sign out: Couldn't remove the key from the Keychain.", 'error'],
+      ]);
+      expect(store.getState().signIn).toMatchObject({ action: 'disconnect', ok: false });
+    });
+
+    it('answers a pending connect only with a newer connect outcome', () => {
+      apply({ type: 'conductorActionResult', action: 'connect', ok: false, message: 'old' });
+      const sentAfter = store.getState().signIn!.seq;
+      expect(connectAnswer(store.getState().signIn, sentAfter)).toBeNull();
+      apply({ type: 'conductorActionResult', action: 'disconnect', ok: true });
+      expect(connectAnswer(store.getState().signIn, sentAfter)).toBeNull();
+      apply({ type: 'conductorActionResult', action: 'connect', ok: true, message: 'Connected' });
+      expect(connectAnswer(store.getState().signIn, sentAfter)).toMatchObject({ ok: true });
+      expect(connectAnswer(null, -1)).toBeNull();
     });
 
     it('caps the visible toasts', () => {

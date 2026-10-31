@@ -78,3 +78,14 @@ export function setPokemonTheme(enabled: boolean): void {
   conductorStore.setPokemonTheme(enabled);
   transport.send({ type: 'setPokemonTheme', enabled });
 }
+
+/** Connect this office to Conductor with a pasted API key. The answer is a
+ *  conductorActionResult (action `connect`) that never carries the key. */
+export function connectConductor(apiKey: string): void {
+  transport.send({ type: 'connectConductor', apiKey });
+}
+
+/** Forget the key Poke Agents saved (never the Conductor CLI's sign-in). */
+export function disconnectConductor(): void {
+  transport.send({ type: 'disconnectConductor' });
+}

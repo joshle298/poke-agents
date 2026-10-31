@@ -1,9 +1,8 @@
 /**
- * Whether the office runs in the Poke Agents desktop app (desktop/), and the
- * small bridge the app's preload script exposes to it. The app tags its
- * window's user agent; it opens from Finder without the shell's environment
- * and can reconnect to Conductor itself, so a few instructions read
- * differently there. DOM-free, so Node tests import it.
+ * The Poke Agents desktop app (desktop/) as the office sees it: the small
+ * bridge the app's preload script exposes (reconnect to Conductor, a key on
+ * the clipboard for the Connect card, app commands), and the product token
+ * the app adds to its window's user agent. DOM-free, so Node tests import it.
  */
 
 import { DESKTOP_APP_USER_AGENT_PRODUCT, DESKTOP_BRIDGE_GLOBAL } from './constants.js';
@@ -15,10 +14,6 @@ export function isDesktopAppUserAgent(userAgent: string): boolean {
     .some((product) => product.startsWith(`${DESKTOP_APP_USER_AGENT_PRODUCT}/`));
 }
 
-export const isDesktopApp: boolean = isDesktopAppUserAgent(
-  (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent ?? '',
-);
-
 /** What the app asks the office to do (its menu, a notification click). */
 export type DesktopCommand = { type: 'openSession'; agentId: number } | { type: 'openSettings' };
 
@@ -26,6 +21,16 @@ export type DesktopCommand = { type: 'openSession'; agentId: number } | { type: 
 export interface DesktopBridge {
   /** Re-read the Conductor sign-in and restart polling. */
   reconnectConductor(): void;
+  /** Paste: a Conductor API key on the clipboard, or null. Answers only
+   *  during a user's click (the preload checks user activation), only for the
+   *  focused office window, and only key-shaped text. */
+  readClipboardKey(): Promise<string | null>;
+  /** The clipboard suggestion: on the first focus after "Get an API key",
+   *  text shaped like a Conductor key (CONDUCTOR_KEY_SUGGEST_PATTERN in
+   *  desktop/src/constants.ts), or
+   *  null. The app answers once per opening of the API keys page and reads
+   *  nothing otherwise. Absent in an app older than the office it shows. */
+  clipboardKeySuggestion?(): Promise<string | null>;
   /** Receive app commands; returns the unsubscribe. */
   onCommand(listener: (command: unknown) => void): () => void;
 }

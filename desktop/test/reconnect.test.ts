@@ -24,7 +24,8 @@ describe('reconnectOutcome', () => {
 
 describe('reconnectFeedback', () => {
   it('speaks up only when the sign-in still fails', () => {
-    assert.match(reconnectFeedback('noSignIn')?.detail ?? '', /conductor auth login.*Allow/);
+    assert.match(reconnectFeedback('noSignIn')?.detail ?? '', /Connect to Conductor card.*Allow/);
+    assert.match(reconnectFeedback('rejected')?.detail ?? '', /new API key/);
     assert.match(reconnectFeedback('rejected')?.message ?? '', /rejected/);
     for (const quiet of ['pending', 'signedIn', 'unreachable'] as const) {
       assert.equal(reconnectFeedback(quiet), null);
@@ -41,7 +42,8 @@ describe('reconnectFeedback', () => {
     }
   });
 
-  it('tells an app attached to npm start how to restart it, without a PID', () => {
+  it('tells an app attached to npm start how to connect or restart it, without a PID', () => {
+    assert.match(ATTACHED_RECONNECT.detail, /Connect to Conductor card/);
     assert.match(ATTACHED_RECONNECT.detail, /Control-C/);
     assert.doesNotMatch(ATTACHED_RECONNECT.detail, /PID|\d{3,}/);
   });

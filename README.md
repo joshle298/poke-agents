@@ -156,7 +156,7 @@ The first build downloads Electron (about 120 MB) and takes a few minutes. `npm 
 
 A build made on your Mac is signed ad hoc, so macOS opens it normally there. The app has no Apple Developer ID signature and isn't notarized, so a copy built elsewhere needs Control-click → **Open** (on macOS 15 and later: open it once, then **System Settings → Privacy & Security → Open Anyway**). Apple silicon refuses an app with no signature at all, so build it on a Mac.
 
-On the first launch macOS asks twice: whether `security` may use the Keychain item `com.conductor.cli` (the app reading your Conductor sign-in, see [Sign In](#sign-in)), and, once Conductor connects, whether Poke Agents may send notifications.
+On the first launch the office shows **Connect to Conductor** (see [Sign In](#sign-in)). If the Conductor CLI is already signed in, macOS asks instead whether `security` may use the Keychain item `com.conductor.cli` (the app reading that sign-in). Once Conductor connects, macOS asks whether Poke Agents may send notifications.
 
 - **Notifications:** when a session starts waiting for your answer or a permission, or faints, Poke Agents posts a notification such as "Pikachu needs your answer". Clicking it opens that session's Pokédex. There are none while the window is in front, none for sessions already waiting when the app starts, and at most one per session and reason every 2 minutes.
 - **Dock badge:** the number of sessions waiting for your answer or a permission. macOS shows it only when Poke Agents may send notifications (**System Settings → Notifications → Poke Agents**, with **Badge app icon** on).
@@ -164,7 +164,7 @@ On the first launch macOS asks twice: whether `security` may use the Keychain it
 - **With the command line:** the app and `npm start` share one office on port 41510. If `npm start` is running, the app opens that office, and the other way round.
 - **Demo:** quit the app, then run `open -a "Poke Agents" --args --demo`.
 - **Update:** quit the app, then `git pull && npm ci && npm run app:mac`, and replace the copy in `/Applications`.
-- **Uninstall:** quit the app, move it to the Trash, and delete `~/Library/Application Support/Poke Agents/` (its window position). Delete `~/.pixel-agents/` too if you don't use the command line. Leave the Keychain item: it belongs to the Conductor CLI.
+- **Uninstall:** sign out in **Settings → Conductor** (or delete the `com.joshle298.pokeagents.conductor` item in Keychain Access), quit the app, move it to the Trash, and delete `~/Library/Application Support/Poke Agents/` (its window position). Delete `~/.pixel-agents/` too if you don't use the command line. Leave the `com.conductor.cli` item: it belongs to the Conductor CLI.
 
 `npm run app:dev` runs the app unpackaged, with **View → Toggle Developer Tools**.
 
@@ -212,12 +212,31 @@ Everything in the office works on the demo's sessions, and nothing reaches Condu
 
 ## Sign In
 
-Poke Agents reads your Conductor API key from `CONDUCTOR_API_KEY`. Without it, on macOS, it reads the sign-in that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With neither, the office shows the steps to sign in, and the terminal says the same.
+Poke Agents needs a Conductor API key (API keys need Pro). Connect in the office:
 
-- **Command line:** run `conductor auth login`, or set `CONDUCTOR_API_KEY` (API keys need Pro), then restart Poke Agents.
-- **Mac app:** an app opened from Finder can't see your shell's environment variables, so it uses the Keychain sign-in. Run `conductor auth login` in Terminal, click **Reconnect** on the sign-in card (or **Poke Agents → Reconnect to Conductor**), and choose **Allow** when macOS asks whether `security` may use `com.conductor.cli`. **Always Allow** stops the prompt, but it adds `/usr/bin/security` to the item's access list, so any program on your Mac can then read your Conductor token without asking. To use an API key instead, start `npm start` from Terminal with the key set; the app shows that office.
+1. Open the office. Without a key it shows **Connect to Conductor**.
+2. Click **Get an API key**. Conductor's API keys page opens in your browser. Create a key and copy it.
+3. Paste it into the card (or click **Paste**) and click **Connect**.
 
-If the `conductor` command isn't installed, see [Conductor's docs](https://conductor.build/docs). Poke Agents never writes the Keychain item or stores the key.
+Poke Agents checks the key with Conductor, and your sessions walk in without a restart. On macOS it keeps the key in its own Keychain item (`com.joshle298.pokeagents.conductor`), so you stay signed in. Poke Agents creates that item with `/usr/bin/security`, which macOS then trusts to read it, so **any app you run can read the key without a prompt** (`security find-generic-password -s com.joshle298.pokeagents.conductor -w`). That is the same exposure as an environment variable: the Keychain keeps the key encrypted on disk and away from other users of the Mac, not from your own apps. Linux and Windows have no Keychain: the key lasts until the office stops, so set `CONDUCTOR_API_KEY` to stay signed in.
+
+In the Mac app, when you come back from the browser with a Conductor key copied, the card offers **Use key from clipboard**. It shows the key's prefix and last four characters and fills the field; nothing is sent until you click **Connect**. The app looks at the clipboard only then and when you click **Paste**.
+
+**Settings → Conductor** shows the account, where the key came from and, for a key Poke Agents saved, **Sign Out of Conductor…**. Signing out forgets only that key. If the Conductor CLI is signed in, the office switches to that sign-in and says so (macOS may ask whether `security` may use `com.conductor.cli`).
+
+Poke Agents uses the first key it finds:
+
+1. `CONDUCTOR_API_KEY`, then `CONDUCTOR_API_TOKEN`. They come first, so the office can't replace them: change the variable and restart Poke Agents.
+2. The key you connected with in the office.
+3. On macOS, the sign-in that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). Poke Agents reads it but never changes or deletes it.
+
+To sign in with the Conductor CLI instead: on a Mac the CLI ships inside the Conductor app and usually isn't on your `PATH`, so run it by its full path:
+
+```bash
+"$HOME/Library/Application Support/com.conductor.app/bin/conductor" auth login
+```
+
+Then open **Prefer the CLI?** on the card and click **Reconnect** in the Mac app (or choose **Poke Agents → Reconnect to Conductor**), or restart `npm start`. When macOS asks whether `security` may use `com.conductor.cli`, choose **Allow**. **Always Allow** stops the prompt, but it adds `/usr/bin/security` to the item's access list, so any app you run can then read your Conductor token without asking, as it can read the key connected in the office.
 
 ## Configuration
 
@@ -280,7 +299,7 @@ The Mac app also keeps its window position in `~/Library/Application Support/Pok
   - `opengameart.org` and `incompetech.com` for radio tracks, each once, when it first plays;
   - `open.spotify.com/oembed`, once, when you save a Spotify link in the Jukebox.
 - With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-radio`, no radio tracks; with `--no-sounds`, neither cries nor radio tracks. The demo never contacts Conductor.
-- Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
+- Your Conductor key is never logged, passed on a command line or written to `~/.pixel-agents/`. A key you connect with in the office is kept in Poke Agents' own Keychain item on macOS (handed to `security` on its standard input) or, elsewhere, in memory until the office stops. That Keychain item trusts `/usr/bin/security`, so any app you run can read the key without a prompt, as it could read `CONDUCTOR_API_KEY`. Poke Agents reads the Conductor CLI's Keychain item but never changes it.
 - Reads use GET requests. Writes to Conductor happen only for the [session actions](#using-the-office), when you click them.
 - The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name, so a web page that points its own domain at your computer (DNS rebinding) can't read your sessions.
 - There is no telemetry or analytics.
@@ -288,7 +307,10 @@ The Mac app also keeps its window position in `~/Library/Application Support/Pok
 ## Troubleshooting
 
 - **My local Conductor workspaces don't appear.** Conductor's public API only covers cloud workspaces. Local workspaces have no API.
-- **"Sign in with `conductor auth login`".** No token was found. See [Sign In](#sign-in).
+- **The office shows Connect to Conductor.** No key was found. See [Sign In](#sign-in).
+- **"That key was rejected by Conductor."** The key was mistyped or revoked. Create a new one with **Get an API key**.
+- **The card says Conductor rejected the key in `CONDUCTOR_API_KEY` (or `CONDUCTOR_API_TOKEN`).** A key in the environment comes first, so the office can't replace it. Update the variable, then restart Poke Agents.
+- **`conductor: command not found`.** On a Mac the Conductor CLI ships inside the Conductor app and isn't on your `PATH`. Connect in the office, or run the CLI by its full path (see [Sign In](#sign-in)).
 - **`npm ci` stops with "Can't build dist/".** npm left out the build tools because of `--omit=dev` or `NODE_ENV=production`. Run `npm ci --include=dev`.
 - **`npx` stops with `EALLOWGIT`.** npm 12 refuses git packages unless you add `--allow-git=all`.
 - **`npm start` prints "Could not open a window".** No browser could be opened, for example over SSH. Open the printed URL yourself.
@@ -296,7 +318,7 @@ The Mac app also keeps its window position in `~/Library/Application Support/Pok
 - **The office says "This address isn't allowed".** You opened it under a host name the office doesn't accept, such as `my-mac.local`. Restart with `--allowed-host my-mac.local`, or open it by IP address.
 - **The terminal says Conductor sessions are already tracked by another office.** Only one office per machine polls Conductor. Open that office, or stop it and start this one again.
 - **Sessions update slowly, or the status line reports rate limiting.** Conductor limits API requests, and the limit may be shared with your sessions' own `conductor` CLI calls. Poke Agents halves its request rate after a rate-limit reply and recovers slowly. Lower the rate with `--conductor-budget`, or narrow the scope and cap in Sessions.
-- **macOS asks whether `security` may use `com.conductor.cli`.** That is Poke Agents reading the token `conductor auth login` saved. Choose Allow (see [Sign In](#sign-in)).
+- **macOS asks whether `security` may use `com.conductor.cli`.** That is Poke Agents reading the sign-in `conductor auth login` saved. Choose Allow, or connect with an API key in the office instead, which doesn't prompt because any app you run can read that key (see [Sign In](#sign-in)).
 - **macOS says Poke Agents "is damaged and can't be opened".** The app has no valid signature, usually because it was built on another computer. Build it on your Mac with `npm run app:mac`. For a copy from elsewhere: `xattr -dr com.apple.quarantine "/Applications/Poke Agents.app"`, then `codesign --force --deep --sign - "/Applications/Poke Agents.app"`.
 - **The Mac app shows no notifications or Dock badge.** Check **System Settings → Notifications → Poke Agents** (allowed, with **Badge app icon** on). Notifications are skipped while the window is in front.
 - **An installed web app can't connect after a restart.** Port 41510 was busy, so the office started on another port. Stop whatever holds 41510, or always pass the same `--port`.

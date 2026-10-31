@@ -36,3 +36,17 @@ export const TRANSPORT_STATE_CONNECTING = 'connecting';
 export const TRANSPORT_STATE_CONNECTED = 'connected';
 export const TRANSPORT_STATE_RECONNECTING = 'reconnecting';
 export const TRANSPORT_STATE_DISCONNECTED = 'disconnected';
+
+// ── Conductor sign-in (connectConductor) ─────────────────────
+// A Conductor API key's shape, shared by the server's check, the office's
+// Connect card and the Mac app's Paste: after trimming, URL-safe
+// characters (keys are a short lowercase prefix, `_`, then ~40-50 characters;
+// no fixed prefix is assumed).
+
+export const CONDUCTOR_KEY_PATTERN = /^[A-Za-z0-9_-]{20,200}$/;
+/** connectConductor refuses a raw `apiKey` longer than this before trimming. */
+export const CONDUCTOR_KEY_WIRE_MAX_LENGTH = 1_000;
+/** How long the Connect card waits for the office to answer a connect. Longer
+ *  than the server's worst case (GET /me, the Keychain write and read-back,
+ *  and the poller restart; a server test checks the sum). */
+export const CONDUCTOR_CONNECT_ANSWER_TIMEOUT_MS = 150_000;

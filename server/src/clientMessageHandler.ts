@@ -7,6 +7,11 @@ import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type { LoadedAssets, LoadedCharacterSprites, LoadedPetSprites } from './assetLoader.js';
 import {
+  CONDUCTOR_SIGN_IN_MESSAGE_TYPES,
+  handleConductorSignInMessage,
+  refuseConductorSignInMessage,
+} from './conductorSignInMessages.js';
+import {
   getHooksConsent,
   getHooksEnabled,
   readConfig,
@@ -32,6 +37,7 @@ import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
 import { claudeProvider, hookProviders } from './providers/index.js';
+import type { ConductorSignInControl } from './providers/stream/conductor/signIn.js';
 import {
   handleStreamSessionMessage,
   refuseStreamSessionMessage,
@@ -100,6 +106,9 @@ export interface ClientMessageContext {
   openExternal?: OpenExternalSideEffect;
   /** The Jukebox (standalone). Absent = no music here (VS Code embedded). */
   music?: MusicService;
+  /** Connect to Conductor with a pasted key, or sign out (standalone, when
+   *  this process runs Conductor polling). Absent = not available here. */
+  conductorSignIn?: ConductorSignInControl;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -425,6 +434,12 @@ export function handleClientMessage(
     case 'requestConductorSessions':
     case 'openExternal':
       handleStreamSessionMessage(msg, send, ctx);
+      break;
+
+    // The Connect to Conductor card (the key is never echoed or logged).
+    case 'connectConductor':
+    case 'disconnectConductor':
+      handleConductorSignInMessage(msg, send, ctx);
       break;
 
     // Jukebox: local music, never Conductor.
@@ -803,6 +818,10 @@ function refuseReadOnly(
   }
   if (STREAM_SESSION_MESSAGE_TYPES.has(type)) {
     refuseStreamSessionMessage(msg, send, ctx);
+    return;
+  }
+  if (CONDUCTOR_SIGN_IN_MESSAGE_TYPES.has(type)) {
+    refuseConductorSignInMessage(msg, send);
     return;
   }
   if (MUSIC_MESSAGE_TYPES.has(type)) {

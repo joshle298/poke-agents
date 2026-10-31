@@ -21,6 +21,10 @@ const { RadioCache } = await import('../src/music/radioCache.js');
 const { radioOffReason, setRadioEnabled } = await import('../src/music/radioSwitch.js');
 const { fakeRadioFetch, forbiddenFetch, radioTrack, syntheticTrackBytes } =
   await import('./radioTestUtils.js');
+const { FakeConductorApi } = await import('./fixtures/conductor/fakeConductorApi.js');
+const { idleFeed, uuid } = await import('./fixtures/conductor/pollerHarness.js');
+const { createConductorKeyStore } = await import('../src/providers/stream/conductor/keyStore.js');
+const { WebSocket } = await import('ws');
 type Office = Awaited<ReturnType<typeof startStandalone>>;
 
 /** The CLI's build output: assets/ and webview/ (built by `npm run build:app`). */
@@ -476,6 +480,242 @@ describe('startStandalone: Poke Agents Radio', () => {
     } finally {
       await off.stop();
     }
+  });
+});
+
+describe('startStandalone: connecting to Conductor from the office', () => {
+  /** Shaped like a Conductor key; not a real one. */
+  const KEY = `pa_${'fake'.repeat(11)}`;
+  const WRONG_KEY = `pa_${'wrong'.repeat(9)}`;
+  const SESSION = uuid(0xc0ffee);
+  const started: Office[] = [];
+  const sockets: InstanceType<typeof WebSocket>[] = [];
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-connect-'));
+  });
+
+  afterEach(async () => {
+    for (const socket of sockets.splice(0)) socket.terminate();
+    for (const office of started.splice(0)) await office.stop();
+    vi.restoreAllMocks();
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  /** The fake API, answering only `KEY` (401 otherwise), with one idle session. */
+  function conductorApi() {
+    const api = new FakeConductorApi(() => Date.now());
+    const workspace = uuid(0xbeef);
+    api.addWorkspace({
+      id: workspace,
+      lastActivityAt: new Date(Date.now() - 30_000).toISOString(),
+    });
+    api.addSession({
+      id: SESSION,
+      workspaceId: workspace,
+      name: 'Fix flaky tests',
+      items: idleFeed(SESSION, Date.now() - 30_000),
+    });
+    const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (new Headers(init?.headers).get('authorization') !== `Bearer ${KEY}`) {
+        return new Response('{"userMessage":"Invalid API key"}', { status: 401 });
+      }
+      return api.fetch(input, init);
+    }) as typeof fetch;
+    return { api, fetchImpl };
+  }
+
+  /** Every line written to the console or stdout while the test runs. */
+  function captureOutput(): string[] {
+    const lines: string[] = [];
+    for (const level of ['log', 'warn', 'error', 'info'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map(String).join(' '));
+      });
+    }
+    const write = process.stdout.write.bind(process.stdout);
+    vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: unknown, ...rest: unknown[]) => {
+      lines.push(String(chunk));
+      return (write as (...a: unknown[]) => boolean)(chunk, ...rest);
+    }) as typeof process.stdout.write);
+    return lines;
+  }
+
+  async function startConductorOffice(fetchImpl: typeof fetch): Promise<Office> {
+    const office = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: true,
+      claude: false,
+      sprites: false,
+      sounds: false,
+      // No key in the environment, no Keychain: the session-memory path.
+      conductorDeps: {
+        env: {},
+        platform: 'linux',
+        fetchImpl,
+        keyStore: createConductorKeyStore({ platform: 'linux' }),
+      },
+    });
+    started.push(office);
+    return office;
+  }
+
+  /** A tokened (privileged) socket recording every message it receives. */
+  async function openSocket(office: Office) {
+    const socket = new WebSocket(`ws://127.0.0.1:${office.port}/ws?token=${office.token}`);
+    sockets.push(socket);
+    const received: Array<Record<string, unknown>> = [];
+    const frames: string[] = [];
+    socket.on('message', (data: Buffer) => {
+      frames.push(data.toString());
+      received.push(JSON.parse(data.toString()) as Record<string, unknown>);
+    });
+    await new Promise<void>((resolve) => socket.on('open', () => resolve()));
+    const send = (message: Record<string, unknown>) => socket.send(JSON.stringify(message));
+    const next = async (match: (m: Record<string, unknown>) => boolean, from = 0) => {
+      let found: Record<string, unknown> | undefined;
+      await vi.waitFor(
+        () => {
+          found = received.slice(from).find(match);
+          expect(found).toBeDefined();
+        },
+        { timeout: 15_000, interval: 50 },
+      );
+      return found!;
+    };
+    return { socket, received, frames, send, next };
+  }
+
+  const actionResult = (action: string) => (m: Record<string, unknown>) =>
+    m.type === 'conductorActionResult' && m.action === action;
+
+  it('connects with a pasted key, sessions walk in on the open page, and Sign out leaves', async () => {
+    const output = captureOutput();
+    const { api, fetchImpl } = conductorApi();
+    const office = await startConductorOffice(fetchImpl);
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({
+        state: 'authRequired',
+        keyPageUrl: 'https://app.conductor.build/home/api-keys',
+        keyStorage: 'session',
+      }),
+    );
+    expect(office.conductorStatus()).not.toHaveProperty('authSource');
+    const client = await openSocket(office);
+
+    // A key Conductor rejects: nothing is kept, the office stays signed out.
+    client.send({ type: 'connectConductor', apiKey: WRONG_KEY });
+    expect(await client.next(actionResult('connect'))).toEqual({
+      type: 'conductorActionResult',
+      action: 'connect',
+      ok: false,
+      message: 'That key was rejected by Conductor.',
+    });
+    expect(office.conductorStatus()).toMatchObject({ state: 'authRequired' });
+
+    // The right key: connected, and the session walks in on this socket.
+    const from = client.received.length;
+    client.send({ type: 'connectConductor', apiKey: `  ${KEY}\n` });
+    expect(await client.next(actionResult('connect'), from)).toEqual({
+      type: 'conductorActionResult',
+      action: 'connect',
+      ok: true,
+      message: 'Connected as user@example.com',
+    });
+    const created = await client.next((m) => m.type === 'agentCreated', from);
+    expect(created).toMatchObject({ providerId: 'conductor', label: 'Fix flaky tests' });
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({
+        state: 'connected',
+        account: 'user@example.com',
+        authSource: 'session',
+      }),
+    );
+    expect(office.conductorStatus()).not.toHaveProperty('keyPageUrl');
+
+    // Sign out: the session leaves and the office is signed out again.
+    const before = client.received.length;
+    client.send({ type: 'disconnectConductor' });
+    expect(await client.next(actionResult('disconnect'), before)).toEqual({
+      type: 'conductorActionResult',
+      action: 'disconnect',
+      ok: true,
+      message: 'Signed out.',
+    });
+    await client.next((m) => m.type === 'agentClosed' && m.id === created.id, before);
+    await client.next(
+      (m) => m.type === 'conductorSessions' && Array.isArray(m.sessions) && m.sessions.length === 0,
+      before,
+    );
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({ state: 'authRequired' }),
+    );
+
+    // GET only; the key never left in a reply, a broadcast or a log line.
+    expect(api.calls.length).toBeGreaterThan(0);
+    expect(api.calls.every((call) => call.method === 'GET')).toBe(true);
+    for (const text of [...client.frames, ...output]) expect(text).not.toContain(KEY);
+  });
+
+  it('reconnects in place for the Mac app, keeping the server and the open socket', async () => {
+    const { fetchImpl } = conductorApi();
+    const office = await startConductorOffice(fetchImpl);
+    const client = await openSocket(office);
+    await expect(office.reconnectConductor()).resolves.toBeUndefined();
+    await vi.waitFor(() =>
+      expect(office.conductorStatus()).toMatchObject({ state: 'authRequired' }),
+    );
+    expect(client.socket.readyState).toBe(WebSocket.OPEN);
+    const page = await fetch(office.url);
+    expect(page.status).toBe(200);
+  });
+
+  it('refuses to connect while another office polls Conductor', async () => {
+    const lock = path.join(tmpBase, '.pixel-agents', 'conductor.lock');
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify({ pid: process.ppid, port: 41999 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { api, fetchImpl } = conductorApi();
+    const office = await startConductorOffice(fetchImpl);
+    const client = await openSocket(office);
+    client.send({ type: 'connectConductor', apiKey: KEY });
+    expect(await client.next(actionResult('connect'))).toMatchObject({
+      ok: false,
+      message: 'Another Poke Agents office (port 41999) tracks Conductor. Connect there.',
+    });
+    expect(api.calls).toEqual([]);
+    expect(office.conductorStatus()).toBeNull();
+  });
+
+  it('takes a lock another office released only for a key Conductor accepts', async () => {
+    const lock = path.join(tmpBase, '.pixel-agents', 'conductor.lock');
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify({ pid: process.ppid, port: 41999 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { fetchImpl } = conductorApi();
+    const office = await startConductorOffice(fetchImpl);
+    const client = await openSocket(office);
+    // The other office stops and releases the lock.
+    fs.rmSync(lock);
+
+    // A rejected key leaves the lock free: nothing would poll behind it.
+    client.send({ type: 'connectConductor', apiKey: WRONG_KEY });
+    expect(await client.next(actionResult('connect'))).toMatchObject({
+      ok: false,
+      message: 'That key was rejected by Conductor.',
+    });
+    expect(fs.existsSync(lock)).toBe(false);
+
+    // An accepted key takes it, and this office polls.
+    const from = client.received.length;
+    client.send({ type: 'connectConductor', apiKey: KEY });
+    expect(await client.next(actionResult('connect'), from)).toMatchObject({ ok: true });
+    expect(JSON.parse(fs.readFileSync(lock, 'utf-8'))).toEqual({
+      pid: process.pid,
+      port: office.port,
+    });
+    await vi.waitFor(() => expect(office.conductorStatus()).toMatchObject({ state: 'connected' }));
   });
 });
 

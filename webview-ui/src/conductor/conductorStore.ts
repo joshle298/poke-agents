@@ -98,9 +98,28 @@ export interface ActionOutcome {
   at: number;
 }
 
+/** The answer to a connect the Connect card sent once the store's sign-in
+ *  outcome was `sinceSeq` (-1: none yet), or null while it is pending. */
+export function connectAnswer(
+  outcome: SignInOutcome | null,
+  sinceSeq: number,
+): SignInOutcome | null {
+  return outcome && outcome.action === 'connect' && outcome.seq > sinceSeq ? outcome : null;
+}
+
 export interface SpeciesRef {
   species: number;
   shiny: boolean;
+}
+
+/** The newest answer to the Connect card (connect) or Settings' Sign out
+ *  (disconnect). `seq` tells a new answer from one the card already saw. */
+export interface SignInOutcome {
+  action: 'connect' | 'disconnect';
+  ok: boolean;
+  message?: string;
+  at: number;
+  seq: number;
 }
 
 /** Older conversation pages the chat view loaded for one agent
@@ -142,6 +161,8 @@ export interface ConductorState {
   battleLog: readonly BattleLogEntry[];
   toasts: readonly Toast[];
   actionOutcomes: Readonly<Record<number, ActionOutcome>>;
+  /** null until a connect or sign-out is answered. */
+  signIn: SignInOutcome | null;
 }
 
 const DEFAULT_PROVIDERS: readonly string[] = ['claude'];
@@ -164,6 +185,7 @@ function initialConductorState(): ConductorState {
     battleLog: [],
     toasts: [],
     actionOutcomes: {},
+    signIn: null,
   };
 }
 
@@ -252,8 +274,13 @@ function actionToastText(
   message: string | undefined,
 ): string | null {
   const who = actionWho(state, id);
+  // A connect's answer shows on the Connect card itself, next to the key
+  // ("Connected as …" also titles the empty office): never a toast.
+  if (action === 'connect') return null;
   if (ok) {
     switch (action) {
+      case 'disconnect':
+        return message ?? 'Signed out of Conductor';
       case 'sendSessionMessage':
         return `Message sent to ${who}`;
       case 'stopSession':
@@ -266,7 +293,7 @@ function actionToastText(
         return null;
     }
   }
-  const failure: Record<ConductorAction, string> = {
+  const failure: Record<Exclude<ConductorAction, 'connect'>, string> = {
     sendSessionMessage: "Couldn't send the message",
     stopSession: "Couldn't stop the session",
     openExternal: "Couldn't open Conductor",
@@ -275,6 +302,7 @@ function actionToastText(
     setConductorScope: "Couldn't change the scope",
     archiveSession: "Couldn't deposit the session",
     restoreSession: "Couldn't withdraw the session",
+    disconnect: "Couldn't sign out",
   };
   return message ? `${failure[action]}: ${message}` : failure[action];
 }
@@ -549,6 +577,18 @@ export class ConductorStore {
         return { ...state, sessions: Array.isArray(msg.sessions) ? msg.sessions : [] };
       case 'conductorActionResult': {
         let next = state;
+        if (msg.action === 'connect' || msg.action === 'disconnect') {
+          next = {
+            ...next,
+            signIn: {
+              action: msg.action,
+              ok: msg.ok,
+              message: msg.message,
+              at: now,
+              seq: this.nextSeq(),
+            },
+          };
+        }
         if (msg.id !== undefined) {
           next = {
             ...next,

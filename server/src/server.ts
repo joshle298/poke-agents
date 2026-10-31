@@ -21,6 +21,7 @@ import {
 import { createHttpServer } from './httpServer.js';
 import type { MusicService } from './music/musicService.js';
 import { hookProviders } from './providers/index.js';
+import type { ConductorSignInControl } from './providers/stream/conductor/signIn.js';
 import type { ServerConfig, StandaloneAccess } from './serverConfig.js';
 import { isServerConfig, isServerTarget, sameStandaloneAccess } from './serverConfig.js';
 import { loadOrCreateStandaloneToken } from './serverToken.js';
@@ -94,6 +95,8 @@ export class PixelAgentsServer {
     openExternal?: OpenExternalSideEffect;
     /** The Jukebox (standalone): music folder, Music and Spotify apps. */
     music?: MusicService;
+    /** Connect to Conductor with a pasted key, or sign out (standalone). */
+    conductorSignIn?: ConductorSignInControl;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -165,6 +168,7 @@ export class PixelAgentsServer {
       hookProviders: options?.claude === false ? [] : hookProviders,
       openExternal: options?.openExternal,
       music: options?.music,
+      conductorSignIn: options?.conductorSignIn,
     });
 
     this.app = app;

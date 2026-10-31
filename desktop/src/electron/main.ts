@@ -15,6 +15,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   type IpcMainEvent,
@@ -31,6 +32,7 @@ import { MusicService } from '../../../server/src/music/musicService.js';
 import { type StandaloneOffice, startStandalone } from '../../../server/src/standalone.js';
 import { parseDesktopArgs } from '../args.js';
 import { AttentionTracker } from '../attention.js';
+import { ClipboardKeyGate, isApiKeysPage } from '../clipboardKey.js';
 import {
   APP_NAME,
   APP_STATE_FILE,
@@ -40,6 +42,7 @@ import {
   FEED_RETRY_MS,
   HELP_URL,
   IPC_OFFICE_COMMAND,
+  IPC_READ_CLIPBOARD_KEY,
   IPC_RECONNECT_CONDUCTOR,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -86,6 +89,8 @@ let reconnectWaiter: ((answer: ReconnectOutcome | 'attached') => void) | null = 
 /** What the app sends the office (the webview's DesktopCommand). */
 type OfficeCommand = { type: 'openSession'; agentId: number } | { type: 'openSettings' };
 
+/** Which clipboard reads the office window may ask for (the Connect card). */
+const clipboardKeys = new ClipboardKeyGate();
 const tracker = new AttentionTracker({ speciesName });
 const notifier = new Notifier(tracker, {
   windowFocused: () => officeWindow?.isFocused() ?? false,
@@ -273,8 +278,9 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** Stop the office and start it again (a new sign-in, or the reused server
- *  went away), then point the window at it. */
+/** Stop the office and start it again (the reused server went away), then
+ *  point the window at it. A new sign-in only restarts Conductor polling
+ *  (reconnectConductor). */
 function restartOffice(): Promise<void> {
   restarting ??= (async () => {
     detachFeed?.();
@@ -296,7 +302,8 @@ function restartOffice(): Promise<void> {
 }
 
 /** Menu or the office's Reconnect button: re-read the Conductor sign-in
- *  (after `conductor auth login`) and say if it still fails. */
+ *  (after `conductor auth login`) and say if it still fails. Polling restarts
+ *  inside the office, which stays up: the window keeps its page. */
 function reconnectConductor(): void {
   if (!office) return;
   if (!office.ownsServer) {
@@ -306,11 +313,14 @@ function reconnectConductor(): void {
     return;
   }
   awaitingReconnect = true;
-  void restartOffice();
+  office.reconnectConductor().catch((err: unknown) => {
+    awaitingReconnect = false;
+    inform({ message: 'Could not reconnect to Conductor', detail: errorText(err) });
+  });
 }
 
-/** A reconnect request is only taken from the office page in the office window. */
-function isOfficeSender(event: IpcMainEvent): boolean {
+/** A request is only taken from the office page in the office window. */
+function isOfficeSender(event: Pick<IpcMainEvent, 'sender' | 'senderFrame'>): boolean {
   if (!office || !officeWindow || event.sender !== officeWindow.webContents) return false;
   try {
     return new URL(event.senderFrame?.url ?? '').origin === new URL(office.url).origin;
@@ -451,6 +461,8 @@ function guardNavigation(window: BrowserWindow): void {
         return true;
       case 'browser':
       case 'conductor':
+        // "Get an API key": the next focus may offer a key from the clipboard.
+        if (isApiKeysPage(target)) clipboardKeys.arm();
         void shell.openExternal(target);
         return false;
       default:
@@ -555,6 +567,19 @@ async function main(): Promise<void> {
   ipcMain.on(IPC_RECONNECT_CONDUCTOR, (event) => {
     if (isOfficeSender(event)) reconnectConductor();
   });
+  // The Connect card's clipboard (clipboardKey.ts): read only for the focused
+  // office window, on a Paste click or once after "Get an API key", and only
+  // a key-shaped answer leaves this process. It is never logged.
+  ipcMain.handle(IPC_READ_CLIPBOARD_KEY, (event, purpose: unknown) =>
+    clipboardKeys.answer(
+      {
+        purpose,
+        fromOffice: isOfficeSender(event),
+        focused: officeWindow?.isFocused() === true,
+      },
+      () => clipboard.readText(),
+    ),
+  );
 
   try {
     office = await startOffice();
