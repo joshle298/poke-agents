@@ -64,6 +64,8 @@ export interface CliArgs {
   conductorBudget?: number;
   /** False with --no-sprites: never download Pokémon sprites. */
   sprites: boolean;
+  /** False with --no-sounds: never download cries or serve the sound pack. */
+  sounds: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -81,6 +83,7 @@ export function parseArgs(argv: string[]): CliArgs {
     claude: false,
     open: false,
     sprites: true,
+    sounds: true,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -153,6 +156,8 @@ export function parseArgs(argv: string[]): CliArgs {
       i++;
     } else if (argv[i] === '--no-sprites') {
       args.sprites = false;
+    } else if (argv[i] === '--no-sounds') {
+      args.sounds = false;
     } else if (argv[i] === '--help') {
       console.log(`Usage: poke-agents [options]
 
@@ -179,6 +184,8 @@ Options:
                         agents only; no launching or attaching from the browser)
   --no-sprites          Never download Pokémon sprites (also
                         POKE_AGENTS_SPRITES=off)
+  --no-sounds           Never download Pokémon cries or serve a sound pack
+                        (also POKE_AGENTS_SOUNDS=off)
   --help                Show this help message`);
       process.exit(0);
     }
@@ -221,6 +228,7 @@ async function main(): Promise<void> {
       claude: args.claude,
       conductorBudget: args.conductorBudget,
       sprites: args.sprites,
+      sounds: args.sounds,
     });
   } catch (err) {
     console.error('Failed to start server:', err);

@@ -112,6 +112,13 @@ export async function playPermissionSound(): Promise<void> {
   }
 }
 
+/** The office's one AudioContext, shared with the Pokémon sounds
+ *  (audio/audioEngine.ts), or null before anything created it. Never
+ *  creates one: only a user gesture (unlockAudio) or a chime does. */
+export function sharedAudioContext(): AudioContext | null {
+  return audioCtx;
+}
+
 /** Call from any user-gesture handler to ensure AudioContext is unlocked */
 export function unlockAudio(): void {
   try {

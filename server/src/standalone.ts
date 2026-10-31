@@ -21,6 +21,7 @@ import {
   loadAllFurniture,
   loadAllPets,
 } from './assetReload.js';
+import { setSoundsEnabled } from './audio/sounds.js';
 import type {
   AssetCache,
   OpenExternalSideEffect,
@@ -75,6 +76,9 @@ export interface StandaloneOptions {
   conductorBudget?: number;
   /** False: never download Pokémon sprites. POKE_AGENTS_SPRITES=off does the same. */
   sprites?: boolean;
+  /** False: never download Pokémon cries or serve the sound pack.
+   *  POKE_AGENTS_SOUNDS=off does the same. */
+  sounds?: boolean;
   /** Opens a validated Conductor deep link on the host. Default: the system opener. */
   openExternal?: OpenExternalSideEffect;
   /** Directory whose Claude Code sessions are scanned. Default: process.cwd(). */
@@ -249,6 +253,9 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
 
   if (opts.sprites === false || process.env.POKE_AGENTS_SPRITES === 'off') {
     setPokemonSpritesEnabled(false);
+  }
+  if (opts.sounds === false || process.env.POKE_AGENTS_SOUNDS === 'off') {
+    setSoundsEnabled(false);
   }
 
   // ── Load assets on startup (same pipeline as VS Code extension) ──

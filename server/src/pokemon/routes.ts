@@ -45,6 +45,17 @@ const SHEET_FILE = /^(.+)-Anim\.png$/;
 const SAME_SITE_FETCHES: ReadonlySet<string> = new Set(['same-origin', 'none']);
 const PNG_FILE = /^(.+)\.png$/;
 
+/**
+ * Whether a request is the office's own (or a typed URL). A cross-site <img>,
+ * <audio> or fetch arrives under an allowed Host (127.0.0.1); the browser
+ * still says where it came from. Non-browser clients send no Sec-Fetch-Site.
+ * Shared with the sound routes (audio/routes.ts).
+ */
+export function isSameSiteFetch(request: FastifyRequest): boolean {
+  const site = request.headers['sec-fetch-site'];
+  return typeof site !== 'string' || SAME_SITE_FETCHES.has(site);
+}
+
 export function registerPokemonRoutes(app: FastifyInstance, options: PokemonRoutesOptions): void {
   const route = (suffix: string, kind: FileKind, shiny: boolean) => {
     app.get<{ Params: Params }>(`${POKEMON_ROUTE_PREFIX}/:dex4${suffix}/:file`, (request, reply) =>
@@ -85,10 +96,7 @@ async function serveFile(
   if (hostname === null || !options.allowedHostnames.has(hostname)) {
     return reply.code(403).send();
   }
-  // A cross-site <img> or fetch arrives under an allowed Host (127.0.0.1);
-  // the browser still says where it came from.
-  const site = request.headers['sec-fetch-site'];
-  if (typeof site === 'string' && !SAME_SITE_FETCHES.has(site)) return reply.code(403).send();
+  if (!isSameSiteFetch(request)) return reply.code(403).send();
   if (!pokemonDeliveryEnabled(options.store)) return reply.code(404).send();
   const dex = parseDex4(request.params.dex4);
   if (dex === null || !isServableSpecies(dex, options.store)) return reply.code(404).send();

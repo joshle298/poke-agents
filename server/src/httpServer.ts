@@ -8,6 +8,7 @@ import type { HookProvider } from '../../core/src/provider.js';
 import { agentCreatedMessage } from './agentMessages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { registerSoundRoutes } from './audio/routes.js';
 import type {
   AssetCache,
   OpenExternalSideEffect,
@@ -134,6 +135,8 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   // Pokémon sprites are standalone-only: VS Code keeps the upstream characters.
   if (!options.embedded) {
     registerPokemonRoutes(app, { allowedHostnames, store: options.store });
+    // Cries and the user's sound pack, same rules as the sprites.
+    registerSoundRoutes(app, { allowedHostnames, store: options.store });
   }
 
   // ── Listen ──────────────────────────────────────────────────

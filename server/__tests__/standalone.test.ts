@@ -15,6 +15,7 @@ vi.mock('os', async () => {
 
 const { displayHostFor, startStandalone } = await import('../src/standalone.js');
 const { requestLaunchUrl } = await import('../src/openAppWindow.js');
+const { areSoundsEnabled, setSoundsEnabled } = await import('../src/audio/sounds.js');
 type Office = Awaited<ReturnType<typeof startStandalone>>;
 
 /** The CLI's build output: assets/ and webview/ (built by `npm run build:app`). */
@@ -215,6 +216,41 @@ describe('startStandalone: polish behaviors the CLI and the Mac app share', () =
     expect(first.status).toBe(302);
     expect(first.headers.get('location')).toBe(`/?token=${encodeURIComponent(office.token)}`);
     expect((await fetch(launchUrl, { redirect: 'manual' })).status).toBe(410);
+  });
+});
+
+describe('startStandalone: sounds', () => {
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-test-'));
+  });
+
+  afterEach(() => {
+    setSoundsEnabled(true);
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('serves the sound pack, and none with sounds: false (--no-sounds)', async () => {
+    const on = await startOffice(await freePort());
+    try {
+      expect(areSoundsEnabled()).toBe(true);
+      expect((await fetch(`${on.baseUrl}/api/sounds`)).status).toBe(200);
+    } finally {
+      await on.stop();
+    }
+
+    const off = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      sounds: false,
+    });
+    try {
+      expect(areSoundsEnabled()).toBe(false);
+      expect((await fetch(`${off.baseUrl}/api/sounds`)).status).toBe(404);
+    } finally {
+      await off.stop();
+    }
   });
 });
 

@@ -13,6 +13,7 @@
 
 import type { PokemonAnim, PokemonSpeciesLoaded } from '../../../core/src/messages.js';
 import type { AgentStateStore } from '../agentStateStore.js';
+import { cryUrlFor } from '../audio/sounds.js';
 import type { AnimData } from './animData.js';
 import {
   parseAnimData,
@@ -114,6 +115,12 @@ function assetUrl(urlBase: string, dex: number, shiny: boolean, file: string, po
   if (portrait) parts.push('portrait');
   parts.push(file);
   return parts.join('/');
+}
+
+/** The species' cry URL (audio/routes.ts), absent while sounds are off. */
+function optionalCry(dex: number): { cry?: string } {
+  const cry = cryUrlFor(dex);
+  return cry ? { cry } : {};
 }
 
 /** Parsed AnimData.xml for a species form, fetched on a miss. */
@@ -263,6 +270,7 @@ export async function loadSpecies(
         portrait: creditsFor(portraits.rows, names, Object.keys(portraits.urls)),
         pageUrl: `${PMD_PAGE_URL_PREFIX}${dex4(dex)}`,
       },
+      ...optionalCry(dex),
     };
   } catch (err) {
     console.warn(
