@@ -25,8 +25,6 @@ import {
   SPEECH_BUBBLE_RISE_PX,
   STATUS_BADGE_COLORS,
   STATUS_BADGE_TEXT_COLOR,
-  TEAM_LEAD_COLOR,
-  TEAM_ROLE_COLOR,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
@@ -43,6 +41,7 @@ import {
   hpFraction,
   isThemedOverlay,
   pokemonLabel,
+  themedRoleLabel,
 } from './pokemonOverlay.js';
 
 // Both turn-end states show the green checkmark bubble. A finished turn (Stop)
@@ -163,7 +162,6 @@ interface ThemedLabelProps {
   dimmed: boolean;
   dotColor: string | null;
   pulse: boolean;
-  teamRoleLabel: string | null;
   activityText: string;
   showHp: boolean;
   contextRatio: number;
@@ -183,13 +181,13 @@ function ThemedLabel({
   dimmed,
   dotColor,
   pulse,
-  teamRoleLabel,
   activityText,
   showHp,
   contextRatio,
   onClose,
 }: ThemedLabelProps) {
   const label = pokemonLabel(ch);
+  const roleLabel = themedRoleLabel(ch, label.nickname);
   const hp = hpFraction(ch.contextTokens, ch.maxContextTokens);
   return (
     <div
@@ -213,16 +211,14 @@ function ThemedLabel({
           />
         )}
         <div className="flex flex-col gap-0 overflow-hidden">
-          {teamRoleLabel && (
+          {roleLabel && (
             <span
-              className="overflow-hidden text-ellipsis block leading-none"
-              style={{
-                fontSize: '18px',
-                color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
-                fontWeight: ch.isTeamLead ? 'bold' : undefined,
-              }}
+              className={`overflow-hidden text-ellipsis block leading-none ${
+                ch.isTeamLead ? 'text-team-lead font-bold' : 'text-team-role'
+              }`}
+              style={{ fontSize: '18px' }}
             >
-              {teamRoleLabel}
+              {roleLabel}
             </span>
           )}
           {(label.nickname || label.level || label.condition) && (
@@ -542,7 +538,6 @@ export function ToolOverlay({
                 dimmed={alwaysShowOverlay && !isSelected && !isHovered}
                 dotColor={dotColor}
                 pulse={isActive && !hasPermission && !hasWaiting}
-                teamRoleLabel={teamRoleLabel}
                 activityText={activityText}
                 showHp={showContextGauge}
                 contextRatio={contextRatio}
@@ -577,12 +572,10 @@ export function ToolOverlay({
                 <div className="flex flex-col gap-0 overflow-hidden">
                   {teamRoleLabel && (
                     <span
-                      className="overflow-hidden text-ellipsis block leading-none"
-                      style={{
-                        fontSize: '18px',
-                        color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
-                        fontWeight: ch.isTeamLead ? 'bold' : undefined,
-                      }}
+                      className={`overflow-hidden text-ellipsis block leading-none ${
+                        ch.isTeamLead ? 'text-team-lead font-bold' : 'text-team-role'
+                      }`}
+                      style={{ fontSize: '18px' }}
                     >
                       {teamRoleLabel}
                     </span>

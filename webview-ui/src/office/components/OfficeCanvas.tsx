@@ -844,7 +844,7 @@ export function OfficeCanvas({
   }, []);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-bg">
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-bg-dark">
       <canvas
         ref={canvasRef}
         data-testid={OFFICE_CANVAS_TEST_ID}
