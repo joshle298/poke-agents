@@ -1289,6 +1289,13 @@ components:
             type: string
         credits:
           $ref: '#/components/schemas/PokemonCredits'
+        cry:
+          type: string
+          description: |
+            Same-origin URL of the species' cry (Ogg Vorbis), fetched by the
+            local server from the PokéAPI cries project on first request.
+            Absent while sounds are off on the server (--no-sounds,
+            POKE_AGENTS_SOUNDS=off).
 
     PokemonThemeUpdated:
       description: The Pokémon theme was switched on or off. Broadcast to every office.

@@ -481,6 +481,7 @@ export interface PokemonSpeciesLoaded {
   anims: Record<string, PokemonAnim>;
   portraits: Record<string, string>;
   credits: PokemonCredits;
+  cry?: string;
 }
 
 export interface PokemonAnim {

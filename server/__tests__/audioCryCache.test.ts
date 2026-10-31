@@ -1,0 +1,175 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { CRY_REVALIDATE_MS } from '../src/audio/constants.js';
+import { CryCache, hasOggSignature } from '../src/audio/cryCache.js';
+import { CRY_BASE, FakeCryUpstream, syntheticOgg } from './audioTestUtils.js';
+
+const MINUTE_MS = 60 * 1000;
+
+let root: string;
+let upstream: FakeCryUpstream;
+let now: number;
+
+function makeCache(overrides: Partial<ConstructorParameters<typeof CryCache>[0]> = {}) {
+  return new CryCache({
+    root,
+    fetch: upstream.fetch,
+    base: CRY_BASE,
+    now: () => now,
+    ...overrides,
+  });
+}
+
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'cry-cache-test-'));
+  upstream = new FakeCryUpstream();
+  now = Date.now();
+});
+
+afterEach(() => {
+  upstream.releaseAll();
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+describe('hasOggSignature', () => {
+  it('accepts the OggS capture pattern and nothing else', () => {
+    expect(hasOggSignature(syntheticOgg())).toBe(true);
+    expect(hasOggSignature(Buffer.from('<!DOCTYPE html>'))).toBe(false);
+    expect(hasOggSignature(Buffer.from('Ogg'))).toBe(false);
+    expect(hasOggSignature(Buffer.alloc(0))).toBe(false);
+  });
+});
+
+describe('CryCache', () => {
+  it('downloads the latest cry into <dex4>.ogg and serves it from the cache after', async () => {
+    upstream.set('latest', 25, syntheticOgg('pika'), '"e1"');
+    const cache = makeCache();
+    const abs = await cache.ensureCry(25);
+    expect(abs).toBe(path.join(root, '0025.ogg'));
+    expect(fs.readFileSync(abs!)).toEqual(syntheticOgg('pika'));
+    expect(JSON.parse(fs.readFileSync(`${abs}.etag`, 'utf8'))).toEqual({
+      variant: 'latest',
+      etag: '"e1"',
+    });
+    expect(upstream.calls[0].url).toBe(`${CRY_BASE}/latest/25.ogg`);
+
+    expect(await cache.ensureCry(25)).toBe(abs);
+    expect(upstream.calls).toHaveLength(1);
+  });
+
+  it('falls back to the legacy cry when latest has none', async () => {
+    upstream.set('legacy', 4, syntheticOgg('old'));
+    const abs = await makeCache().ensureCry(4);
+    expect(fs.readFileSync(abs!)).toEqual(syntheticOgg('old'));
+    expect(upstream.callsFor('latest', 4)).toBe(1);
+    expect(upstream.callsFor('legacy', 4)).toBe(1);
+  });
+
+  it('remembers a cry no variant has, for the missing TTL', async () => {
+    const cache = makeCache({ missingTtlMs: 10 * MINUTE_MS });
+    expect(await cache.ensureCry(1000)).toBeNull();
+    expect(upstream.calls).toHaveLength(2);
+    now += MINUTE_MS;
+    expect(await cache.ensureCry(1000)).toBeNull();
+    expect(upstream.calls).toHaveLength(2);
+    now += 10 * MINUTE_MS;
+    expect(await cache.ensureCry(1000)).toBeNull();
+    expect(upstream.calls).toHaveLength(4);
+  });
+
+  it('refuses a body that is not Ogg, writes nothing, and backs off (doubling)', async () => {
+    upstream.set('latest', 25, Buffer.from('<html>rate limited</html>'));
+    const cache = makeCache({ failureBackoffMs: MINUTE_MS, failureBackoffMaxMs: 3 * MINUTE_MS });
+    expect(await cache.ensureCry(25)).toBeNull();
+    expect(fs.readdirSync(root)).toEqual([]);
+    // A bad latest body is a failure, not a reason to swap in the legacy cry.
+    expect(upstream.callsFor('legacy', 25)).toBe(0);
+
+    now += MINUTE_MS / 2;
+    expect(await cache.ensureCry(25)).toBeNull();
+    expect(upstream.calls).toHaveLength(1);
+    now += MINUTE_MS;
+    expect(await cache.ensureCry(25)).toBeNull();
+    expect(upstream.calls).toHaveLength(2);
+    // Second failure: 2 minutes before the next try.
+    now += MINUTE_MS + 1;
+    expect(await cache.ensureCry(25)).toBeNull();
+    expect(upstream.calls).toHaveLength(2);
+    now += MINUTE_MS;
+    upstream.set('latest', 25, syntheticOgg());
+    expect(await cache.ensureCry(25)).not.toBeNull();
+    expect(upstream.calls).toHaveLength(3);
+  });
+
+  it('enforces the size cap', async () => {
+    upstream.set('latest', 25, Buffer.concat([syntheticOgg(), Buffer.alloc(2048)]));
+    expect(await makeCache({ maxBytes: 1024 }).ensureCry(25)).toBeNull();
+    expect(fs.readdirSync(root)).toEqual([]);
+  });
+
+  it('revalidates a stale cry with its ETag and keeps it on 304', async () => {
+    upstream.set('latest', 25, syntheticOgg('v1'), '"e1"');
+    const cache = makeCache();
+    const abs = (await cache.ensureCry(25))!;
+    now += CRY_REVALIDATE_MS + 1;
+    expect(await cache.ensureCry(25)).toBe(abs);
+    expect(upstream.calls[1].headers['if-none-match']).toBe('"e1"');
+    expect(fs.readFileSync(abs)).toEqual(syntheticOgg('v1'));
+    // Fresh again: no request inside the next window.
+    expect(await cache.ensureCry(25)).toBe(abs);
+    expect(upstream.calls).toHaveLength(2);
+  });
+
+  it('replaces a changed cry and drops one removed upstream', async () => {
+    upstream.set('latest', 25, syntheticOgg('v1'), '"e1"');
+    const cache = makeCache({ missingTtlMs: MINUTE_MS });
+    const abs = (await cache.ensureCry(25))!;
+    upstream.set('latest', 25, syntheticOgg('v2'), '"e2"');
+    now += CRY_REVALIDATE_MS + 1;
+    expect(await cache.ensureCry(25)).toBe(abs);
+    expect(fs.readFileSync(abs)).toEqual(syntheticOgg('v2'));
+
+    upstream.files.clear();
+    now += CRY_REVALIDATE_MS + 1;
+    expect(await cache.ensureCry(25)).toBeNull();
+    expect(fs.existsSync(abs)).toBe(false);
+    expect(fs.existsSync(`${abs}.etag`)).toBe(false);
+  });
+
+  it('serves the stale copy while offline, without trying another variant', async () => {
+    upstream.set('latest', 25, syntheticOgg('v1'));
+    upstream.set('legacy', 25, syntheticOgg('legacy'));
+    const cache = makeCache();
+    const abs = (await cache.ensureCry(25))!;
+    upstream.offline = true;
+    now += CRY_REVALIDATE_MS + 1;
+    expect(await cache.ensureCry(25)).toBe(abs);
+    expect(fs.readFileSync(abs)).toEqual(syntheticOgg('v1'));
+    expect(upstream.callsFor('legacy', 25)).toBe(0);
+  });
+
+  it('fetches each cry once for concurrent requests (single-flight)', async () => {
+    upstream.set('latest', 150, syntheticOgg());
+    upstream.hold = true;
+    const cache = makeCache();
+    const pending = [cache.ensureCry(150), cache.ensureCry(150), cache.ensureCry(150)];
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    upstream.releaseAll();
+    const results = await Promise.all(pending);
+    expect(new Set(results).size).toBe(1);
+    expect(results[0]).toBe(path.join(root, '0150.ogg'));
+    expect(upstream.calls).toHaveLength(1);
+  });
+
+  it('never builds a path or a request from an invalid dex', async () => {
+    const cache = makeCache();
+    for (const dex of [0, -1, 1026, 2.5, Number.NaN]) {
+      expect(cache.pathFor(dex)).toBeNull();
+      expect(await cache.ensureCry(dex)).toBeNull();
+    }
+    expect(upstream.calls).toHaveLength(0);
+  });
+});

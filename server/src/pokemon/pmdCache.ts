@@ -354,9 +354,9 @@ export function setPmdCache(cache: PmdCache | null): void {
   defaultCache = cache;
 }
 
-// ── File helpers ───────────────────────────────────────────────
+// ── File helpers (shared with audio/cryCache.ts) ───────────────
 
-async function statFile(abs: string): Promise<fs.Stats | null> {
+export async function statFile(abs: string): Promise<fs.Stats | null> {
   try {
     const stat = await fs.promises.stat(abs);
     return stat.isFile() ? stat : null;
@@ -383,7 +383,7 @@ async function readEtag(abs: string): Promise<StoredEtag | null> {
   return null;
 }
 
-async function writeAtomic(abs: string, data: Buffer | string): Promise<void> {
+export async function writeAtomic(abs: string, data: Buffer | string): Promise<void> {
   await fs.promises.mkdir(path.dirname(abs), { recursive: true });
   const tmp = `${abs}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   try {
@@ -395,12 +395,12 @@ async function writeAtomic(abs: string, data: Buffer | string): Promise<void> {
   }
 }
 
-async function touch(abs: string, nowMs: number): Promise<void> {
+export async function touch(abs: string, nowMs: number): Promise<void> {
   const seconds = nowMs / 1000;
   await fs.promises.utimes(abs, seconds, seconds);
 }
 
-async function readCapped(res: Response, maxBytes: number): Promise<Buffer | null> {
+export async function readCapped(res: Response, maxBytes: number): Promise<Buffer | null> {
   const declared = Number(res.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) {
     await discardBody(res);
@@ -427,7 +427,7 @@ async function readCapped(res: Response, maxBytes: number): Promise<Buffer | nul
   return Buffer.concat(chunks);
 }
 
-async function discardBody(res: Response): Promise<void> {
+export async function discardBody(res: Response): Promise<void> {
   try {
     await res.body?.cancel();
   } catch {
