@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
+
+### Changes
+
+- A new app icon, a pill-shaped pixel capsule with a small terminal (a `>` prompt and a block cursor) set into its band, drawn in code by `scripts/generate-icons.mjs`.
+
 ## Poke Agents v0.2.0
 
 A polish pass from running the office against real Conductor sessions. Poke Agents is still only a visualizer: every new action asks Conductor's API, on your click.

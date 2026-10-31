@@ -43,6 +43,7 @@ import {
   POKEMON_THEME_NAME,
   TERMINAL_SIDEBAR_WIDTH_PX,
 } from './constants.js';
+import { useDesktopCommands } from './hooks/useDesktopCommands.js';
 import { useDirectoryEditor } from './hooks/useDirectoryEditor.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
@@ -508,6 +509,16 @@ function App() {
 
   const closeDetail = useCallback(() => setDetailAgentId(null), []);
   const isInOffice = useCallback((id: number) => agents.includes(id), [agents]);
+
+  // The desktop app: a notification click opens that session's Pokédex, and
+  // its menu's Settings… opens Settings.
+  useDesktopCommands({
+    isInOffice,
+    openSession: handleJumpToAgent,
+    openSettings: () => {
+      if (!officeReadOnly) setIsSettingsOpen(true);
+    },
+  });
 
   // The Pokédex closes when its agent leaves the office (hidden, deposited,
   // scoped out).

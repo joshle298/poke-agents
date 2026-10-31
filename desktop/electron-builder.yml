@@ -1,0 +1,49 @@
+# electron-builder config for the Poke Agents macOS app (`npm run app:mac` at
+# the repo root). Unsigned for distribution: built on a Mac it is signed
+# ad hoc (identity "-"), which macOS opens normally on that Mac.
+appId: com.joshle298.pokeagents
+productName: Poke Agents
+# Also the About panel's (COPYRIGHT in src/constants.ts); electron-builder
+# writes it to Info.plist as NSHumanReadableCopyright.
+copyright: © 2026 Josh Le. MIT License. A fork of Pixel Agents by Pablo De Lucca.
+
+directories:
+  output: release
+  buildResources: resources
+
+# Only the bundled main process goes into app.asar: the office server is
+# bundled into it (Fastify included), so no node_modules ship. No PTY module
+# and no Claude Code hook scripts: the app never runs agents.
+# electron-builder would otherwise also copy the repo workspace's production
+# dependencies (it treats the repo root as the workspace root).
+files:
+  - dist/main.js
+  - dist/preload.js
+  - package.json
+  - '!**/node_modules/**'
+# The built office (webview + assets) is served from disk, outside the asar.
+extraResources:
+  - from: dist/office
+    to: office
+
+asar: true
+# Fails the build when anything beyond the above reaches the bundle.
+afterPack: scripts/verify-bundle.cjs
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+
+mac:
+  category: public.app-category.developer-tools
+  icon: resources/icon.icns
+  # Architectures come from scripts/dist-mac.mjs: this Mac's by default,
+  # both with --all.
+  target:
+    - dir
+    - zip
+  # Ad hoc signature: no Apple Developer ID, no notarization.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  notarize: false
+  darkModeSupport: true

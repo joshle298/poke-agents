@@ -147,6 +147,12 @@ jobs:
         run: npm run test -w server
         continue-on-error: true
 
+      - name: Desktop and Icon Tests
+        id: desktop_test
+        if: always() && steps.build.outcome == 'success' && steps.install_dependencies.outcome == 'success'
+        run: npm run test:desktop && npm run test:icons
+        continue-on-error: true
+
       - name: Upload Linux Server Allure Results
         if: always() && steps.build.outcome == 'success' && steps.install_dependencies.outcome == 'success'
         uses: actions/upload-artifact@v7
@@ -178,6 +184,7 @@ jobs:
           BUILD: ${{ steps.build.outcome }}
           NPM_PACKAGE: ${{ steps.npm_package.outcome }}
           SERVER_TEST: ${{ steps.server_test.outcome }}
+          DESKTOP_TEST: ${{ steps.desktop_test.outcome }}
           AUDIT: ${{ steps.audit.outcome }}
           KNIP: ${{ steps.knip.outcome }}
         run: |
@@ -202,6 +209,7 @@ jobs:
             echo "| **Build** | $(status "$BUILD") |"
             echo "| **npm package artifact** | $(status "$NPM_PACKAGE") |"
             echo "| **Server tests** | $(status "$SERVER_TEST") |"
+            echo "| **Desktop and icon tests** | $(status "$DESKTOP_TEST") |"
             echo "| Audit dependencies _(advisory)_ | $(advisory "$AUDIT") |"
             echo "| Knip _(advisory)_ | $(advisory "$KNIP") |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -221,11 +229,12 @@ jobs:
           BUILD: ${{ steps.build.outcome }}
           NPM_PACKAGE: ${{ steps.npm_package.outcome }}
           SERVER_TEST: ${{ steps.server_test.outcome }}
+          DESKTOP_TEST: ${{ steps.desktop_test.outcome }}
         run: |
           failed=0
           for step in CHECKOUT SETUP_NODE INSTALL_DEPENDENCIES \
                       TYPE_CHECK LINT \
-                      WEBVIEW_TEST FORMAT_CHECK BUILD NPM_PACKAGE SERVER_TEST; do
+                      WEBVIEW_TEST FORMAT_CHECK BUILD NPM_PACKAGE SERVER_TEST DESKTOP_TEST; do
             val=$(printenv "$step" 2>/dev/null || echo "skipped")
             if [ "$val" != "success" ]; then
               echo "::error::$step failed"

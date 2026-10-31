@@ -779,6 +779,17 @@ export const CONDUCTOR_DEEP_LINK_HOST = 'workspace';
  *  "forbidden host"): the transport stops reconnecting and says how to fix it. */
 export const WS_CLOSE_FORBIDDEN_HOST_CODE = 4003;
 export const WS_CLOSE_FORBIDDEN_HOST_REASON = 'forbidden host';
+/** User-agent product the Poke Agents desktop app adds to its window
+ *  (desktop/src/constants.ts), so the office words its steps for the app. */
+export const DESKTOP_APP_USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
+/** Global the desktop app's preload exposes to the office (DESKTOP_BRIDGE_GLOBAL
+ *  in desktop/src/constants.ts): reconnect to Conductor, and app commands. */
+export const DESKTOP_BRIDGE_GLOBAL = 'pokeAgentsDesktop';
+/** How long a desktop notification click waits for its session to be in the
+ *  office (a window it just opened is still loading) before giving up. */
+export const DESKTOP_OPEN_SESSION_WAIT_MS = 10_000;
+/** How long "Copied" shows after copying a sign-in command. */
+export const COPY_FEEDBACK_MS = 1_500;
 /** Sessions modal scope choices: activity window in hours (0 = no limit) and
  *  the cap on characters. */
 export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;

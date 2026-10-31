@@ -68,7 +68,7 @@ export function VersionIndicator({
 
   return (
     <>
-      {/* Update notice — shown once per version until dismissed or auto-closed */}
+      {/* Update notice — shown once per upgrade until dismissed or auto-closed */}
       {showUpdateNotice && (
         <div
           onClick={handleOpenChangelog}

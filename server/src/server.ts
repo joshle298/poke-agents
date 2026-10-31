@@ -184,18 +184,25 @@ export class PixelAgentsServer {
     return this.config;
   }
 
-  /** Stop the server and clean up its discovery records (only if we own them). */
-  stop(): void {
-    if (this.app) {
-      this.app.close();
-      this.app = null;
-    }
+  /** Stop the server and clean up its discovery records (only if we own them).
+   *  The records go at once; the promise settles when the listener has closed
+   *  and the port is free again (a restart in the same process needs that). */
+  stop(): Promise<void> {
+    const closing = this.app?.close();
+    this.app = null;
     if (this.ownsServer) {
       this.deleteServerJson();
       this.deleteRegistryEntry();
     }
     this.config = null;
     this.ownsServer = false;
+    return closing ? closing.then(noop, noop) : Promise.resolve();
+  }
+
+  /** Whether start() started this process's own listener (false: it reused
+   *  a compatible server another instance runs, or nothing was started). */
+  isOwner(): boolean {
+    return this.ownsServer;
   }
 
   /** Returns the current server config, or null if not started. */
@@ -338,6 +345,8 @@ function normalizedAllowedHosts(hosts: readonly string[]): string[] {
   const names = hosts.map((h) => normalizeHostname(h)).filter((h): h is string => h !== null);
   return [...new Set(names)].sort();
 }
+
+function noop(): void {}
 
 /** Check if a process is alive by sending signal 0 (no-op, just checks existence). */
 function isProcessRunning(pid: number): boolean {
