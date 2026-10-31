@@ -423,6 +423,32 @@ describe('Conductor poller: levels', () => {
   });
 });
 
+describe('Conductor poller: levels when the tail cannot be read', () => {
+  it('lets a shown session walk in without a level rather than never', async () => {
+    const id = uuid(0x6101);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x6102),
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+        });
+        api.addSession({ id, workspaceId: uuid(0x6102), items: longFeed(id, 20, NOW - 2 * HOUR) });
+        // Item #1 reads fine; every probe past it fails.
+        api.override(
+          (c) => c.path === `/v0/sessions/${id}/messages` && c.query.offset !== '0',
+          () => new Response('{"userMessage":"boom"}', { status: 500 }),
+          1_000,
+        );
+      },
+    });
+    await run(h, 10_000);
+    expect(h.sink.adopted.has(id)).toBe(true);
+    expect(h.sink.firstUpsert(id)?.details?.messageCount).toBeUndefined();
+    await h.provider.stop();
+  });
+});
+
 describe('Conductor poller: catch-up batches', () => {
   it('shows a whole short turn that started and finished between two polls', async () => {
     const ws = uuid(0x7001);

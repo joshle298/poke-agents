@@ -78,7 +78,7 @@ export const FULL_LIST_INTERVAL_MS = 5 * 60_000;
 export const SESSION_LIST_MAX_AGE_MS = 60_000;
 /** A workspace whose lastActivityAt advanced is re-listed at most this often
  *  (planIntervals budgets for it). */
-export const SESSION_LIST_MIN_GAP_MS = 30_000;
+export const SESSION_LIST_MIN_GAP_MS = 60_000;
 /** Archived session listings (PC Box) per workspace, at most this often. */
 export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
@@ -135,8 +135,9 @@ export const FOCUS_TTL_MS = 10_000;
 export const FOCUS_PEER_RECENT_MS = 15 * 60_000;
 export const FOCUS_PEERS_MAX = 4;
 /** A shown session walks in once its message count (its level) is known; if
- *  that cannot be read for this long after onboarding, it walks in anyway. */
-export const LEVEL_WAIT_MAX_MS = 60_000;
+ *  reading it fails, or takes longer than this after onboarding (a starved
+ *  budget), it walks in anyway. */
+export const LEVEL_WAIT_MAX_MS = 3 * 60_000;
 /** A session withdrawn from the PC Box is shown like a pinned one this long;
  *  afterwards the withdrawal counts as its activity for the scope window. */
 export const RESTORE_PIN_MS = 10 * 60_000;

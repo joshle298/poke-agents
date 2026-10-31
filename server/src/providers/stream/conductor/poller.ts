@@ -205,6 +205,8 @@ interface SessionRecord {
   onboarded: boolean;
   /** When onboarding finished (the level wait counts from here). */
   onboardedAt?: number;
+  /** Reading the tail for its level failed: it walks in without one. */
+  levelFailed?: boolean;
   firstSender?: string | null;
   /** Item #1 is a user message and nothing else exists yet. */
   loneFirstMessage: boolean;
@@ -731,7 +733,7 @@ export class ConductorPoller {
             cold ? 3.4 : 3.35,
             () =>
               this.withSession(rec, () =>
-                this.syncTail(rec, cold ? PRIORITY_BACKGROUND : PRIORITY_DISCOVERY),
+                this.syncTailForLevel(rec, cold ? PRIORITY_BACKGROUND : PRIORITY_DISCOVERY),
               ),
             'onboard',
           );
@@ -1172,10 +1174,23 @@ export class ConductorPoller {
     }
     this.emitCachedSpawnLink(rec);
     // Ready to adopt, seeded from /status and item #1, once its level is
-    // known (awaitsLevel): sessions without a message count replay their tail
-    // in a follow-up unit first.
+    // known (awaitsLevel). A shown session reads its tail right away, in this
+    // unit, so the office fills one session at a time in rank order instead
+    // of waiting for every session's item #1 first.
     rec.onboarded = true;
     rec.onboardedAt = this.clock.now();
+    if (this.awaitsLevel(rec, rec.onboardedAt)) await this.syncTailForLevel(rec, priority);
+  }
+
+  /** The tail read that lets a shown session walk in at its level; a failure
+   *  lets it walk in without one rather than never. */
+  private async syncTailForLevel(rec: SessionRecord, priority: number): Promise<void> {
+    try {
+      await this.syncTail(rec, priority);
+    } catch (err) {
+      rec.levelFailed = true;
+      throw err;
+    }
   }
 
   private async fetchStatus(
@@ -1761,6 +1776,7 @@ export class ConductorPoller {
       rec.onboarded &&
       this.wanted.has(rec.id) &&
       !this.levelKnown(rec) &&
+      !rec.levelFailed &&
       now - (rec.onboardedAt ?? now) < LEVEL_WAIT_MAX_MS
     );
   }
@@ -1848,9 +1864,27 @@ export class ConductorPoller {
     };
     let eligible = candidates;
     if (!scope.showIdle) eligible = eligible.filter((rec) => pinned(rec) || bucket(rec) <= 4);
-    // Within a bucket: known activity before unknown (an untailed sibling must
-    // not outrank sessions with real recent activity), newest first.
-    const activity = new Map(eligible.map((rec) => [rec.id, this.ownActivityOf(rec) ?? -1]));
+    // Within a bucket, newest activity first. Until a session's own time is
+    // known, a workspace's activity stands in for it only when the session is
+    // that workspace's only one; siblings in a shared workspace rank after
+    // every session with a known time (an old chat must not borrow a busy
+    // workspace's activity).
+    const perWorkspace = new Map<string, number>();
+    for (const rec of this.records.values()) {
+      if (!rec.neverStarted) {
+        perWorkspace.set(rec.workspaceId, (perWorkspace.get(rec.workspaceId) ?? 0) + 1);
+      }
+    }
+    const activity = new Map(
+      eligible.map((rec) => {
+        const own = this.ownActivityOf(rec);
+        const alone = perWorkspace.get(rec.workspaceId) === 1;
+        const provisional = alone
+          ? this.workspaces.get(rec.workspaceId)?.lastActivityMs
+          : undefined;
+        return [rec.id, own ?? provisional ?? -1];
+      }),
+    );
     const ranked = [...eligible].sort(
       (a, b) =>
         bucket(a) - bucket(b) ||
