@@ -14,6 +14,7 @@ import {
   maskedKeyHint,
   modelLabel,
   needsSignIn,
+  NO_LIMIT_NOTE,
   pasteBlockedMessage,
   safeHttpsUrl,
   shortAge,
@@ -104,22 +105,55 @@ describe('small formatters', () => {
     expect(workspaceLabel(undefined, 'fix-login')).toBe('fix-login');
     expect(modelLabel('gpt-5', 'codex')).toBe('gpt-5 · codex');
     expect(modelLabel(undefined, 'codex')).toBe('codex');
-    expect(windowLabel(0)).toBe('All (30d)');
-    expect(windowLabel(24)).toBe('24h');
+    expect(windowLabel(0)).toBe('Never');
+    expect(windowLabel(0.25)).toBe('15 min');
+    expect(windowLabel(0.5)).toBe('30 min');
+    expect(windowLabel(1)).toBe('1 h');
+    expect(windowLabel(24)).toBe('24 h');
+    expect(windowLabel(72)).toBe('3 days');
+    expect(windowLabel(720)).toBe('30 days');
+    expect(windowLabel(36)).toBe('36 h');
+    expect(windowLabel(2.4)).toBe('144 min');
   });
 
-  it('offers "All" (0, the server\'s 30-day maximum) last and shows a value the server applied', () => {
+  it('offers "Hide sessions idle longer than" from 15 min to Never (last), and a value the server applied', () => {
     const labels = (current?: number) =>
       windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, current).map((o) => o.label);
-    expect(labels()).toEqual(['1h', '6h', '24h', '72h', 'All (30d)']);
+    expect(labels()).toEqual(['15 min', '30 min', '1 h', '6 h', '24 h', '3 days', 'Never']);
     expect(windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, 0).at(-1)).toEqual({
       value: 0,
-      label: 'All (30d)',
+      label: 'Never',
     });
-    // A window the server clamped or kept from an older build stays visible.
-    expect(labels(12)).toEqual(['1h', '6h', '12h', '24h', '72h', 'All (30d)']);
-    expect(labels(720)).toEqual(['1h', '6h', '24h', '72h', '720h', 'All (30d)']);
-    expect(labels(-1)).toEqual(['1h', '6h', '24h', '72h', 'All (30d)']);
+    expect(windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, 0.25)[0]).toEqual({
+      value: 0.25,
+      label: '15 min',
+    });
+    // A window kept from an older build or another office stays visible.
+    expect(labels(12)).toEqual([
+      '15 min',
+      '30 min',
+      '1 h',
+      '6 h',
+      '12 h',
+      '24 h',
+      '3 days',
+      'Never',
+    ]);
+    expect(labels(720)).toEqual([
+      '15 min',
+      '30 min',
+      '1 h',
+      '6 h',
+      '24 h',
+      '3 days',
+      '30 days',
+      'Never',
+    ]);
+    expect(labels(-1)).toEqual(['15 min', '30 min', '1 h', '6 h', '24 h', '3 days', 'Never']);
+  });
+
+  it('says that Never still stops at the 30-day window', () => {
+    expect(NO_LIMIT_NOTE).toContain('30 days');
   });
 });
 
@@ -196,7 +230,7 @@ describe('Sessions modal lists', () => {
     ]).toEqual(['orig']);
   });
 
-  it('lists the PC Box newest deposit first', () => {
+  it('lists archived sessions newest first', () => {
     expect(archivedSessions(sessions).map((s) => s.sessionId)).toEqual(['f', 'g']);
   });
 });

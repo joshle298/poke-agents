@@ -175,7 +175,7 @@ interface WorkspaceRecord {
   listedAt: number;
   listedActivityMs: number;
   archivedListedAt: number;
-  /** An archived listing (PC Box) is running for this workspace. */
+  /** An archived listing (Archived sessions) is running for this workspace. */
   archivedListing: boolean;
   /** The session list should be (re)fetched by a list unit. */
   listPending: boolean;
@@ -582,7 +582,7 @@ export class ConductorPoller {
     await rec.detailSync;
   }
 
-  /** After a successful archive: despawn and list it in the PC Box. */
+  /** After a successful archive: despawn and list it in Archived sessions. */
   markArchived(sessionId: string): void {
     const rec = this.records.get(sessionId);
     if (rec) {
@@ -598,7 +598,7 @@ export class ConductorPoller {
 
   /**
    * After a successful restore: forget the archived entry and re-adopt it. The
-   * withdrawal is the user asking to see the session, so it is shown like a
+   * restore is the user asking to see the session, so it is shown like a
    * pinned one for RESTORE_PIN_MS and then counts as activity for the scope
    * window; otherwise a session older than the window walked in and left.
    */
@@ -636,7 +636,7 @@ export class ConductorPoller {
    * `fromSessionId` with another model (Switch model): remember the handoff,
    * link it to the original before it walks in (so the original throws it),
    * note the handoff in the original's Pokédex, and poll it at once. It is
-   * shown like a withdrawal: pinned-like for RESTORE_PIN_MS, then by its own
+   * shown like a restore: pinned-like for RESTORE_PIN_MS, then by its own
    * activity.
    */
   addContinuation(
@@ -880,7 +880,7 @@ export class ConductorPoller {
       );
     }
 
-    // PC Box listings while it is open, most recently active workspace first.
+    // Archived listings while Archived sessions is open, most recently active workspace first.
     // listWorkspaceSessions stamps archivedListedAt when one completes, so a
     // unit skipped on a busy tick is queued again on the next one.
     if (now < this.archiveInterestUntil) {
@@ -899,8 +899,8 @@ export class ConductorPoller {
           .slice(0, ARCHIVED_LIST_PROMPT_WORKSPACES),
       );
       for (const ws of due) {
-        // The user is looking at the PC Box: the most recent workspaces, where
-        // recent deposits are, go ahead of the routine session lists (2.5),
+        // The user is looking at Archived sessions: the most recent workspaces, where
+        // recent archives are, go ahead of the routine session lists (2.5),
         // which can keep both list slots busy on a large scope.
         const soon = prompt.has(ws);
         add(
@@ -1856,7 +1856,7 @@ export class ConductorPoller {
   /**
    * The session's own newest activity: from its feed, else persisted from an
    * earlier run, else its /status `updatedAt`; undefined until one is known.
-   * A withdrawal from the PC Box counts as activity. Never the workspace's
+   * A restore from Archived sessions counts as activity. Never the workspace's
    * time: a busy workspace would make every old chat in it look just active.
    */
   private ownActivityOf(rec: SessionRecord): number | undefined {
@@ -1865,7 +1865,7 @@ export class ConductorPoller {
     // is when the (possibly hours-long) turn started.
     const fromStatus = rec.runStatus === 'working' ? rec.statusAt : rec.statusUpdatedAt;
     const own = rec.norm.lastItemAt ?? persisted?.lastActivityAt ?? fromStatus;
-    // A withdrawal from the PC Box or a continuation the office started (Switch
+    // A restore from Archived sessions or a continuation the office started (Switch
     // model) is the user asking for the session: it counts as activity.
     const asked = Math.max(persisted?.restoredAt ?? 0, persisted?.continuedAt ?? 0);
     if (asked === 0) return own;
@@ -1878,7 +1878,7 @@ export class ConductorPoller {
     return this.ownActivityOf(rec) ?? this.workspaces.get(rec.workspaceId)?.lastActivityMs ?? 0;
   }
 
-  /** Withdrawn from the PC Box, or started by the office (Switch model),
+  /** Restored from Archived sessions, or started by the office (Switch model),
    *  moments ago: shown like a pinned session. */
   private justRestored(rec: SessionRecord, now: number): boolean {
     const persisted = this.state.session(rec.id);
@@ -1939,7 +1939,7 @@ export class ConductorPoller {
     if (persisted?.pinned) return true;
     const scope = this.state.scope;
     const windowStart = now - scopeWindowMs(scope);
-    // Withdrawn from the PC Box, or started by the office, within the window:
+    // Restored from Archived sessions, or started by the office, within the window:
     // the user asked for it, whatever its feed or workspace says.
     if (persisted?.restoredAt !== undefined && persisted.restoredAt >= windowStart) return true;
     if (persisted?.continuedAt !== undefined && persisted.continuedAt >= windowStart) return true;

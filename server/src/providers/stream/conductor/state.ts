@@ -2,7 +2,7 @@
  * `~/.pixel-agents/conductor-state.json`: the provider's own persistence.
  *
  * Holds the scope and, per session, the hidden/pinned flags, when the session
- * was withdrawn from the PC Box, the feed cursor, the harness, the first
+ * was restored from Archived sessions, the feed cursor, the harness, the first
  * sender (spawn edge), the newest activity time, when a listing last showed
  * it, and for a session the office started with another model (Switch model)
  * the session it continues and when. Agent ids and Pokémon live in the runtime's stream memory
@@ -10,7 +10,7 @@
  * Written atomically (tmp + rename) with mode 0600. Never the API token, and
  * never message text.
  *
- * What the user decided (scope, hidden, pinned, a withdrawal, a continuation)
+ * What the user decided (scope, hidden, pinned, a restore, a continuation)
  * is written within a second. Bookkeeping that changes on every poll
  * (cursors, activity times, first senders) is written at most every
  * STATE_LAZY_SAVE_MS and on stop, so an active office does not rewrite the
@@ -36,7 +36,7 @@ import {
 export interface PersistedConductorSession {
   hidden?: boolean;
   pinned?: boolean;
-  /** Epoch ms of the last withdrawal from the PC Box (counts as activity). */
+  /** Epoch ms of the last restore from Archived sessions (counts as activity). */
   restoredAt?: number;
   cursor?: { lastId: string; lastIndex: number };
   harness?: string;
@@ -49,7 +49,7 @@ export interface PersistedConductorSession {
   /** Switch model: the session this one continues (created by the office
    *  with another model); restated as a handoff `spawned` link. */
   continuedFrom?: string;
-  /** Epoch ms the office created it: shown like a withdrawal (counts as
+  /** Epoch ms the office created it: shown like a restore (counts as
    *  activity, pinned-like for a while). */
   continuedAt?: number;
 }
@@ -74,6 +74,18 @@ function clampInt(value: unknown, min: number, max: number, fallback: number): n
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+/**
+ * The activity window in hours, in whole minutes: 0.25 (15 min) and 0.5
+ * (30 min) stay as asked. 0 or less is "no limit" (0); a positive window is
+ * at least one minute, so a tiny one never turns into "no limit".
+ */
+function sanitizeWindowHours(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  if (value <= 0) return 0;
+  if (value >= MAX_ACTIVE_WITHIN_HOURS) return MAX_ACTIVE_WITHIN_HOURS;
+  return Math.max(1, Math.round(value * 60)) / 60;
+}
+
 /** Coerce anything (file contents, wire input) into a valid scope. */
 export function sanitizeScope(raw: unknown, base: ConductorScope = DEFAULT_SCOPE): ConductorScope {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<
@@ -81,14 +93,9 @@ export function sanitizeScope(raw: unknown, base: ConductorScope = DEFAULT_SCOPE
   >;
   return {
     creator: r.creator === 'all' || r.creator === 'me' ? r.creator : base.creator,
-    // 0 is "All": kept as asked, and served as the longest supported window
-    // (scopeWindowMs). It used to be clamped to 1 h.
-    activeWithinHours: clampInt(
-      r.activeWithinHours,
-      0,
-      MAX_ACTIVE_WITHIN_HOURS,
-      base.activeWithinHours,
-    ),
+    // 0 is "Never" (no limit): kept as asked, and served as the longest
+    // supported window (scopeWindowMs). It used to be clamped to 1 h.
+    activeWithinHours: sanitizeWindowHours(r.activeWithinHours, base.activeWithinHours),
     showIdle: typeof r.showIdle === 'boolean' ? r.showIdle : base.showIdle,
     maxSessions: clampInt(r.maxSessions, 1, MAX_SESSIONS_LIMIT, base.maxSessions),
   };

@@ -56,12 +56,12 @@ interface SettingsModalProps {
   onImportLayout: (file: File) => void;
   /** Claude Code feeds this office: show the hooks, watch-all and launch rows. */
   claudeActive: boolean;
-  /** Conductor feeds this office: show its section (status, Sessions, PC Box). */
+  /** Conductor feeds this office: show its section (status, Sessions, Archived sessions). */
   conductorActive: boolean;
   /** A read-only office: no Sign Out (the server would refuse it). */
   readOnly: boolean;
   onManageSessions: () => void;
-  onOpenPcBox: () => void;
+  onOpenArchive: () => void;
   pokemonTheme: boolean;
   onTogglePokemonTheme: () => void;
   showConnections: boolean;
@@ -127,7 +127,7 @@ export function SettingsModal({
   conductorActive,
   readOnly,
   onManageSessions,
-  onOpenPcBox,
+  onOpenArchive,
   pokemonTheme,
   onTogglePokemonTheme,
   showConnections,
@@ -156,10 +156,10 @@ export function SettingsModal({
           <MenuItem
             onClick={() => {
               onClose();
-              onOpenPcBox();
+              onOpenArchive();
             }}
           >
-            PC Box…
+            Archived Sessions…
           </MenuItem>
           <div className="mx-10 my-4 border-b border-border" />
         </>

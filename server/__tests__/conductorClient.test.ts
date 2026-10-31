@@ -118,7 +118,7 @@ describe('ConductorClient', () => {
     const clock = manualClock();
     const api = fakeFetch(clock, () => json(200, {}));
     // 12/min: one request every 5 s once the burst is spent, with 30 Hot polls
-    // queued behind a PC Box listing: strict priority would serve it last.
+    // queued behind an archived listing: strict priority would serve it last.
     const client = new ConductorClient({
       baseUrl: BASE,
       token: 't',

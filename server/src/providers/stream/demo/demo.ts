@@ -5,7 +5,7 @@
  * still come through the runtime's usual cache.
  *
  * It registers as the `conductor` provider, so the office shows its full
- * Conductor chrome (party bar, Pokédex with Chat, PC Box, Sessions modal),
+ * Conductor chrome (party bar, Pokédex with Chat, Archived sessions, Sessions modal),
  * and the user's actions act on the fake sessions.
  */
 

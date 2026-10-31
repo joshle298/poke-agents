@@ -1,5 +1,5 @@
 /**
- * Pure list rules for the Sessions modal and the PC Box (DOM-free,
+ * Pure list rules for the Sessions modal and Archived sessions (DOM-free,
  * Node-tested).
  */
 
@@ -73,7 +73,7 @@ export function groupSessions(
     .map(([repo, list]) => ({ repo, sessions: list.sort(compareSessions) }));
 }
 
-/** Archived sessions for the PC Box, most recently deposited first. */
+/** Archived sessions (the Archive modal), most recently archived first. */
 export function archivedSessions(
   sessions: readonly ConductorSessionSummary[],
 ): ConductorSessionSummary[] {

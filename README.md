@@ -13,7 +13,7 @@ Poke Agents is a visualizer for Conductor. Each cloud session is a Pokémon: it 
 All coding happens in Conductor, with your Conductor settings: models, environment, repositories and agents stay configured there.
 
 - **What it reads:** your account, your cloud workspaces and their sessions, and each session's status and messages, through Conductor's public API with GET requests.
-- **What it can ask Conductor to do:** send a message to a session (**Send**, **Revive** and a pending question's options), stop a session's turn, archive a session (**Deposit in PC**) and unarchive one (**Withdraw**), and start a new session in a session's workspace with another model (**Switch model…**). Each happens only when you click it in an office opened with its token, and Conductor does the work.
+- **What it can ask Conductor to do:** send a message to a session (**Send**, **Revive** and a pending question's options), stop a session's turn, archive a session (**Archive**) and unarchive one (**Restore**), and start a new session in a session's workspace with another model (**Switch model…**). Each happens only when you click it in an office opened with its token, and Conductor does the work.
 - **What it never does:** start sessions on its own, run agents or code, edit repositories, or store or change your Conductor settings or API key. **Hide**, **Pin** and **Change Pokémon…** only change what Poke Agents shows; Conductor isn't told.
 - **What it stores:** its own view of your sessions under `~/.pixel-agents/` (see [Configuration](#configuration)): the scope, hidden and pinned sessions, seats and each session's Pokémon.
 
@@ -27,13 +27,13 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it waits for your answer or a permission.
 - **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon that doesn't evolve. Its new sessions are thrown out of a capsule from where it stands, and a session that leaves is recalled into one.
 - **Links and messages.** Lines connect sessions that created, messaged or read each other. When one session messages another, a capsule flies between them with a short preview.
-- **Pokédex.** Click a Pokémon to open its Pokédex. **Overview** shows the workspace, repository, agent, model and effort, status, an HP bar for the context left, the task, recent tool steps and messages with other sessions, and the actions Open in Conductor, Switch model…, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
+- **Pokédex.** Click a Pokémon to open its Pokédex. **Overview** shows the workspace, repository, agent, model and effort, status, an HP bar for the context left, the task, recent tool steps and messages with other sessions, and the actions Open in Conductor, Switch model…, Send message, Revive, Stop, Archive, Hide and Pin.
 - **Switch model…** Conductor's API can't change the model of a running session, so the Pokédex offers the closest honest thing: a new session in the same workspace (same files and branch) with the agent (Claude, Codex or Cursor), model, effort and fast mode you pick, and a first message you can edit (it starts as a note to continue the work and check the recent commits and changes). Your favorite models in Conductor come first, with a star; effort levels only some models take say "(some models)". The new session is named after the session and the model ("Fix flaky tests · GPT-5.5"), is thrown out of the original Pokémon and linked to it (the original doesn't become a Lead), and its Pokédex opens when it arrives. The original session isn't changed and keeps running: if it is still working, the picker says so, since both sessions would change the same files, and offers **Stop it**. If Conductor doesn't answer, starting again with the same choice within 10 minutes repeats the same request, so Conductor doesn't make a second session.
 - **Change Pokémon…** In the Pokédex's header: pick which evolution line a session is (a Lead can also be one of the legendaries), turn **Shiny** on or off (it applies at once), or **Reset to automatic** to get back the Pokémon it had before. The level still picks the stage within the line, the change plays the evolution flash, and the choice is kept across restarts. It is Poke Agents' own view; Conductor isn't told.
 - **Chat.** The Pokédex's **Chat** tab shows the conversation: your messages, the agent's replies, each turn's tool steps folded into one line, and messages to and from other sessions. **Load earlier** fetches older messages from Conductor. The box at the bottom sends a reply.
 - **Pending questions.** When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Pokédex shows it with its options. **Reply with this option** sends the option's text as a normal message.
-- **PC Box.** Archived sessions, with their Pokémon's portraits. **Withdraw** brings one back into the town.
-- **Sessions.** Choose which sessions appear: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search.
+- **Archived sessions.** **Archive** in the toolbar lists the sessions you archived in Conductor, with their Pokémon's portraits. **Restore** brings one back into the town.
+- **Sessions.** Choose which sessions appear: your workspaces or the whole organization, how long a session may sit idle before it leaves the town, idle sessions on or off, a cap, and per-session hide and pin, with search.
 - **Party bar.** Each visible session as a party slot with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks while its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pichu used Bash!" or "Torchic fainted!".
 - **Sounds.** Each Pokémon's cry when its session needs you, faints, arrives or evolves, and original chiptune effects for level-ups, capsules and messages. See [Sounds](#sounds).
@@ -51,38 +51,38 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **
 
 - Click a Pokémon or its party slot to open its Pokédex. Cmd-click (Ctrl-click) or double-click opens the session in Conductor.
 - In the **Chat** tab, Enter sends your reply and Shift+Enter starts a new line.
-- **Sessions** in the toolbar opens the Sessions modal, **PC** the PC Box, and **Music** the Jukebox.
+- **Sessions** in the toolbar opens the Sessions modal, **Archive** the archived sessions, and **Music** the Jukebox.
 - The × on a Pokémon's card or party slot hides the session. Find it again in Sessions.
 - **Escape** closes the window on top: a confirmation, then a modal, then the Pokédex.
 - **Settings** has the Pokémon theme, Show connections and Battle log switches, the [Sound](#sounds) controls, and **About & credits**: what Poke Agents is, and the artists of the sprites in use.
 
 Session actions are the only writes Poke Agents makes to Conductor, and each happens only when you click it in an office opened with its token:
 
-| Action                     | What it does in Conductor                                                                    |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| Send message, Chat replies | Sends your text to the session.                                                              |
-| Reply with this option     | Sends the option's text to the session as a normal message.                                  |
-| Revive                     | Sends "continue" to a fainted (errored) session.                                             |
-| Stop                       | Cancels the session's turn. Asks first, because Conductor drops messages still queued.       |
-| Deposit in PC              | Archives the session. Asks first. The session leaves the town and is listed in the PC Box.   |
-| Withdraw                   | Unarchives a session from the PC Box. It walks back in, even if it was idle past the window. |
-| Switch model… → Start      | Creates a session in the same workspace with the model you picked and your first message.    |
+| Action                     | What it does in Conductor                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| Send message, Chat replies | Sends your text to the session.                                                            |
+| Reply with this option     | Sends the option's text to the session as a normal message.                                |
+| Revive                     | Sends "continue" to a fainted (errored) session.                                           |
+| Stop                       | Cancels the session's turn. Asks first, because Conductor drops messages still queued.     |
+| Archive                    | Archives the session. Asks first. The session leaves the town and is listed under Archive. |
+| Restore                    | Unarchives a session from Archive. It walks back in, even if it was idle past the limit.   |
+| Switch model… → Start      | Creates a session in the same workspace with the model you picked and your first message.  |
 
-![The PC Box listing an archived session with its Pokémon's portrait and a Withdraw button](docs/screenshots/pc-box.png)
+![Archived sessions listing an archived session with its Pokémon's portrait and a Restore button](docs/screenshots/archived-sessions.png)
 
 ### How Visibility Works
 
 Poke Agents polls Conductor for the sessions in scope and shows up to a cap of them. Change these in the Sessions modal; the choices are saved.
 
 - **Scope:** your workspaces (default) or the whole organization.
-- **Activity window:** workspaces and sessions active in the last 6 hours by default. **All (30d)** covers the last 30 days.
-- **Show idle:** on by default. Off keeps only working, waiting and errored sessions.
+- **Hide sessions idle longer than:** 6 hours by default, or 15 min, 30 min, 1 h, 24 h, 3 days or Never. A session with no activity for longer leaves the town by itself and comes back when it works again. **Never** still stops at 30 days, the furthest back Poke Agents looks.
+- **Show idle sessions:** on by default. Off keeps only working, waiting and errored sessions, however recently the others were active.
 - **Cap:** 24 sessions by default. When more are in scope, they are ranked: pinned, waiting for you, working, errored, Leads with visible active sessions, then most recent activity. A shown session stays until it falls 4 places past the cap, so the town doesn't flicker. At most 12 sessions per Lead are shown; the rest are listed in the Sessions modal.
 - **Hide** removes a session from the town until you show it again. **Pin** always shows it.
 
 Sessions that never started (no name, no model and no messages) are ignored. A session walks in once its level is known, so the first start on a machine fills the town over a minute or two. The session whose Pokédex is open updates every few seconds, along with up to 4 sessions it worked with in the last 15 minutes. The others are polled less often the longer they are idle.
 
-![The Sessions modal: scope, activity window, cap, show idle, search, and the sessions grouped by repository with pin and show switches](docs/screenshots/sessions.png)
+![The Sessions modal: scope, Hide sessions idle longer than, Show idle sessions, cap, search, and the sessions grouped by repository with pin and show switches](docs/screenshots/sessions.png)
 
 ### Leads and Links
 
@@ -207,7 +207,7 @@ npm ci
 npm run demo   # the same as: node dist/cli.js --demo --open
 ```
 
-The demo plays a scripted story with synthetic sessions instead of connecting to Conductor. It needs no Conductor account. A Lead, "Release v2 orchestration", spawns five sessions in the first 20 seconds. They run tools, message the Lead and level up. "Fix flaky tests" faints and the Lead revives it, "Update docs" finishes early and falls asleep, "Review PR #42" waits on a question for you, and "Triage nightly alerts" evolves. The finished "Prototype pricing page" is in the PC Box.
+The demo plays a scripted story with synthetic sessions instead of connecting to Conductor. It needs no Conductor account. A Lead, "Release v2 orchestration", spawns five sessions in the first 20 seconds. They run tools, message the Lead and level up. "Fix flaky tests" faints and the Lead revives it, "Update docs" finishes early and falls asleep, "Review PR #42" waits on a question for you, and "Triage nightly alerts" evolves. The finished "Prototype pricing page" is under Archive.
 
 Everything in the office works on the demo's sessions, and nothing reaches Conductor: **Open in Conductor** says there is nothing to open. Sprites, cries and radio tracks download as usual. The first round, about five minutes long, plays the same way every time; then the Lead hands out new tasks. `--demo-seed <n>` varies the history and later rounds, and `--demo-speed <x>` plays the story faster or slower. The demo keeps its seats in its own file and never replaces an office that shows your real sessions.
 
@@ -279,7 +279,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with Pixel Agents. None
 | File                    | Contents                                                                                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`). With `--claude`, each agent's tool-call count (its level).                          |
-| `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, recent withdrawals, and where Poke Agents last read each session. Entries untouched for 30 days are dropped. |
+| `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, restore timestamps, and where Poke Agents last read each session. Entries untouched for 30 days are dropped. |
 | `conductor.lock`        | Which office polls Conductor. Only one office per machine does.                                                                                                      |
 | `demo-state.json`       | The demo office's seats (`--demo`), apart from the real office's.                                                                                                    |
 | `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                                                                                 |

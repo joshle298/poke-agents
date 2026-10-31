@@ -287,7 +287,7 @@ describe('demo provider (synthetic sessions through the real stream driver)', ()
     ).toBeLessThan(peak / 2);
   });
 
-  it('deposits the finished prototype in the PC with its Pokémon, and withdraws it on request', async () => {
+  it('archives the finished prototype with its Pokémon, and restores it on request', async () => {
     await start();
     const prototype = requireAgent('prototype');
     const species = store.get(prototype)!.species;
@@ -307,7 +307,7 @@ describe('demo provider (synthetic sessions through the real stream driver)', ()
     expect(store.get(requireAgent('prototype'))!.species).toBe(species);
   });
 
-  it('stops, deposits, hides and pins sessions against the fake state', async () => {
+  it('stops, archives, hides and pins sessions against the fake state', async () => {
     await start();
     await play(10);
     const migration = requireAgent('migration');
@@ -325,10 +325,10 @@ describe('demo provider (synthetic sessions through the real stream driver)', ()
     await client({ type: 'setSessionPinned', sessionId: DEMO_IDS.alerts, pinned: true });
     expect(summaries().find((s) => s.sessionId === DEMO_IDS.alerts)?.pinned).toBe(true);
 
-    const deposit = await client({ type: 'archiveSession', sessionId: DEMO_IDS.docs });
-    expect(deposit).toContainEqual(expect.objectContaining({ ok: true, action: 'archiveSession' }));
+    const archive = await client({ type: 'archiveSession', sessionId: DEMO_IDS.docs });
+    expect(archive).toContainEqual(expect.objectContaining({ ok: true, action: 'archiveSession' }));
     expect(agentOf('docs')).toBeUndefined();
-    // A deposited session is skipped by the story: the Lead's later messages go elsewhere.
+    // An archived session is skipped by the story: the Lead's later messages go elsewhere.
     await play(60);
     expect(agentOf('docs')).toBeUndefined();
     expect(fetchSpy).not.toHaveBeenCalled();

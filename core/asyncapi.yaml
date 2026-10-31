@@ -1989,7 +1989,7 @@ components:
           type: boolean
 
     ArchiveSession:
-      description: Archive the agent's Conductor session (deposit it in the PC Box). Reversible with restoreSession.
+      description: Archive the session in Conductor (it moves to Archived sessions). Reversible with restoreSession.
       type: object
       additionalProperties: false
       required: [type, sessionId]
@@ -2000,7 +2000,7 @@ components:
           type: string
 
     RestoreSession:
-      description: Unarchive a Conductor session (withdraw it from the PC Box).
+      description: Unarchive a Conductor session (Restore in Archived sessions).
       type: object
       additionalProperties: false
       required: [type, sessionId]
@@ -2405,7 +2405,7 @@ components:
           $ref: '#/components/schemas/ConductorCreatorScope'
         activeWithinHours:
           type: number
-          description: Only workspaces with activity in this many hours. 0 means no limit.
+          description: Hide sessions idle longer than this many hours; fractions allowed (0.25 is 15 minutes, kept in whole minutes). 0 means no limit, served as the 30-day maximum window.
         showIdle:
           type: boolean
           description: When false, only working sessions (and sessions waiting on you) appear.
@@ -2453,7 +2453,7 @@ components:
           description: Pinned sessions are always shown, ahead of the scope filters and the cap.
         archived:
           type: boolean
-          description: Archived in Conductor (shown in the PC Box, never in the office).
+          description: Archived in Conductor (listed in Archived sessions, never in the office).
         species:
           type: integer
           description: The Pokémon this session was last shown as, when known.

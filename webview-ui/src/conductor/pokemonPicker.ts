@@ -61,7 +61,7 @@ export function currentEntryId(
 
 /** The standalone server's same-origin portrait for a species (lazy-loaded
  *  by the grid), or undefined when the route isn't there or the dex is out
- *  of range. A shiny shows its base form's portrait, as in the PC Box. */
+ *  of range. A shiny shows its base form's portrait, as in Archived sessions. */
 export function pickerPortraitUrl(dex: number, portraitRoute: boolean): string | undefined {
   if (!portraitRoute || !Number.isInteger(dex) || dex < 1 || dex > POKEMON_MAX_DEX)
     return undefined;

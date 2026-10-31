@@ -1140,7 +1140,7 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
 
   /** Summaries with what only the runtime knows: the agent id of a session in
    *  the office, and the Pokémon it shows (or was last shown as, from the
-   *  stream memory), so the PC Box can draw sessions it never saw. */
+   *  stream memory), so Archived sessions can draw sessions it never saw. */
   private withAgentIds(sessions: ConductorSessionSummary[]): ConductorSessionSummary[] {
     return sessions.map((session) => {
       const { agentId: _providerGuess, species: _s, shiny: _sh, ...rest } = session;

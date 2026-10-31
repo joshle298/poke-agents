@@ -7,7 +7,7 @@ import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 const attrs = { [JUKEBOX_UI_ATTRIBUTE]: '' };
 
 /** The Music toolbar button: opens and closes the Jukebox (standalone only).
- *  A text label like its neighbours (Sessions, PC, Layout, Settings), so it
+ *  A text label like its neighbours (Sessions, Archive, Layout, Settings), so it
  *  shares their height and padding; an icon glyph's tighter line box made it
  *  render smaller than the rest of the row. */
 export function JukeboxButton({

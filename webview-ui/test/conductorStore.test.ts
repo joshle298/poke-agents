@@ -118,7 +118,7 @@ describe('ConductorStore', () => {
       expect(store.getState().agents[6].species).toBeUndefined();
     });
 
-    it('forgets a closed agent but remembers its session species for the PC Box', () => {
+    it('forgets a closed agent but remembers its session species for Archived sessions', () => {
       apply(
         { type: 'agentCreated', id: 7, species: 133 },
         { type: 'agentDetails', id: 7, conductorSessionId: 'sess-7' },
@@ -298,7 +298,7 @@ describe('ConductorStore', () => {
       expect(state.sessionDetails[1].prompt).toBe('Do it');
     });
 
-    it('toasts sends, stops and PC moves, but only failures of visibility toggles', () => {
+    it('toasts sends, stops, archives and restores, but only failures of visibility toggles', () => {
       apply({ type: 'agentCreated', id: 1, label: 'Lead' });
       apply(
         { type: 'conductorActionResult', action: 'sendSessionMessage', id: 1, ok: true },
@@ -323,6 +323,20 @@ describe('ConductorStore', () => {
       });
       store.dismissToast(toasts[0].seq);
       expect(store.getState().toasts).toHaveLength(1);
+    });
+
+    it('says archived and restored, never the PC', () => {
+      apply({ type: 'agentCreated', id: 1, label: 'Lead' });
+      apply(
+        { type: 'conductorActionResult', action: 'archiveSession', id: 1, ok: true },
+        { type: 'conductorActionResult', action: 'restoreSession', ok: true },
+        { type: 'conductorActionResult', action: 'restoreSession', ok: false, message: 'Gone' },
+      );
+      expect(store.getState().toasts.map((t) => t.text)).toEqual([
+        'Lead was archived',
+        'The session was restored',
+        "Couldn't restore the session: Gone",
+      ]);
     });
 
     it('keeps the newest connect or sign-out answer for the Connect card and Settings', () => {

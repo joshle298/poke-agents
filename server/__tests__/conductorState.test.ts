@@ -4,6 +4,7 @@ import * as path from 'path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  DEFAULT_SCOPE,
   STATE_LAZY_SAVE_MS,
   STATE_SAVE_DEBOUNCE_MS,
   STATE_SESSIONS_MAX,
@@ -195,7 +196,30 @@ describe('conductor-state.json', () => {
           maxSessions: 24,
         },
       ),
-    ).toEqual({ creator: 'all', activeWithinHours: 2, showIdle: false, maxSessions: 200 });
+    ).toEqual({ creator: 'all', activeWithinHours: 2.4, showIdle: false, maxSessions: 200 });
+  });
+
+  it('keeps fractional activity windows in whole minutes, and 0 as no limit', () => {
+    const windowOf = (activeWithinHours: unknown) =>
+      sanitizeScope({ ...DEFAULT_SCOPE, activeWithinHours }).activeWithinHours;
+    expect(windowOf(0.25)).toBe(0.25);
+    expect(windowOf(0.5)).toBe(0.5);
+    expect(windowOf(72)).toBe(72);
+    expect(windowOf(0)).toBe(0);
+    expect(windowOf(-1)).toBe(0);
+    // Whole minutes, at least one: a tiny window never becomes "no limit".
+    expect(windowOf(0.26)).toBe(16 / 60);
+    expect(windowOf(0.0001)).toBe(1 / 60);
+    expect(windowOf(99_999)).toBe(720);
+    expect(windowOf('15m')).toBe(DEFAULT_SCOPE.activeWithinHours);
+  });
+
+  it('keeps a fractional window across a restart', () => {
+    const file = statePath();
+    const store = new ConductorStateStore(file);
+    store.setScope({ ...DEFAULT_SCOPE, activeWithinHours: 0.25 });
+    store.flush();
+    expect(new ConductorStateStore(file).scope.activeWithinHours).toBe(0.25);
   });
 });
 

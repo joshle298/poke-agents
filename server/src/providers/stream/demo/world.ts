@@ -3,7 +3,7 @@
  * actions (tools, replies, messages between sessions, a question, an error),
  * played against script time and pushed into the office through the same
  * AgentEventSink the Conductor poller uses. User actions (send a message,
- * stop, deposit, withdraw, hide, pin, scope) change this state and nothing
+ * stop, archive, restore, hide, pin, scope) change this state and nothing
  * else: nothing here touches the network or the disk.
  */
 
@@ -132,7 +132,7 @@ export type DemoAction =
   | { kind: 'compact'; secs: number; to: number }
   | { kind: 'wait'; secs: number }
   | { kind: 'end' }
-  /** A script hook (deposit a session, ...). */
+  /** A script hook (archive a session, ...). */
   | { kind: 'run'; fn: (world: DemoWorld) => void };
 
 /** What sessions do with messages the story did not script (the user's). */
@@ -392,7 +392,7 @@ export class DemoWorld {
     if (!session?.born || !session.archived) throw new Error('Session not found');
     session.archived = false;
     session.archivedAt = undefined;
-    // A withdrawal counts as activity, so it lands inside the scope window.
+    // A restore counts as activity, so it lands inside the scope window.
     session.lastActivityAt = this.now();
     this.refresh();
   }
@@ -494,7 +494,7 @@ export class DemoWorld {
     return id;
   }
 
-  // ── Reads (Pokédex, Sessions modal, PC Box) ────────────────
+  // ── Reads (Pokédex, Sessions modal, Archived sessions) ─────
 
   listSessions(): ConductorSessionSummary[] {
     const now = this.now();
@@ -848,7 +848,7 @@ export class DemoWorld {
     if (!this.scope.showIdle) this.refresh();
   }
 
-  /** Which sessions are in the office (scope, hide, deposit, cap), and adopt
+  /** Which sessions are in the office (scope, hide, archive, cap), and adopt
    *  or remove agents to match. */
   private refresh(): void {
     const now = this.now();

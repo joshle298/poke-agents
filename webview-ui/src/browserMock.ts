@@ -308,7 +308,7 @@ export function dispatchMockMessages(): void {
 
 // ── Conductor mock (Vite dev only) ─────────────────────────────────────────────
 // A few synthetic Conductor sessions so the party bar, Pokédex (Overview and
-// Chat, with history pages and a pending question), Sessions and PC Box can
+// Chat, with history pages and a pending question), Sessions and Archived sessions can
 // be developed and screenshotted without a server. Every name and message
 // below is made up. No sprites ship or decode: species carry names and the
 // local server's portrait URLs, which 404 on the Vite server, so portraits

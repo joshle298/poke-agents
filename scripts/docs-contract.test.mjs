@@ -170,7 +170,10 @@ test('the README defaults match the code', () => {
   const scope = constants.slice(constants.indexOf('export const DEFAULT_SCOPE'));
   const hours = scope.match(/activeWithinHours: (\d+)/)[1];
   const cap = scope.match(/maxSessions: (\d+)/)[1];
-  assert.match(README, new RegExp(`active in the last ${hours} hours by default`));
+  assert.match(
+    README,
+    new RegExp(`\\*\\*Hide sessions idle longer than:\\*\\* ${hours} hours by default`),
+  );
   assert.match(README, new RegExp(`\\*\\*Cap:\\*\\* ${cap} sessions by default`));
 });
 
@@ -244,7 +247,7 @@ test("CLAUDE.md's protocol message counts match core/asyncapi.yaml", () => {
 
 test('CONTEXT.md defines the Pokédex terms the UI uses', () => {
   const glossary = read('CONTEXT.md');
-  for (const term of ['Pokédex', 'Chat tab', 'Pending question', 'PC Box', 'Level']) {
+  for (const term of ['Pokédex', 'Chat tab', 'Pending question', 'Archived sessions', 'Level']) {
     assert.match(glossary, new RegExp(`^\\*\\*${term}\\*\\*:$`, 'm'), `CONTEXT.md defines ${term}`);
   }
 });

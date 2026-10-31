@@ -5,6 +5,7 @@ import { toMajorMinor } from './changelogData.js';
 import type { SelectMods, TabStatus } from './components/AgentCard.js';
 import type { CardBarLayout } from './components/AgentCardBar.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
+import { ArchiveModal } from './components/ArchiveModal.js';
 import { BattleLog } from './components/BattleLog.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { ConductorEmptyOffice, NothingTrackedOffice } from './components/ConductorEmptyOffice.js';
@@ -17,7 +18,6 @@ import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { OfficeToolbar } from './components/OfficeToolbar.js';
 import { OfficeTopBar } from './components/OfficeTopBar.js';
-import { PcBoxModal } from './components/PcBoxModal.js';
 import type { PokedexTab } from './components/SessionPanel.js';
 import { SessionPanel } from './components/SessionPanel.js';
 import { SessionsModal } from './components/SessionsModal.js';
@@ -197,7 +197,7 @@ function App() {
 
   // ── Conductor chrome ────────────────────────────────────────
   // Which providers feed the office decides the chrome: Claude Code brings
-  // + Agent, hooks and Directories; Conductor brings Sessions and the PC Box.
+  // + Agent, hooks and Directories; Conductor brings Sessions and Archive.
   const activeProviders = useConductor((s) => s.activeProviders);
   const claudeActive = activeProviders.includes('claude');
   const conductorActive = activeProviders.includes('conductor');
@@ -205,7 +205,7 @@ function App() {
   const speciesMap = useConductor((s) => s.species);
   const pokemonTheme = useConductor((s) => s.pokemonTheme);
   const [isSessionsOpen, setIsSessionsOpen] = useState(false);
-  const [isPcBoxOpen, setIsPcBoxOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isCreditsOpen, setIsCreditsOpen] = useState(false);
   // The agent whose Pokédex is open (stream agents only), and its tab (kept
   // across agents, so a jump to a peer stays in Chat).
@@ -554,7 +554,7 @@ function App() {
   // Switch model: the new session's Pokédex opens when it walks in.
   useFollowSession(isInOffice, handleJumpToAgent);
 
-  // The Pokédex closes when its agent leaves the office (hidden, deposited,
+  // The Pokédex closes when its agent leaves the office (hidden, archived,
   // scoped out).
   const detailAgentPresent = detailAgentId !== null && agents.includes(detailAgentId);
   useEffect(() => {
@@ -823,8 +823,8 @@ function App() {
                     conductorActive={conductorActive}
                     isSessionsOpen={isSessionsOpen}
                     onOpenSessions={() => setIsSessionsOpen(true)}
-                    isPcBoxOpen={isPcBoxOpen}
-                    onOpenPcBox={() => setIsPcBoxOpen(true)}
+                    isArchiveOpen={isArchiveOpen}
+                    onOpenArchive={() => setIsArchiveOpen(true)}
                   />
                 )
           }
@@ -946,7 +946,7 @@ function App() {
       )}
 
       {/* Mobile: Settings floats top-left (the layout editor stays desktop-
-            only — its tools are drag/hover-driven), with Sessions and PC
+            only — its tools are drag/hover-driven), with Sessions and Archive
             beside it when Conductor feeds the office. */}
       {isMobile && !isDebugMode && !officeReadOnly && (
         <div className="absolute mobile-safe-top left-8 z-20 flex gap-4">
@@ -971,11 +971,12 @@ function App() {
               </Button>
               <Button
                 size="sm"
-                variant={isPcBoxOpen ? 'active' : 'default'}
+                variant={isArchiveOpen ? 'active' : 'default'}
                 className="border-border! shadow-pixel"
-                onClick={() => setIsPcBoxOpen(true)}
+                onClick={() => setIsArchiveOpen(true)}
+                title="Archived sessions"
               >
-                PC
+                Archive
               </Button>
             </>
           )}
@@ -1268,7 +1269,7 @@ function App() {
         conductorActive={conductorActive}
         readOnly={officeReadOnly}
         onManageSessions={() => setIsSessionsOpen(true)}
-        onOpenPcBox={() => setIsPcBoxOpen(true)}
+        onOpenArchive={() => setIsArchiveOpen(true)}
         pokemonTheme={pokemonTheme}
         onTogglePokemonTheme={() => setPokemonTheme(!pokemonTheme)}
         showConnections={showConnections}
@@ -1285,9 +1286,9 @@ function App() {
         onClose={() => setIsSessionsOpen(false)}
         readOnly={officeReadOnly}
       />
-      <PcBoxModal
-        isOpen={isPcBoxOpen}
-        onClose={() => setIsPcBoxOpen(false)}
+      <ArchiveModal
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
         readOnly={officeReadOnly}
       />
       <CreditsModal isOpen={isCreditsOpen} onClose={() => setIsCreditsOpen(false)} />

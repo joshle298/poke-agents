@@ -154,10 +154,10 @@ export function pickPortrait(
   return portraits[emotion] ?? portraits.Normal ?? Object.values(portraits)[0];
 }
 
-/** The Pokémon a PC Box row shows: the summary's own species (the server
+/** The Pokémon an archived session's row shows: the summary's own species (the server
  *  sends it with every session, so it survives a reload), else the one this
  *  page last saw the session as. */
-export function pcBoxSpecies(
+export function archivedSpecies(
   session: Pick<ConductorSessionSummary, 'sessionId' | 'species' | 'shiny'>,
   sessionSpecies: Readonly<Record<string, SpeciesRef>>,
 ): SpeciesRef | undefined {
@@ -168,7 +168,7 @@ export function pcBoxSpecies(
 }
 
 /**
- * The portrait for a PC Box row. A species this office has loaded gives its
+ * The portrait for an archived session's row (Archived sessions). A species this office has loaded gives its
  * own Normal portrait. An archived session's species usually isn't loaded
  * (nobody in the office uses it), so where the local server serves its
  * portrait route (standalone, theme on) the row asks it for the dex's Normal
@@ -176,7 +176,7 @@ export function pcBoxSpecies(
  * the base form's, as the server does when a shiny has no portraits of its
  * own. Otherwise undefined (the capsule).
  */
-export function pcBoxPortraitUrl(
+export function archivedPortraitUrl(
   ref: SpeciesRef | undefined,
   state: Pick<ConductorState, 'species'>,
   portraitRoute: boolean,

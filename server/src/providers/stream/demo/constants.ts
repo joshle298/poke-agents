@@ -3,7 +3,7 @@
  */
 
 /** The demo stands in for Conductor: the office keys its chrome (party bar,
- *  Pokédex, PC Box, Sessions modal) off this provider id. */
+ *  Pokédex, Archived sessions, Sessions modal) off this provider id. */
 export const DEMO_PROVIDER_ID = 'conductor';
 export const DEMO_DISPLAY_NAME = 'Conductor demo';
 /** Shown as the account in the status line ("Conductor: demo mode · …"). */

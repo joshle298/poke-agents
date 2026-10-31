@@ -112,7 +112,7 @@ export const PRIORITY_DISCOVERY = 3;
 export const PRIORITY_WARM = 4;
 export const PRIORITY_BACKGROUND = 5;
 /** A request waiting this long moves up one priority level, but never past
- *  PRIORITY_HOT: under a saturated budget, background work (PC Box listings,
+ *  PRIORITY_HOT: under a saturated budget, background work (archived listings,
  *  off-screen onboarding) is otherwise never served and holds its unit slots. */
 export const PRIORITY_AGING_MS = 15_000;
 
@@ -142,14 +142,14 @@ export const SESSION_LIST_MAX_AGE_MS = 60_000;
 /** A workspace whose lastActivityAt advanced is re-listed at most this often
  *  (planIntervals budgets for it). */
 export const SESSION_LIST_MIN_GAP_MS = 60_000;
-/** Archived session listings (PC Box) per workspace, at most this often. */
+/** Archived session listings (Archived sessions) per workspace, at most this often. */
 export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
 export const ARCHIVE_INTEREST_MS = 5 * 60_000;
-/** An open PC Box lists this many of the most recently active workspaces at
- *  discovery priority (the rest in the background), so recent deposits show
- *  within seconds even when steady polls fill the budget. A deposit counts as
- *  workspace activity, so they are where recent deposits are. Two at a time
+/** An open Archived sessions modal lists this many of the most recently active workspaces at
+ *  discovery priority (the rest in the background), so recent archives show
+ *  within seconds even when steady polls fill the budget. An archive counts as
+ *  workspace activity, so they are where recent archives are. Two at a time
  *  (the list class), at most once per ARCHIVED_LIST_INTERVAL_MS each. */
 export const ARCHIVED_LIST_PROMPT_WORKSPACES = 24;
 export const WORKSPACES_PAGE_LIMIT = 100;
@@ -207,8 +207,8 @@ export const FOCUS_PEERS_MAX = 4;
  *  reading it fails, or takes longer than this after onboarding (a starved
  *  budget), it walks in anyway. */
 export const LEVEL_WAIT_MAX_MS = 3 * 60_000;
-/** A session withdrawn from the PC Box is shown like a pinned one this long;
- *  afterwards the withdrawal counts as its activity for the scope window. */
+/** A session restored from Archived sessions is shown like a pinned one this long;
+ *  afterwards the restore counts as its activity for the scope window. */
 export const RESTORE_PIN_MS = 10 * 60_000;
 /** Switch model: a create-session that failed on the network or with a 5xx is
  *  retried this many times (same session and message ids, so Conductor
@@ -304,7 +304,7 @@ export const STATE_FILE_NAME = 'conductor-state.json';
 export const POLLER_LOCK_FILE_NAME = 'conductor.lock';
 export const STATE_FILE_VERSION = 1;
 export const STATE_FILE_MODE = 0o600;
-/** User decisions (scope, hidden, pinned, a withdrawal) are written this soon... */
+/** User decisions (scope, hidden, pinned, a restore) are written this soon... */
 export const STATE_SAVE_DEBOUNCE_MS = 1_000;
 /** ...and poll bookkeeping (cursors, activity times) at most this often. */
 export const STATE_LAZY_SAVE_MS = 30_000;

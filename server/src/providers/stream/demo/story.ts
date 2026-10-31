@@ -5,8 +5,8 @@
  * ("Release v2 orchestration") spawns five workers over ~20 s, they work and
  * report back, "Fix flaky tests" faints and the Lead revives it, "Update docs"
  * finishes early and falls asleep, "Review PR #42" waits on a question,
- * "Triage nightly alerts" evolves, and the finished pricing prototype goes to
- * the PC. Later rounds give every worker a new task (the seed picks the
+ * "Triage nightly alerts" evolves, and the finished pricing prototype is
+ * archived. Later rounds give every worker a new task (the seed picks the
  * details) with the same beats, so the office keeps going.
  */
 

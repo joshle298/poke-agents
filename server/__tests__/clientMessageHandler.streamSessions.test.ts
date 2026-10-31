@@ -178,6 +178,23 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(readConfig().hooksConsent).toEqual({});
     });
 
+    it('answers a handshake repeated after a reconnect with the newest status', () => {
+      sink.setStatus({ state: 'connecting', scope: SCOPE });
+      send({ type: 'webviewReady' });
+      expect(ofType('conductorStatus').map((m) => m.state)).toEqual(['connecting']);
+      // Broadcast while this client's socket was down, so it never heard it;
+      // the same status again is not broadcast twice.
+      sink.setStatus({ state: 'connected', visibleCount: 43, scope: SCOPE });
+      sink.setStatus({ state: 'connected', visibleCount: 43, scope: SCOPE });
+      adopt('s1');
+      sent = [];
+      send({ type: 'webviewReady' });
+      expect(ofType('conductorStatus')).toEqual([
+        { type: 'conductorStatus', state: 'connected', visibleCount: 43, scope: SCOPE },
+      ]);
+      expect(ofType('existingAgents')[0].agents).toHaveLength(1);
+    });
+
     it('replays agent details and the provider state after the layout', () => {
       sink.setStatus({ state: 'connected', scope: SCOPE });
       sink.sessionsChanged([summary('s1')]);
@@ -456,6 +473,17 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(provider.setScope).toHaveBeenCalledWith({ ...SCOPE, creator: 'all' });
       // Refusals answer at once; the applied scope answers when the provider settles.
       expect(ofType('conductorActionResult').map((m) => m.ok)).toEqual([false, false, false, true]);
+    });
+
+    it('accepts fractional activity windows (15 and 30 minutes) and 0 for no limit', async () => {
+      for (const activeWithinHours of [0.25, 0.5, 0]) {
+        send({ type: 'setConductorScope', scope: { ...SCOPE, activeWithinHours } });
+      }
+      await settle();
+      expect(provider.setScope).toHaveBeenNthCalledWith(1, { ...SCOPE, activeWithinHours: 0.25 });
+      expect(provider.setScope).toHaveBeenNthCalledWith(2, { ...SCOPE, activeWithinHours: 0.5 });
+      expect(provider.setScope).toHaveBeenNthCalledWith(3, { ...SCOPE, activeWithinHours: 0 });
+      expect(ofType('conductorActionResult').map((m) => m.ok)).toEqual([true, true, true]);
     });
 
     it('lists every session in scope with agent ids for those in the office', () => {
@@ -781,7 +809,7 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
         provider.getSessionDetail,
         provider.setFocus,
         // Answering a refused toggle must not ask the provider either: its
-        // listSessions starts the PC Box's archived listings.
+        // listSessions starts the archived listings (Archived sessions).
         provider.listSessions,
         openExternal,
       ]) {

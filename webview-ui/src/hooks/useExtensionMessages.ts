@@ -35,6 +35,7 @@ import {
 import type { OfficeLayout, ToolActivity } from '../office/types.js';
 import { setWallSprites } from '../office/wallTiles.js';
 import { isBrowserRuntime, isE2E } from '../runtime.js';
+import { startHandshake } from '../transport/handshake.js';
 import { transport } from '../transport/index.js';
 
 /**
@@ -1054,8 +1055,13 @@ export function useExtensionMessages(
       }
     };
     const unsubscribe = transport.onMessage(handler);
-    transport.send({ type: 'webviewReady' });
-    return unsubscribe;
+    // webviewReady now, and again after every reconnect: the server's replay
+    // is how a page that missed broadcasts catches up.
+    const stopHandshake = startHandshake(transport);
+    return () => {
+      stopHandshake();
+      unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getOfficeState]);
 

@@ -7,7 +7,8 @@ import type { ConductorKeyStorage, ConductorStatus } from '../../../core/src/mes
 import {
   CONDUCTOR_DEEP_LINK_HOST,
   CONDUCTOR_DEEP_LINK_PROTOCOL,
-  CONDUCTOR_SCOPE_ALL_LABEL,
+  CONDUCTOR_SCOPE_MAX_WINDOW_DAYS,
+  CONDUCTOR_SCOPE_NEVER_LABEL,
   PARTY_NAME_SPLIT_MIN_CHARS,
   PARTY_NAME_TAIL_CHARS,
   PARTY_NAME_TAIL_MAX_CHARS,
@@ -43,6 +44,16 @@ export function shortAge(at: number, now: number): string {
   const hours = Math.floor(min / 60);
   if (hours < 48) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
+}
+
+/** How long something has taken, for the connecting card: "8 s",
+ *  "1 min 5 s", "12 min" (seconds dropped from 10 minutes on). */
+export function elapsedText(ms: number): string {
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec} s`;
+  const min = Math.floor(sec / 60);
+  const rest = sec % 60;
+  return min >= 10 || rest === 0 ? `${min} min` : `${min} min ${rest} s`;
 }
 
 /** "5m ago", or "just now". */
@@ -211,16 +222,26 @@ export function needsSignIn(status: ConductorStatus | null): boolean {
   return status?.state === 'authRequired' || status?.state === 'unauthorized';
 }
 
-/** Activity window label for the Sessions modal: "1h", "24h", "All (30d)".
- *  0 asks for no limit; the server applies it as its longest window. */
+/** "Hide sessions idle longer than" label for the Sessions modal: "15 min",
+ *  "1 h", "24 h", "3 days", "Never". 0 asks for no limit; the server applies
+ *  it as its longest window (NO_LIMIT_NOTE says so). */
 export function windowLabel(hours: number): string {
-  return hours === 0 ? CONDUCTOR_SCOPE_ALL_LABEL : `${hours}h`;
+  if (hours === 0) return CONDUCTOR_SCOPE_NEVER_LABEL;
+  const minutes = Math.round(hours * 60);
+  if (minutes < 60 || minutes % 60 !== 0) return `${minutes} min`;
+  const wholeHours = minutes / 60;
+  if (wholeHours >= 48 && wholeHours % 24 === 0) return `${wholeHours / 24} days`;
+  return `${wholeHours} h`;
 }
 
+/** Said under the window choices while Never is chosen: "no limit" still
+ *  stops at the server's longest window. */
+export const NO_LIMIT_NOTE = `Never still leaves out sessions idle over ${CONDUCTOR_SCOPE_MAX_WINDOW_DAYS} days, the furthest back Poke Agents looks.`;
+
 /**
- * The Sessions modal's activity-window choices: the presets (0 = "All", the
- * server's longest window, kept last) plus the server's current value when it is none of them,
- * so the control always shows what the server actually applied.
+ * The Sessions modal's window choices: the presets (0 = Never, the server's
+ * longest window, kept last) plus the server's current value when it is none
+ * of them, so the control always shows what the server actually applied.
  */
 export function windowOptions(
   presets: readonly number[],

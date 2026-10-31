@@ -48,9 +48,8 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
           Poke Agents shows your Conductor sessions as Pokémon in a pixel office. It is a visualizer
           for Conductor: all coding happens in Conductor, with your Conductor settings. Poke Agents
           never runs agents, never edits your repositories, and never stores or changes your
-          Conductor settings. Sending a message, stopping a session, depositing it in the PC,
-          withdrawing it or continuing it in a new session with another model only asks
-          Conductor&apos;s API to do so.
+          Conductor settings. Sending a message, stopping a session, archiving or restoring it, or
+          continuing it in a new session with another model only asks Conductor&apos;s API to do so.
         </p>
         <p className="m-0">
           The opt-in --claude mode is the one exception: it also tracks Claude Code on this computer
