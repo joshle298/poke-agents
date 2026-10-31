@@ -1,10 +1,12 @@
 /**
- * The Jukebox's server half: lists the music folder, drives the Music and
- * Spotify apps on macOS, keeps saved links, and opens the music folder.
+ * The Jukebox's server half: lists Poke Agents Radio and the music folder,
+ * drives the Music and Spotify apps on macOS, keeps saved links, and opens the
+ * music folder.
  *
  * A local nicety for the person at this machine. It never touches Conductor,
- * downloads no audio and runs nothing but the fixed commands in appleScripts.ts
- * and `open`/`xdg-open` on the music folder. Every entry point is reached only
+ * downloads no audio but the radio's pinned tracks (radioCache.ts, on first
+ * play), and runs nothing but the fixed commands in appleScripts.ts and
+ * `open`/`xdg-open` on the music folder. Every entry point is reached only
  * through privileged client messages (musicMessages.ts) and the tokened route.
  */
 
@@ -32,6 +34,7 @@ import { displayMusicPath, MusicFolderLibrary } from './folderLibrary.js';
 import { parseAppleMusicLink, parseSpotifyLink } from './links.js';
 import type { OsaExec } from './macApps.js';
 import { defaultOsaExec, defaultPathExists, MacMusicApp } from './macApps.js';
+import { RadioCache } from './radioCache.js';
 import type { Station } from './stations.js';
 import { appleStation, fetchSpotifyTitle, spotifyStation, StationStore } from './stations.js';
 
@@ -54,6 +57,9 @@ export interface MusicCommandOutcome {
 }
 
 export interface MusicServiceOptions {
+  /** Poke Agents Radio. Default: the committed catalog, cached in
+   *  ~/.pixel-agents/cache/music/radio, behind the radio switch. */
+  radio?: RadioCache;
   /** Default ~/.pixel-agents/music. */
   musicDir?: string;
   /** Default ~/.pixel-agents/music.json. */
@@ -80,6 +86,7 @@ interface AppleAlbumEntry extends LibraryAlbum {
 }
 
 export class MusicService {
+  readonly radio: RadioCache;
   readonly folder: MusicFolderLibrary;
   private readonly apps: Readonly<Record<'apple' | 'spotify', MacMusicApp>>;
   private readonly stations: StationStore;
@@ -97,6 +104,7 @@ export class MusicService {
     this.home = home;
     const log =
       options.log ?? ((message: string) => console.log(`[Pixel Agents] Jukebox: ${message}`));
+    this.radio = options.radio ?? new RadioCache();
     this.folder = new MusicFolderLibrary(options.musicDir);
     this.stations = new StationStore(options.stateFile);
     const deps = {
@@ -115,21 +123,34 @@ export class MusicService {
     this.settleMs = options.settleMs ?? DEFAULT_SETTLE_MS;
   }
 
-  /** The musicLibrary message: folder albums, scanned Music albums, stations,
-   *  and which sources work here. */
+  /** The musicLibrary message: radio tracks, folder albums, scanned Music
+   *  albums, stations, and which sources work here. */
   async library(): Promise<MusicLibrary> {
     const [scan, apple, spotify] = await Promise.all([
       this.folder.scan(),
       this.apps.apple.availability(),
       this.apps.spotify.availability(),
     ]);
+    const radioOff = this.radio.offReason();
     return {
       type: 'musicLibrary',
       sources: [
+        radioOff
+          ? { id: 'radio', available: false, reason: radioOff }
+          : { id: 'radio', available: true },
         { id: 'folder', available: true },
         { id: 'apple', ...apple },
         { id: 'spotify', ...spotify },
       ],
+      radioTracks: radioOff
+        ? []
+        : this.radio.tracks.map(({ id, title, author, mimeType, gain }) => ({
+            id,
+            title,
+            artist: author,
+            mimeType,
+            gain,
+          })),
       folderPath: displayMusicPath(this.folder.root, this.home),
       ...(scan.truncated ? { folderTruncated: true } : {}),
       albums: scan.albums.map((album) => ({
@@ -161,6 +182,7 @@ export class MusicService {
 
   private async dispatch(input: MusicCommandInput): Promise<MusicCommandOutcome> {
     const { action, source } = input;
+    if (source === 'radio') throw new UserError('Radio tracks play in the page.');
     if (source === 'folder') {
       if (action !== 'openFolder') {
         throw new UserError('Music folder tracks play in the page.');

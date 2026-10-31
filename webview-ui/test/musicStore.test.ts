@@ -3,12 +3,13 @@ import { describe, expect, it } from 'vitest';
 import type { MusicLibrary, MusicState } from '../../core/src/messages.js';
 import {
   appNowPlaying,
+  indexTracks,
   nowPlayingText,
   pillText,
   stationTrackIds,
   trackNumberLabel,
 } from '../src/music/format.js';
-import { MusicStore, pendingKey } from '../src/music/musicStore.js';
+import { MusicStore, pendingKey, usableTab } from '../src/music/musicStore.js';
 import { readMusicPrefs } from '../src/music/preferences.js';
 
 const PREFS = {
@@ -24,9 +25,20 @@ function library(overrides: Partial<MusicLibrary> = {}): MusicLibrary {
   return {
     type: 'musicLibrary',
     sources: [
+      { id: 'radio', available: true },
       { id: 'folder', available: true },
       { id: 'apple', available: true },
       { id: 'spotify', available: false, reason: "Spotify isn't installed." },
+    ],
+    radioTracks: [
+      {
+        id: 'radio-town',
+        title: 'Town Theme',
+        artist: 'Someone',
+        mimeType: 'audio/ogg',
+        gain: 0.5,
+      },
+      { id: 'radio-route', title: 'Route Theme', artist: 'Other', mimeType: 'audio/mpeg', gain: 1 },
     ],
     folderPath: '~/.pixel-agents/music',
     albums: [
@@ -70,11 +82,44 @@ describe('MusicStore', () => {
     expect(store.getState().folder.volume).toBe(0.6);
   });
 
-  it('takes the library, falling back to My music when the tab is unavailable', () => {
+  it('takes the library, falling back to the radio when the tab is unavailable', () => {
     const store = new MusicStore({ ...PREFS, source: 'spotify' });
     store.apply(library());
     expect(store.getState().library?.albums).toHaveLength(2);
+    expect(store.getState().tab).toBe('radio');
+  });
+
+  it('falls back to My music when the radio is off too', () => {
+    const store = new MusicStore({ ...PREFS, source: 'radio' });
+    expect(store.getState().tab).toBe('radio');
+    store.apply(
+      library({
+        sources: [
+          { id: 'radio', available: false, reason: 'The radio is off (--no-radio).' },
+          { id: 'folder', available: true },
+        ],
+        radioTracks: [],
+      }),
+    );
     expect(store.getState().tab).toBe('folder');
+    expect(usableTab({ ...store.getState(), tab: 'radio' })).toBe('folder');
+  });
+
+  it('keeps My music when that was the choice, radio or not', () => {
+    const store = new MusicStore({ ...PREFS, source: 'folder' });
+    store.apply(library());
+    expect(store.getState().tab).toBe('folder');
+  });
+
+  it('counts radio and folder music as playing in the page, not in an app', () => {
+    const store = new MusicStore(PREFS);
+    store.setActiveSource('radio');
+    expect(store.getState()).toMatchObject({ activeSource: 'radio', appStarted: false });
+    store.setActiveSource('spotify');
+    expect(store.getState()).toMatchObject({ activeSource: 'spotify', appStarted: true });
+    const before = store.getState();
+    store.apply({ type: 'musicState', source: 'radio', running: true, playing: true });
+    expect(store.getState()).toBe(before);
   });
 
   it('keeps each app state, and settles pending commands with their result', () => {
@@ -127,10 +172,24 @@ describe('Jukebox text', () => {
     expect(nowPlayingText()).toBe('');
   });
 
-  it('lists station tracks in album order', () => {
+  it('lists station tracks in order: the radio, every folder album, or one', () => {
+    expect(stationTrackIds(library(), 'radio')).toEqual(['radio-town', 'radio-route']);
     expect(stationTrackIds(library(), 'all')).toEqual(['t1', 't2', 't3']);
     expect(stationTrackIds(library(), 'a2')).toEqual(['t3']);
     expect(stationTrackIds(null, 'all')).toEqual([]);
+    expect(stationTrackIds(null, 'radio')).toEqual([]);
+  });
+
+  it('indexes radio tracks with their artist and gain, folder tracks at gain 1', () => {
+    const index = indexTracks(library());
+    expect(index.get('radio-town')).toMatchObject({
+      track: { id: 'radio-town', title: 'Town Theme', mimeType: 'audio/ogg' },
+      album: { id: 'radio', name: 'Poke Agents Radio' },
+      artist: 'Someone',
+      gain: 0.5,
+    });
+    expect(index.get('t1')).toMatchObject({ album: { id: 'a1' }, gain: 1 });
+    expect(index.get('t1')?.artist).toBeUndefined();
   });
 
   it('labels track numbers, with the disc on multi-disc albums', () => {
@@ -155,6 +214,18 @@ describe('Jukebox text', () => {
     expect(pillText(store.getState())).toBe('Music');
   });
 
+  it('shows a radio track with its artist in the pill', () => {
+    const store = new MusicStore({ ...PREFS, source: 'radio' });
+    store.apply(library());
+    store.setFolder({
+      ...store.getState().folder,
+      playing: true,
+      trackId: 'radio-route',
+      station: 'radio',
+    });
+    expect(pillText(store.getState())).toBe('Route Theme · Other');
+  });
+
   it('describes an app that is closed, refused or paused', () => {
     expect(appNowPlaying(undefined, 'spotify')).toBe('Spotify: nothing yet');
     expect(appNowPlaying({ ...PLAYING, running: false, playing: false }, 'apple')).toBe(
@@ -170,9 +241,9 @@ describe('Jukebox text', () => {
 });
 
 describe('music preferences', () => {
-  it('falls back to defaults without storage (Node)', () => {
+  it('falls back to defaults without storage (Node): the radio, at 60%', () => {
     expect(readMusicPrefs()).toEqual({
-      source: 'folder',
+      source: 'radio',
       station: null,
       track: null,
       shuffle: false,

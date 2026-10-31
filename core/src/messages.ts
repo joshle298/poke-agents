@@ -631,6 +631,7 @@ export interface AgentDiagnostics {
 export interface MusicLibrary {
   type: 'musicLibrary';
   sources: MusicSourceInfo[];
+  radioTracks: MusicRadioTrack[];
   folderPath: string;
   folderTruncated?: boolean;
   albums: MusicAlbum[];
@@ -645,7 +646,15 @@ export interface MusicSourceInfo {
   reason?: string;
 }
 
-export type MusicSourceId = 'folder' | 'apple' | 'spotify';
+export type MusicSourceId = 'radio' | 'folder' | 'apple' | 'spotify';
+
+export interface MusicRadioTrack {
+  id: string;
+  title: string;
+  artist: string;
+  mimeType: string;
+  gain: number;
+}
 
 export interface MusicAlbum {
   id: string;

@@ -190,10 +190,12 @@ describe('Jukebox client messages', () => {
       expect(sent[0]).toMatchObject({
         type: 'musicLibrary',
         sources: [
+          { id: 'radio', available: false },
           { id: 'folder', available: false },
           { id: 'apple', available: false },
           { id: 'spotify', available: false },
         ],
+        radioTracks: [],
       });
       expect(sent[1]).toMatchObject({ type: 'musicActionResult', ok: false });
     });
@@ -209,5 +211,10 @@ describe('Jukebox client messages', () => {
         extra: 'ignored',
       }),
     ).toEqual({ action: 'play', source: 'apple', stationId: 'abc' });
+    expect(parseMusicCommand({ type: 'musicCommand', action: 'play', source: 'radio' })).toEqual({
+      action: 'play',
+      source: 'radio',
+    });
+    expect(parseMusicCommand({ type: 'musicCommand', action: 'play', source: 'tv' })).toBeNull();
   });
 });

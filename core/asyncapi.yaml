@@ -1321,20 +1321,29 @@ components:
     MusicLibrary:
       description: |
         The Jukebox library, sent only to the client that asked (requestMusicLibrary,
-        or a musicCommand that changed it). It lists music the user owns or plays in
+        or a musicCommand that changed it). It lists Poke Agents Radio (freely licensed
+        tracks the server downloads on first play), music the user owns or plays in
         their own apps: audio files in the music folder, Pokémon albums the last scan
         found in the Music app's library, and saved Apple Music and Spotify links.
       type: object
       additionalProperties: false
-      required: [type, sources, folderPath, albums, appleAlbums, appleLibraryScanned, stations]
+      required:
+        [type, sources, radioTracks, folderPath, albums, appleAlbums, appleLibraryScanned, stations]
       properties:
         type:
           const: musicLibrary
         sources:
           type: array
-          description: Which sources work on this server (the Music and Spotify apps need macOS).
+          description: |
+            Which sources work on this server (the Music and Spotify apps need macOS; the
+            radio is off with --no-radio or --no-sounds).
           items:
             $ref: '#/components/schemas/MusicSourceInfo'
+        radioTracks:
+          type: array
+          description: Poke Agents Radio's tracks, in catalog order. Empty while the radio is off.
+          items:
+            $ref: '#/components/schemas/MusicRadioTrack'
         folderPath:
           type: string
           description: The music folder as shown to the user (~ stands for the home directory).
@@ -1363,7 +1372,8 @@ components:
     MusicState:
       description: |
         What the Music or Spotify app is playing, answering a musicCommand for that
-        source (refresh included). Folder music plays in the page and has no state here.
+        source (refresh included). Radio and folder music play in the page and have no
+        state here.
       type: object
       additionalProperties: false
       required: [type, source, running, playing]
@@ -1910,8 +1920,9 @@ components:
     MusicCommand:
       description: |
         A Jukebox action. Privileged: a read-only office is refused. The server runs
-        only fixed, validated commands: it streams folder files, opens the music
-        folder, and drives the Music and Spotify apps through fixed AppleScripts.
+        only fixed, validated commands: it opens the music folder and drives the Music
+        and Spotify apps through fixed AppleScripts. Radio and folder tracks play in
+        the page from /api/music/track/<id>, not through commands.
       type: object
       additionalProperties: false
       required: [type, action, source]
@@ -2309,7 +2320,7 @@ components:
 
     MusicSourceId:
       type: string
-      enum: [folder, apple, spotify]
+      enum: [radio, folder, apple, spotify]
 
     MusicCommandAction:
       type: string
@@ -2374,6 +2385,28 @@ components:
           type: integer
         mimeType:
           type: string
+
+    MusicRadioTrack:
+      description: |
+        A Poke Agents Radio track, streamed from /api/music/track/<id> (downloaded once,
+        checked against its pinned SHA-256). Credits are in core/src/radioCredits.ts.
+      type: object
+      additionalProperties: false
+      required: [id, title, artist, mimeType, gain]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        artist:
+          type: string
+        mimeType:
+          type: string
+        gain:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Volume factor that brings the track to the station's common loudness.
 
     MusicAppleAlbum:
       type: object

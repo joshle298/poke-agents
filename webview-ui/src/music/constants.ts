@@ -72,3 +72,5 @@ export const MUSIC_PREF_PLAYING = 'pixel-agents.music.playing';
 
 /** The folder "station" that plays every album. */
 export const MUSIC_STATION_ALL = 'all';
+/** The station that plays Poke Agents Radio's tracks. */
+export const MUSIC_STATION_RADIO = 'radio';

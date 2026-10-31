@@ -7,7 +7,8 @@
 - **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
 - **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, Poké Balls, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
 - **The Pokémon Town.** A new office opens on a small town in a forest, drawn in code (`scripts/generate-world-assets.mjs`): working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back. An office with a saved layout keeps it.
-- **Jukebox.** Background music from music you already have: audio files in `~/.pixel-agents/music/`, or albums and links you play in the Music or Spotify app on macOS (the Mac app asks once for permission to control them). Open it from ♪ in the toolbar or **Jukebox…** under Settings → Sound. Pokémon cries and alerts briefly lower folder music. It never downloads, streams or bundles soundtracks.
+- **Poke Agents Radio.** The Jukebox's built-in station, and its first tab: 12 original chiptune and retro RPG tracks (town, route, indoors, a calm night, a battle) that their authors released under CC0 or CC BY, credited in Settings → About & credits and the README. Shuffle all, play in order or pick a track. Each track downloads once from its author's page (`opengameart.org`, `incompetech.com`) into `~/.pixel-agents/cache/music/radio/` and plays only if it matches its pinned SHA-256; louder tracks are turned down so the station keeps one volume. No audio is in the repository.
+- **Jukebox.** Background music from music you already have: audio files in `~/.pixel-agents/music/`, or albums and links you play in the Music or Spotify app on macOS (the Mac app asks once for permission to control them). Open it from ♪ in the toolbar or **Jukebox…** under Settings → Sound. Pokémon cries and alerts briefly lower radio and folder music. It never downloads, streams or bundles game soundtracks.
 
 ### Fixes
 
@@ -16,7 +17,8 @@
 ### Changes
 
 - A new app icon, a pill-shaped pixel capsule with a small terminal (a `>` prompt and a block cursor) set into its band, drawn in code by `scripts/generate-icons.mjs`.
-- New flag `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`): no cry downloads and no sound pack.
+- New flag `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`): no cry or radio downloads and no sound pack.
+- New flag `--no-radio` (or `POKE_AGENTS_RADIO=off`): Poke Agents Radio off, no track downloads.
 
 ## Poke Agents v0.2.0
 

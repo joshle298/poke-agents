@@ -1,8 +1,9 @@
 /**
  * What the Jukebox remembers per device (localStorage `pixel-agents.music.*`):
- * the last source, the folder station and track, shuffle, volume, and whether
- * folder music was playing (so it can resume on the first click). Storage can
- * be missing (Node tests) or blocked (private windows); reads fall back and
+ * the last source (Poke Agents Radio until the user picks another), the page
+ * player's station and track, shuffle, volume, and whether radio or folder
+ * music was playing (so it can resume on the first click). Storage can be
+ * missing (Node tests) or blocked (private windows); reads fall back and
  * writes become no-ops.
  */
 
@@ -19,11 +20,11 @@ import {
 
 export interface MusicPrefs {
   source: MusicSourceId;
-  /** Folder station: an album id, or MUSIC_STATION_ALL. */
+  /** Page player station: MUSIC_STATION_RADIO, MUSIC_STATION_ALL or an album id. */
   station: string | null;
   track: string | null;
   shuffle: boolean;
-  /** Folder volume, 0..1. */
+  /** Page player volume, 0..1. */
   volume: number;
   playing: boolean;
 }
@@ -55,7 +56,9 @@ function write(key: string, value: string | null): void {
   }
 }
 
-const SOURCES: readonly MusicSourceId[] = ['folder', 'apple', 'spotify'];
+const SOURCES: readonly MusicSourceId[] = ['radio', 'folder', 'apple', 'spotify'];
+/** Nothing chosen yet: the built-in station. */
+const DEFAULT_SOURCE: MusicSourceId = 'radio';
 const ID = /^[A-Za-z0-9._-]{1,120}$/;
 
 export function readMusicPrefs(): MusicPrefs {
@@ -64,7 +67,7 @@ export function readMusicPrefs(): MusicPrefs {
   const station = read(MUSIC_PREF_STATION);
   const track = read(MUSIC_PREF_TRACK);
   return {
-    source: SOURCES.includes(source as MusicSourceId) ? (source as MusicSourceId) : 'folder',
+    source: SOURCES.includes(source as MusicSourceId) ? (source as MusicSourceId) : DEFAULT_SOURCE,
     station: station && ID.test(station) ? station : null,
     track: track && ID.test(track) ? track : null,
     shuffle: read(MUSIC_PREF_SHUFFLE) === '1',

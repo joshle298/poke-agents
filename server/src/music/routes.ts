@@ -1,21 +1,26 @@
 /**
- * Same-origin audio for the Jukebox's music folder:
+ * Same-origin audio for the Jukebox's radio and music folder:
  *
  *   GET /api/music/track/:id?token=<server token>
  *
- * Streams one file the latest folder scan listed, with HTTP Range support so an
- * <audio> element can seek. The user's own files are private, so the route
- * needs the same privilege as the /ws control socket and the terminal: the
- * server token, arriving under an allowed Host (wsAuth.standaloneHandshakeVerdict).
- * A read-only office never learns track ids anyway (requestMusicLibrary is a
- * privileged message). The request logger redacts the token.
+ * Streams one file, with HTTP Range support so an <audio> element can seek:
+ * a track the latest folder scan listed (a 24-hex id), or a Poke Agents Radio
+ * track from the checksum manifest (a `radio-<slug>` id), which the radio
+ * cache downloads and verifies on its first request. Nothing else is served.
+ * The user's own files are private, and a radio request may start a download,
+ * so the route needs the same privilege as the /ws control socket and the
+ * terminal: the server token, arriving under an allowed Host
+ * (wsAuth.standaloneHandshakeVerdict). A read-only office never learns track
+ * ids anyway (requestMusicLibrary is a privileged message). The request logger
+ * redacts the token.
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { standaloneHandshakeVerdict } from '../wsAuth.js';
 import { MUSIC_ID_PATTERN, MUSIC_ROUTE_CACHE_CONTROL, MUSIC_ROUTE_PREFIX } from './constants.js';
-import type { MusicFolderLibrary } from './folderLibrary.js';
+import type { MusicFolderLibrary, OpenedTrack } from './folderLibrary.js';
+import { isRadioTrackId, type RadioCache } from './radioCache.js';
 import { parseRangeHeader } from './range.js';
 
 export interface MusicRoutesOptions {
@@ -24,6 +29,8 @@ export interface MusicRoutesOptions {
   /** Host names a privileged request may arrive under (wsAuth.privilegedHostnames). */
   allowedHostnames: ReadonlySet<string>;
   library: MusicFolderLibrary;
+  /** Poke Agents Radio. Absent: radio ids are 404s. */
+  radio?: Pick<RadioCache, 'openTrack'>;
 }
 
 type Params = { id: string };
@@ -50,10 +57,7 @@ async function serveTrack(
     options.allowedHostnames,
   );
   if (verdict !== 'privileged') return reply.code(403).send();
-  const id = request.params.id;
-  if (!MUSIC_ID_PATTERN.test(id)) return reply.code(404).send();
-
-  const track = await options.library.openTrack(id);
+  const track = await openTrack(request.params.id, options);
   if (!track) return reply.code(404).send();
   const { handle, size, mimeType } = track;
 
@@ -81,4 +85,11 @@ async function serveTrack(
   // autoClose (the default) closes the handle when the stream ends, errors, or
   // is destroyed because the client went away.
   return reply.send(handle.createReadStream({ start, end }));
+}
+
+/** A folder track by scanned id, a radio track by manifest id, else null. */
+function openTrack(id: string, options: MusicRoutesOptions): Promise<OpenedTrack | null> {
+  if (MUSIC_ID_PATTERN.test(id)) return options.library.openTrack(id);
+  if (options.radio && isRadioTrackId(id)) return options.radio.openTrack(id);
+  return Promise.resolve(null);
 }

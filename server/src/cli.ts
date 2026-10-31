@@ -65,8 +65,10 @@ export interface CliArgs {
   conductorBudget?: number;
   /** False with --no-sprites: never download Pokémon sprites. */
   sprites: boolean;
-  /** False with --no-sounds: never download cries or serve the sound pack. */
+  /** False with --no-sounds: never download cries or radio tracks, or serve the sound pack. */
   sounds: boolean;
+  /** False with --no-radio: Poke Agents Radio is off and downloads nothing. */
+  radio: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -85,6 +87,7 @@ export function parseArgs(argv: string[]): CliArgs {
     open: false,
     sprites: true,
     sounds: true,
+    radio: true,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -159,6 +162,8 @@ export function parseArgs(argv: string[]): CliArgs {
       args.sprites = false;
     } else if (argv[i] === '--no-sounds') {
       args.sounds = false;
+    } else if (argv[i] === '--no-radio') {
+      args.radio = false;
     } else if (argv[i] === '--help') {
       console.log(`Usage: poke-agents [options]
 
@@ -185,8 +190,10 @@ Options:
                         agents only; no launching or attaching from the browser)
   --no-sprites          Never download Pokémon sprites (also
                         POKE_AGENTS_SPRITES=off)
-  --no-sounds           Never download Pokémon cries or serve a sound pack
-                        (also POKE_AGENTS_SOUNDS=off)
+  --no-sounds           Never download Pokémon cries or radio tracks, or serve
+                        a sound pack (also POKE_AGENTS_SOUNDS=off)
+  --no-radio            Turn off Poke Agents Radio, the Jukebox's built-in
+                        station: no track downloads (also POKE_AGENTS_RADIO=off)
   --help                Show this help message`);
       process.exit(0);
     }
@@ -230,7 +237,9 @@ async function main(): Promise<void> {
       conductorBudget: args.conductorBudget,
       sprites: args.sprites,
       sounds: args.sounds,
-      // The Jukebox: ~/.pixel-agents/music, plus Music/Spotify on macOS.
+      radio: args.radio,
+      // The Jukebox: Poke Agents Radio, ~/.pixel-agents/music, plus
+      // Music/Spotify on macOS.
       music: new MusicService(),
     });
   } catch (err) {

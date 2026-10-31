@@ -138,5 +138,8 @@ describe('crossfade math', () => {
     expect(deckVolume(0.8, 0.5, 0.25)).toBeCloseTo(0.1);
     expect(deckVolume(2, 1, 1)).toBe(1);
     expect(deckVolume(Number.NaN, 1, 1)).toBe(0);
+    // A radio track's loudness match scales it too.
+    expect(deckVolume(0.6, 1, 1, 0.5)).toBeCloseTo(0.3);
+    expect(deckVolume(1, 1, 1, 2)).toBe(1);
   });
 });

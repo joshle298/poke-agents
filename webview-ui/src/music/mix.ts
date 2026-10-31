@@ -39,8 +39,9 @@ export function crossfadeMsFor(durationSec: number): number {
   return Math.min(MUSIC_CROSSFADE_MS, durationSec * 1000 * MUSIC_CROSSFADE_MAX_SHARE);
 }
 
-/** An <audio> volume from the parts that scale it, clamped to 0..1. */
-export function deckVolume(user: number, fade: number, duck: number): number {
-  const v = user * fade * duck;
+/** An <audio> volume from the parts that scale it, clamped to 0..1. `gain`
+ *  is the track's own factor (a radio track's loudness match; 1 otherwise). */
+export function deckVolume(user: number, fade: number, duck: number, gain = 1): number {
+  const v = user * fade * duck * gain;
   return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
 }

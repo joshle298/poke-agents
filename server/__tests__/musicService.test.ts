@@ -10,6 +10,8 @@ import {
   MusicService,
   openFolderWithSystem,
 } from '../src/music/musicService.js';
+import { RadioCache } from '../src/music/radioCache.js';
+import { forbiddenFetch, radioTrack, syntheticTrackBytes } from './radioTestUtils.js';
 
 const US = '\u001f';
 const RS = '\u001e';
@@ -52,6 +54,16 @@ function fakeOsascript(
   });
 }
 
+const RADIO_TRACKS = [
+  radioTrack('town', syntheticTrackBytes(1), { title: 'Town', author: 'Someone', gain: 0.5 }),
+  radioTrack('route', syntheticTrackBytes(2), {
+    title: 'Route',
+    author: 'Someone Else',
+    mimeType: 'audio/mpeg',
+    fileName: 'radio-route.mp3',
+  }),
+];
+
 function service(
   options: {
     platform?: NodeJS.Platform;
@@ -59,9 +71,17 @@ function service(
     fetch?: typeof fetch;
     openFolder?: (dir: string) => Promise<void>;
     installed?: boolean;
+    radioOff?: string;
   } = {},
 ) {
   return new MusicService({
+    // Listing the radio never downloads: only the track route does.
+    radio: new RadioCache({
+      root: path.join(base, 'radio'),
+      tracks: RADIO_TRACKS,
+      fetch: forbiddenFetch(),
+      offReason: () => options.radioOff ?? null,
+    }),
     musicDir,
     stateFile,
     platform: options.platform ?? 'darwin',
@@ -85,6 +105,44 @@ function scriptsRun(exec: ReturnType<typeof fakeOsascript>): string[] {
 }
 
 describe('MusicService.library', () => {
+  it('lists Poke Agents Radio first: titles, artists and gains, no URLs or checksums', async () => {
+    const library = await service({ platform: 'linux' }).library();
+    expect(library.sources[0]).toEqual({ id: 'radio', available: true });
+    expect(library.radioTracks).toEqual([
+      { id: 'radio-town', title: 'Town', artist: 'Someone', mimeType: 'audio/ogg', gain: 0.5 },
+      {
+        id: 'radio-route',
+        title: 'Route',
+        artist: 'Someone Else',
+        mimeType: 'audio/mpeg',
+        gain: 1,
+      },
+    ]);
+    const wire = JSON.stringify(library);
+    expect(wire).not.toContain('music.example');
+    expect(wire).not.toContain(RADIO_TRACKS[0].sha256);
+  });
+
+  it('lists no radio tracks, and says why, while the radio is off', async () => {
+    const library = await service({
+      platform: 'linux',
+      radioOff: 'The radio is off (--no-radio).',
+    }).library();
+    expect(library.sources[0]).toEqual({
+      id: 'radio',
+      available: false,
+      reason: 'The radio is off (--no-radio).',
+    });
+    expect(library.radioTracks).toEqual([]);
+  });
+
+  it('defaults to the committed catalog behind the radio switch', async () => {
+    const music = new MusicService({ musicDir, stateFile, platform: 'linux', home: base });
+    expect(music.radio.tracks.length).toBeGreaterThanOrEqual(8);
+    // vitest.config.ts runs the server tests with POKE_AGENTS_RADIO=off.
+    expect((await music.library()).sources[0]).toMatchObject({ id: 'radio', available: false });
+  });
+
   it('lists folder albums without server paths, and which sources work', async () => {
     fs.mkdirSync(path.join(musicDir, 'Pokémon Ruby'), { recursive: true });
     fs.writeFileSync(path.join(musicDir, 'Pokémon Ruby', '01 Opening.mp3'), 'x');
@@ -92,6 +150,7 @@ describe('MusicService.library', () => {
     const library = await service({ platform: 'linux' }).library();
     expect(library.type).toBe('musicLibrary');
     expect(library.sources).toEqual([
+      { id: 'radio', available: true },
       { id: 'folder', available: true },
       { id: 'apple', available: false, reason: 'Music control needs macOS.' },
       { id: 'spotify', available: false, reason: 'Spotify control needs macOS.' },
@@ -119,6 +178,7 @@ describe('MusicService.library', () => {
   it('reports the apps available on a Mac that has them', async () => {
     const library = await service().library();
     expect(library.sources.map((s) => [s.id, s.available])).toEqual([
+      ['radio', true],
       ['folder', true],
       ['apple', true],
       ['spotify', true],
@@ -157,6 +217,19 @@ describe('MusicService.command: the music folder', () => {
   it('leaves folder playback to the page', async () => {
     const outcome = await service().command(cmd({ action: 'play', source: 'folder' }));
     expect(outcome.result.ok).toBe(false);
+  });
+
+  it('leaves radio playback to the page and runs nothing for it', async () => {
+    const exec = fakeOsascript();
+    const outcome = await service({ exec }).command(cmd({ action: 'play', source: 'radio' }));
+    expect(outcome.result).toEqual({
+      type: 'musicActionResult',
+      action: 'play',
+      source: 'radio',
+      ok: false,
+      message: 'Radio tracks play in the page.',
+    });
+    expect(exec).not.toHaveBeenCalled();
   });
 });
 

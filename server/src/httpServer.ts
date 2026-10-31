@@ -142,12 +142,13 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
     // Cries and the user's sound pack, same rules as the sprites.
     registerSoundRoutes(app, { allowedHostnames, store: options.store });
   }
-  // The Jukebox's music folder, tokened like /ws (standalone only).
+  // The Jukebox's radio and music folder, tokened like /ws (standalone only).
   if (!options.embedded && options.music) {
     registerMusicRoutes(app, {
       token: options.token,
       allowedHostnames,
       library: options.music.folder,
+      radio: options.music.radio,
     });
   }
 

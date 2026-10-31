@@ -322,3 +322,11 @@ describe('--no-sounds', () => {
     expect(parseArgs(['--no-sounds']).sounds).toBe(false);
   });
 });
+
+describe('--no-radio', () => {
+  it('parses the flag, independently of --no-sounds', () => {
+    expect(parseArgs([]).radio).toBe(true);
+    expect(parseArgs(['--no-radio'])).toMatchObject({ radio: false, sounds: true });
+    expect(parseArgs(['--no-sounds'])).toMatchObject({ radio: true, sounds: false });
+  });
+});

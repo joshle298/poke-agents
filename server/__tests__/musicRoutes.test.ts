@@ -5,9 +5,11 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { MusicFolderLibrary } from '../src/music/folderLibrary.js';
+import { RadioCache } from '../src/music/radioCache.js';
 import { parseRangeHeader } from '../src/music/range.js';
 import { registerMusicRoutes } from '../src/music/routes.js';
 import { privilegedHostnames } from '../src/wsAuth.js';
+import { fakeRadioFetch, radioTrack, syntheticTrackBytes } from './radioTestUtils.js';
 
 const HOST = '127.0.0.1:41510';
 const TOKEN = 'test-token-123';
@@ -175,5 +177,103 @@ describe('GET /api/music/track/:id', () => {
       expect(res.statusCode, id).toBe(404);
       expect(res.rawPayload.toString()).not.toContain('secret');
     }
+  });
+});
+
+describe('GET /api/music/track/:id for Poke Agents Radio', () => {
+  const TRACK = syntheticTrackBytes(5, 1500);
+  let base: string;
+  let app: FastifyInstance;
+  let fetch: ReturnType<typeof fakeRadioFetch>;
+  let radioOff: string | null;
+
+  beforeEach(async () => {
+    base = fs.mkdtempSync(path.join(os.tmpdir(), 'radio-route-'));
+    fs.mkdirSync(path.join(base, 'music'));
+    const track = radioTrack('town', TRACK);
+    fetch = fakeRadioFetch({ [track.url]: TRACK });
+    radioOff = null;
+    const radio = new RadioCache({
+      root: path.join(base, 'radio'),
+      tracks: [track],
+      fetch,
+      offReason: () => radioOff,
+      log: () => {},
+    });
+    app = Fastify();
+    registerMusicRoutes(app, {
+      token: TOKEN,
+      allowedHostnames: privilegedHostnames('127.0.0.1', []),
+      library: new MusicFolderLibrary(path.join(base, 'music')),
+      radio,
+    });
+    await app.ready();
+  });
+
+  afterEach(async () => {
+    await app.close();
+    fs.rmSync(base, { recursive: true, force: true });
+  });
+
+  function get(id: string, { token = TOKEN, host = HOST, range = '', method = 'GET' } = {}) {
+    return app.inject({
+      method: method as 'GET' | 'HEAD',
+      url: `/api/music/track/${id}?token=${encodeURIComponent(token)}`,
+      headers: { host, ...(range ? { range } : {}) },
+    });
+  }
+
+  it('downloads a manifest track on its first request and streams it, with ranges', async () => {
+    const res = await get('radio-town');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('audio/ogg');
+    expect(res.headers['content-length']).toBe(String(TRACK.length));
+    expect(res.headers['accept-ranges']).toBe('bytes');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.rawPayload).toEqual(TRACK);
+
+    const part = await get('radio-town', { range: 'bytes=100-199' });
+    expect(part.statusCode).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 100-199/${TRACK.length}`);
+    expect(part.rawPayload).toEqual(TRACK.subarray(100, 200));
+
+    const head = await get('radio-town', { method: 'HEAD' });
+    expect(head.statusCode).toBe(200);
+    expect(head.rawPayload.length).toBe(0);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('serves only manifest tracks', async () => {
+    for (const id of [
+      'radio-unknown',
+      'radio-town.ogg',
+      'radio-town%2F..%2F..%2Fsecret',
+      '..%2Fradio%2Fradio-town.ogg',
+      'radio-',
+      'RADIO-TOWN',
+    ]) {
+      expect((await get(id)).statusCode, id).toBe(404);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('downloads nothing for a request without the token or under another Host', async () => {
+    expect((await get('radio-town', { token: 'wrong' })).statusCode).toBe(403);
+    expect((await get('radio-town', { host: 'rebound.example:41510' })).statusCode).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 and downloads nothing while the radio is off', async () => {
+    radioOff = 'The radio is off (--no-radio).';
+    expect((await get('radio-town')).statusCode).toBe(404);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for a track whose download fails its checksum', async () => {
+    const tampered = Buffer.from(TRACK);
+    tampered[0] = 0;
+    fetch.mockImplementation(async () => new Response(new Uint8Array(tampered), { status: 200 }));
+    expect((await get('radio-town')).statusCode).toBe(404);
+    expect(fs.existsSync(path.join(base, 'radio', 'radio-town.ogg'))).toBe(false);
   });
 });

@@ -1,13 +1,14 @@
 /**
- * What the Jukebox's buttons do, for every source. Folder music plays in the
- * page (folderPlayer); the Music and Spotify apps get musicCommands. Starting
- * one source pauses the other, so two soundtracks never play at once.
+ * What the Jukebox's buttons do, for every source. Radio and folder music play
+ * in the page (folderPlayer); the Music and Spotify apps get musicCommands.
+ * Starting one source pauses the other, so two soundtracks never play at once.
  */
 
 import type { MusicSourceId } from '../../../core/src/messages.js';
 import { sendMusicCommand } from './actions.js';
+import { MUSIC_STATION_RADIO } from './constants.js';
 import { FolderPlayer, type MediaSessionPort } from './folderPlayer.js';
-import { type AppSource, musicStore } from './musicStore.js';
+import { type AppSource, isPageSource, musicStore } from './musicStore.js';
 import { writeMusicPrefs } from './preferences.js';
 import { activateSource } from './sourceSwitch.js';
 import { musicTrackUrl } from './trackUrl.js';
@@ -48,7 +49,7 @@ export function folderPlayer(): FolderPlayer {
 }
 
 /** navigator.mediaSession as the player uses it, so the OS media keys and
- *  Now Playing show and control folder music. */
+ *  Now Playing show and control radio and folder music. */
 function browserMediaSession(): MediaSessionPort | undefined {
   if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return undefined;
   const session = navigator.mediaSession;
@@ -60,9 +61,9 @@ function browserMediaSession(): MediaSessionPort | undefined {
         // This browser doesn't support that action.
       }
     },
-    setMetadata: ({ title, album }) => {
+    setMetadata: ({ title, album, artist }) => {
       if (typeof MediaMetadata !== 'undefined') {
-        session.metadata = new MediaMetadata({ title, album });
+        session.metadata = new MediaMetadata({ title, album, ...(artist ? { artist } : {}) });
       }
     },
   };
@@ -88,6 +89,12 @@ export function playFolder(station: string, options: { shuffle?: boolean; startI
   folderPlayer().playStation(station, options);
 }
 
+/** Play Poke Agents Radio, optionally from a track. */
+export function playRadio(options: { shuffle?: boolean; startId?: string } = {}) {
+  activate('radio');
+  folderPlayer().playStation(MUSIC_STATION_RADIO, options);
+}
+
 /** Play in an app: a Music library album or saved link, a Spotify link, or
  *  (Music, no station) every Pokémon album. */
 export function playApp(source: AppSource, stationId?: string, shuffle?: boolean): void {
@@ -101,9 +108,9 @@ export function playApp(source: AppSource, stationId?: string, shuffle?: boolean
 }
 
 export function togglePlay(source: MusicSourceId): void {
-  if (source === 'folder') {
+  if (isPageSource(source)) {
     const p = folderPlayer();
-    if (!p.isPlaying()) activate('folder');
+    if (!p.isPlaying()) activate(source);
     p.toggle();
     return;
   }
@@ -113,7 +120,7 @@ export function togglePlay(source: MusicSourceId): void {
 }
 
 export function skip(source: MusicSourceId, direction: 'next' | 'previous'): void {
-  if (source === 'folder') {
+  if (isPageSource(source)) {
     if (direction === 'next') folderPlayer().next();
     else folderPlayer().previous();
     return;
@@ -122,11 +129,11 @@ export function skip(source: MusicSourceId, direction: 'next' | 'previous'): voi
 }
 
 export function setShuffle(source: MusicSourceId, shuffle: boolean): void {
-  if (source === 'folder') folderPlayer().setShuffle(shuffle);
+  if (isPageSource(source)) folderPlayer().setShuffle(shuffle);
   else sendMusicCommand({ action: 'setShuffle', source, shuffle });
 }
 
-/** Folder: 0..1, applied at once. Apps: sent as 0..100 by the caller's debounce. */
+/** Radio and folder: 0..1, applied at once. Apps: sent as 0..100 by the caller's debounce. */
 export function setFolderVolume(volume: number): void {
   folderPlayer().setVolume(volume);
 }

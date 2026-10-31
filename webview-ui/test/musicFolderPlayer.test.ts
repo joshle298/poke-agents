@@ -58,7 +58,14 @@ const blocked = () =>
 
 const LIBRARY: MusicLibrary = {
   type: 'musicLibrary',
-  sources: [{ id: 'folder', available: true }],
+  sources: [
+    { id: 'radio', available: true },
+    { id: 'folder', available: true },
+  ],
+  radioTracks: [
+    { id: 'radio-town', title: 'Town', artist: 'Someone', mimeType: 'audio/ogg', gain: 0.5 },
+    { id: 'radio-route', title: 'Route', artist: 'Other', mimeType: 'audio/mpeg', gain: 1 },
+  ],
   folderPath: '~/.pixel-agents/music',
   albums: [
     {
@@ -387,5 +394,61 @@ describe('FolderPlayer', () => {
     const fresh = makePlayer({ station: 'gone', trackId: 'old' });
     fresh.resume();
     expect(last()).toMatchObject({ playing: true, station: 'all', trackId: 't1' });
+  });
+
+  it('plays the radio station, each track turned to the station loudness', () => {
+    player.setVolume(0.8);
+    player.playStation('radio');
+    vi.advanceTimersByTime(MUSIC_START_FADE_MS + 100);
+    expect(last()).toMatchObject({ playing: true, station: 'radio', trackId: 'radio-town' });
+    // Gain 0.5 on a volume of 0.8.
+    expect(deckWith('radio-town').volume).toBeCloseTo(0.4);
+    // Only radio tracks are queued: the next one is buffered.
+    expect(decks.map(srcOf).filter(Boolean).sort()).toEqual(['radio-route', 'radio-town']);
+
+    player.next();
+    vi.advanceTimersByTime(MUSIC_SKIP_FADE_MS + 100);
+    expect(last().trackId).toBe('radio-route');
+    expect(deckWith('radio-route').volume).toBeCloseTo(0.8);
+    player.next();
+    vi.advanceTimersByTime(MUSIC_SKIP_FADE_MS + 100);
+    expect(last().trackId).toBe('radio-town');
+  });
+
+  it('starts the radio when nothing is remembered and the folder is empty', () => {
+    const fresh = makePlayer();
+    fresh.setLibrary({ ...LIBRARY, albums: [] });
+    fresh.resume();
+    expect(last()).toMatchObject({ playing: true, station: 'radio', trackId: 'radio-town' });
+  });
+
+  it('names a radio track and its artist to the OS media controls', () => {
+    const metadata: { title: string; album: string; artist?: string }[] = [];
+    decks = [];
+    const radio = new FolderPlayer(
+      {
+        createAudio: () => {
+          const deck = new FakeAudio();
+          decks.push(deck);
+          return deck as AudioDeck;
+        },
+        mediaSession: { setActionHandler: () => {}, setMetadata: (m) => metadata.push(m) },
+        urlFor: (id) => `track:${id}`,
+        isServed: async () => true,
+        now: () => Date.now(),
+        rng: () => 0.5,
+        onChange: () => {},
+        onNotice: () => {},
+        persist: () => {},
+      },
+      { station: null, trackId: null, shuffle: false, volume: 0.5 },
+    );
+    radio.setLibrary(LIBRARY);
+    radio.playStation('radio', { startId: 'radio-route' });
+    radio.playStation('a1');
+    expect(metadata).toEqual([
+      { title: 'Route', album: 'Poke Agents Radio', artist: 'Other' },
+      { title: 'One', album: 'Album' },
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
+import { RADIO_CREDITS, RADIO_STATION_NAME } from '../../../core/src/radioCredits.js';
 import { POKEAPI_CRIES_REPO_URL } from '../audio/constants.js';
 import { useConductor } from '../conductor/conductorStore.js';
 import { safeHttpsUrl } from '../conductor/format.js';
@@ -28,8 +29,9 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
 /**
  * About and credits: what Poke Agents is (a visualizer for Conductor that
  * never runs agents itself), the Pixel Agents credit, the fan-project
- * disclaimer, the sprite source and license, and the artists of every
- * species in use (from pokemonSpeciesLoaded.credits).
+ * disclaimer, the sprite source and license, the artists of every species in
+ * use (from pokemonSpeciesLoaded.credits), and every Poke Agents Radio track
+ * with its author, license and source (core/src/radioCredits.ts).
  */
 export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
   const speciesMap = useConductor((s) => s.species);
@@ -84,8 +86,13 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
           other sound effects are original compositions synthesized in the app.
         </p>
         <p className="m-0">
+          The Jukebox&apos;s {RADIO_STATION_NAME} plays original retro game music that its authors
+          released under CC0 or CC BY. Each track downloads once, from its author&apos;s page, the
+          first time it plays. They are listed below.
+        </p>
+        <p className="m-0">
           The Poke Agents source code is MIT-licensed, like Pixel Agents. The MIT license does not
-          cover the downloaded artwork or cries.
+          cover the downloaded artwork, cries or music.
         </p>
 
         <section className="flex flex-col gap-6">
@@ -117,6 +124,24 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
               ))}
             </ul>
           )}
+        </section>
+
+        <section className="flex flex-col gap-6" data-testid="radio-credits">
+          <span className="text-sm text-accent">{RADIO_STATION_NAME}</span>
+          <ul className="m-0 p-0 list-none flex flex-col gap-6">
+            {RADIO_CREDITS.map((credit) => (
+              <li key={credit.id} className="flex flex-col gap-2">
+                <span className="text-sm">{credit.title}</span>
+                <span className="text-text-muted">
+                  {credit.author} ·{' '}
+                  <ExternalLink href={credit.license.url}>{credit.license.name}</ExternalLink> ·{' '}
+                  <ExternalLink href={credit.sourceUrl}>
+                    {new URL(credit.sourceUrl).hostname}
+                  </ExternalLink>
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
     </Modal>

@@ -2,10 +2,32 @@
  * Jukebox constants (server/src/music/). Kept beside the module, like
  * pokemon/constants.ts, because nothing outside it reads them.
  *
- * The Jukebox only plays music the user is entitled to: audio files they put in
- * the music folder, and the Music and Spotify apps they already use. It never
- * downloads audio and never talks to Conductor.
+ * The Jukebox only plays music the user is entitled to: Poke Agents Radio's
+ * freely licensed tracks (radioCatalog.ts), audio files they put in the music
+ * folder, and the Music and Spotify apps they already use. The radio is the
+ * only audio it downloads. It never talks to Conductor.
  */
+
+// ── Poke Agents Radio ──────────────────────────────────────────
+/** Under ~/.pixel-agents/. One file per track: `<id>.ogg` or `<id>.mp3`. */
+export const RADIO_CACHE_SUBDIR = ['cache', 'music', 'radio'] as const;
+/** Radio track ids, `radio-<slug>`, as radioCredits.ts lists them. */
+export const RADIO_ID_PATTERN = /^radio-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const RADIO_ID_MAX_LENGTH = 64;
+/** Integrated loudness (LUFS) the station plays every track at: a louder
+ *  track is turned down to it; none is turned up, so the quietest tracks sit
+ *  within about a decibel below. */
+export const RADIO_TARGET_LUFS = -18;
+/** A track is a few MB; one download may take this long on a slow line. */
+export const RADIO_FETCH_TIMEOUT_MS = 120_000;
+export const RADIO_FETCH_CONCURRENCY = 2;
+/** After a download failed (offline, upstream down, checksum mismatch), the
+ *  track isn't asked for again for this long, doubling per consecutive failure
+ *  up to RADIO_FAILURE_BACKOFF_MAX_MS. */
+export const RADIO_FAILURE_BACKOFF_MS = 30 * 1000;
+export const RADIO_FAILURE_BACKOFF_MAX_MS = 30 * 60 * 1000;
+/** Hosts the manifest may download from (radioCatalog.test.ts checks every URL). */
+export const RADIO_SOURCE_HOSTS: readonly string[] = ['opengameart.org', 'incompetech.com'];
 
 // ── Music folder ───────────────────────────────────────────────
 /** Under ~/.pixel-agents/. One subfolder per game or album. */
@@ -41,7 +63,7 @@ export const MUSIC_LOOSE_TRACKS_ALBUM = 'Other tracks';
 
 // ── Route ──────────────────────────────────────────────────────
 export const MUSIC_ROUTE_PREFIX = '/api/music';
-/** Never cached beyond revalidation: a replaced file keeps its id. */
+/** Never cached beyond revalidation: a replaced folder file keeps its id. */
 export const MUSIC_ROUTE_CACHE_CONTROL = 'private, no-cache';
 
 // ── macOS apps ─────────────────────────────────────────────────
