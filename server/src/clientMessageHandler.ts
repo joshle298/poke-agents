@@ -22,6 +22,12 @@ import {
 import { collectDirectorySuggestions } from './directorySuggestions.js';
 import { hostDirectory } from './hostDirectory.js';
 import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
+import {
+  handleMusicMessage,
+  MUSIC_MESSAGE_TYPES,
+  refuseMusicMessage,
+} from './music/musicMessages.js';
+import type { MusicService } from './music/musicService.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
@@ -92,6 +98,8 @@ export interface ClientMessageContext {
   hookProviders?: readonly HookProvider[];
   /** Opens a Conductor deep link on the host. Absent = this adapter can't. */
   openExternal?: OpenExternalSideEffect;
+  /** The Jukebox (standalone). Absent = no music here (VS Code embedded). */
+  music?: MusicService;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -416,6 +424,12 @@ export function handleClientMessage(
     case 'requestConductorSessions':
     case 'openExternal':
       handleStreamSessionMessage(msg, send, ctx);
+      break;
+
+    // Jukebox: local music, never Conductor.
+    case 'requestMusicLibrary':
+    case 'musicCommand':
+      handleMusicMessage(msg, send, ctx.music);
       break;
 
     default:
@@ -763,6 +777,10 @@ function refuseReadOnly(
   }
   if (STREAM_SESSION_MESSAGE_TYPES.has(type)) {
     refuseStreamSessionMessage(msg, send, ctx);
+    return;
+  }
+  if (MUSIC_MESSAGE_TYPES.has(type)) {
+    refuseMusicMessage(msg, send);
     return;
   }
   switch (msg.type) {

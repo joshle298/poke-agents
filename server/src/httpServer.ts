@@ -21,6 +21,8 @@ import {
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import type { MusicService } from './music/musicService.js';
+import { registerMusicRoutes } from './music/routes.js';
 import { registerPokemonRoutes } from './pokemon/routes.js';
 import { createSpeciesDelivery } from './pokemon/speciesDelivery.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
@@ -70,6 +72,8 @@ export interface HttpServerOptions {
   hookProviders?: readonly HookProvider[];
   /** Opens a validated Conductor deep link on the host (standalone). */
   openExternal?: OpenExternalSideEffect;
+  /** The Jukebox: its client messages and /api/music/track (standalone). */
+  music?: MusicService;
 }
 
 /** Result of createHttpServer(). */
@@ -127,6 +131,14 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
   // Pokémon sprites are standalone-only: VS Code keeps the upstream characters.
   if (!options.embedded) {
     registerPokemonRoutes(app, { allowedHostnames, store: options.store });
+  }
+  // The Jukebox's music folder, tokened like /ws (standalone only).
+  if (!options.embedded && options.music) {
+    registerMusicRoutes(app, {
+      token: options.token,
+      allowedHostnames,
+      library: options.music.folder,
+    });
   }
 
   // ── Listen ──────────────────────────────────────────────────
@@ -285,6 +297,7 @@ function registerWebSocketRoute(
           ptyManager: options.ptyManager,
           hookProviders: options.hookProviders,
           openExternal: options.openExternal,
+          music: options.embedded ? undefined : options.music,
         });
       } catch {
         // Malformed JSON, ignore

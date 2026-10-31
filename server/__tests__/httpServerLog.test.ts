@@ -24,7 +24,11 @@ function fakeRequest(url: string): FastifyRequest {
 describe('request log serializer', () => {
   it('never writes the handshake token', () => {
     const secret = 'c0ffee00-1234-4abc-9def-0123456789ab';
-    for (const url of [`/ws?token=${secret}`, `/terminal/1?token=${secret}`]) {
+    for (const url of [
+      `/ws?token=${secret}`,
+      `/terminal/1?token=${secret}`,
+      `/api/music/track/0123456789abcdef01234567?token=${secret}`,
+    ]) {
       const line = JSON.stringify(serializeRequestForLog(fakeRequest(url)));
       expect(line).not.toContain(secret);
       expect(line).toContain('token=[redacted]');

@@ -41,6 +41,7 @@ import {
   WILDCARD_HOSTNAMES,
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import { MusicService } from './music/musicService.js';
 import {
   BROWSER_IDS,
   type BrowserId,
@@ -476,6 +477,8 @@ async function main(): Promise<void> {
           claude: args.claude,
           conductor: args.conductor,
           openExternal: (url) => openWithSystem(url),
+          // The Jukebox: ~/.pixel-agents/music, plus Music/Spotify on macOS.
+          music: new MusicService(),
         }),
       args.port,
     );

@@ -19,6 +19,7 @@ import {
   SERVERS_DIR,
 } from './constants.js';
 import { createHttpServer } from './httpServer.js';
+import type { MusicService } from './music/musicService.js';
 import { hookProviders } from './providers/index.js';
 import type { ServerConfig, StandaloneAccess } from './serverConfig.js';
 import { isServerConfig, isServerTarget, sameStandaloneAccess } from './serverConfig.js';
@@ -88,6 +89,8 @@ export class PixelAgentsServer {
     conductor?: boolean;
     /** Opens a validated Conductor deep link on the host (standalone). */
     openExternal?: OpenExternalSideEffect;
+    /** The Jukebox (standalone): music folder, Music and Spotify apps. */
+    music?: MusicService;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -157,6 +160,7 @@ export class PixelAgentsServer {
       allowedHosts: standalone?.allowedHosts,
       hookProviders: options?.claude === false ? [] : hookProviders,
       openExternal: options?.openExternal,
+      music: options?.music,
     });
 
     this.app = app;
