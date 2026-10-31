@@ -171,7 +171,10 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
         expect.objectContaining({ id: a, repo: 'hue-run/fern', conductorSessionId: 's1' }),
       );
       expect(ofType('conductorSessions')).toEqual([
-        { type: 'conductorSessions', sessions: [{ ...summary('s1'), agentId: a }] },
+        {
+          type: 'conductorSessions',
+          sessions: [{ ...summary('s1'), agentId: a, species: expect.any(Number), shiny: false }],
+        },
       ]);
       expect(ofType('agentLinks')[0]).toEqual({
         type: 'agentLinks',
@@ -343,7 +346,10 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(ofType('conductorSessions')).toEqual([
         {
           type: 'conductorSessions',
-          sessions: [{ ...summary('s1'), agentId: id }, summary('elsewhere')],
+          sessions: [
+            { ...summary('s1'), agentId: id, species: expect.any(Number), shiny: false },
+            summary('elsewhere'),
+          ],
         },
       ]);
     });

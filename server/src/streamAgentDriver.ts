@@ -36,6 +36,7 @@ import {
   STREAM_SNAPSHOT_DEBOUNCE_MS,
   STREAM_SPECIES_LOAD_TIMEOUT_MS,
   STREAM_TEXT_MAX_LENGTH,
+  STREAM_TURN_MIN_ACTIVE_MS,
   TOOL_DONE_DELAY_MS,
 } from './constants.js';
 import { reportContextUsage, widenContextWindow } from './contextUsage.js';
@@ -47,6 +48,7 @@ import {
   restoredPokemonFields,
   updateLevel,
 } from './pokemon/speciesAssigner.js';
+import type { SilentSeedSink } from './providers/stream/silentSeed.js';
 import { clearAgentActivity } from './timerManager.js';
 import type { AgentState } from './types.js';
 
@@ -102,7 +104,7 @@ const LINK_KINDS: ReadonlySet<string> = new Set(['spawned', 'messaged', 'watched
 const NO_TEAM_KEY = '{}';
 const ONE_SECOND_MS = 1_000;
 
-export class StreamAgentDriver implements AgentEventSink {
+export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
   private readonly store: AgentStateStore;
   private readonly runtime: StreamDriverRuntime;
   readonly provider: StreamProvider;
@@ -120,6 +122,15 @@ export class StreamAgentDriver implements AgentEventSink {
   private readonly detailsJsonOf = new Map<number, string>();
   /** Agents whose new species is still loading: their agentDetails waits for it. */
   private readonly speciesLoading = new Set<number>();
+  /** Sessions being seeded (seedSilently): their statuses are not news. */
+  private readonly seeding = new Set<string>();
+  /** When each agent last went active (for the minimum visible burst). */
+  private readonly activeSince = new Map<number, number>();
+  /** A turn end held back until the agent has been seen working. */
+  private readonly pendingTurnEnd = new Map<
+    number,
+    { event: Extract<AgentEvent, { kind: 'turnEnd' }>; timer: ReturnType<typeof setTimeout> }
+  >();
   private readonly links = new Map<string, LinkRecord>();
   private readonly lastMessageAt = new Map<string, number>();
   private recentMessageTimes: number[] = [];
@@ -263,6 +274,7 @@ export class StreamAgentDriver implements AgentEventSink {
       const agent = this.store.get(id);
       if (!agent || !event) return;
       agent.lastDataAt = Date.now();
+      this.settlePendingTurnEnd(id, agent, event.kind);
       switch (event.kind) {
         case 'turnStart':
           return this.turnStart(id, agent);
@@ -335,6 +347,21 @@ export class StreamAgentDriver implements AgentEventSink {
       this.sessions = sessions.slice();
       this.broadcastSessionsIfChanged();
     });
+  }
+
+  /**
+   * Run a provider's adoption of a session (upsertSession plus what its
+   * replayed state adds) with every status it causes broadcast silently: the
+   * seed describes the past, so the office neither chimes nor plays turn-end
+   * effects for it (SilentSeedSink).
+   */
+  seedSilently(sessionId: string, run: () => void): void {
+    this.seeding.add(sessionId);
+    try {
+      run();
+    } finally {
+      this.seeding.delete(sessionId);
+    }
   }
 
   /** Stop timers and listeners. Agents stay in the store (the runtime removes them). */
@@ -491,6 +518,10 @@ export class StreamAgentDriver implements AgentEventSink {
     this.teamKeyOf.delete(id);
     this.detailsJsonOf.delete(id);
     this.speciesLoading.delete(id);
+    this.activeSince.delete(id);
+    const pending = this.pendingTurnEnd.get(id);
+    if (pending) clearTimeout(pending.timer);
+    this.pendingTurnEnd.delete(id);
     this.runtime.unregisterAgent(this.key(sessionId));
     if (this.disposed) return;
     // A departing Lead releases its children; a departing child may demote
@@ -545,9 +576,10 @@ export class StreamAgentDriver implements AgentEventSink {
     if (this.statusOf.get(id) === 'active') return;
     clearError(agent);
     // agentToolsClear, background tool re-send, agentStatus active.
-    clearAgentActivity(agent, id, this.store, this.runtime.permissionTimers);
+    clearAgentActivity(agent, id, this.store, this.runtime.permissionTimers, this.isSeeding(id));
     agent.hadToolsInTurn = false;
     this.statusOf.set(id, 'active');
+    this.activeSince.set(id, Date.now());
   }
 
   /** Activity that only a running session produces (a tool starting) makes
@@ -557,7 +589,38 @@ export class StreamAgentDriver implements AgentEventSink {
     clearError(agent);
     agent.isWaiting = false;
     this.statusOf.set(id, 'active');
-    this.store.broadcast({ type: 'agentStatus', id, status: 'active' });
+    this.activeSince.set(id, Date.now());
+    this.store.broadcast({ type: 'agentStatus', id, status: 'active', ...this.silentFlag(id) });
+  }
+
+  private isSeeding(id: number): boolean {
+    const sessionId = this.sessionByAgent.get(id);
+    return sessionId !== undefined && this.seeding.has(sessionId);
+  }
+
+  private silentFlag(id: number): { silent?: true } {
+    return this.isSeeding(id) ? { silent: true } : {};
+  }
+
+  /**
+   * A turn end held back for the minimum burst: further activity in the same
+   * turn (a turn start, a tool) means it was not the end after all; anything
+   * that changes the status (awaiting input, a permission request, another
+   * turn end) applies it first, in order.
+   */
+  private settlePendingTurnEnd(id: number, agent: AgentState, next: AgentEvent['kind']): void {
+    const pending = this.pendingTurnEnd.get(id);
+    if (!pending) return;
+    if (next === 'turnStart' || next === 'toolStart' || next === 'subagentStart') {
+      clearTimeout(pending.timer);
+      this.timers.delete(pending.timer);
+      this.pendingTurnEnd.delete(id);
+    } else if (next === 'awaitingInput' || next === 'permissionRequest' || next === 'turnEnd') {
+      clearTimeout(pending.timer);
+      this.timers.delete(pending.timer);
+      this.pendingTurnEnd.delete(id);
+      this.applyTurnEnd(id, agent, pending.event);
+    }
   }
 
   private toolStart(
@@ -685,14 +748,53 @@ export class StreamAgentDriver implements AgentEventSink {
     clearError(agent);
     agent.isWaiting = true;
     this.statusOf.set(id, 'input');
-    this.store.broadcast({ type: 'agentStatus', id, status: 'waiting', awaitingInput: true });
+    this.store.broadcast({
+      type: 'agentStatus',
+      id,
+      status: 'waiting',
+      awaitingInput: true,
+      ...this.silentFlag(id),
+    });
   }
 
+  /**
+   * A turn that ends moments after it started (a whole short turn in one
+   * poll) would flip back before the office ever showed it working: its end
+   * is held until the agent has been active STREAM_TURN_MIN_ACTIVE_MS. Seeds
+   * apply at once.
+   */
   private turnEnd(
     id: number,
     agent: AgentState,
     event: Extract<AgentEvent, { kind: 'turnEnd' }>,
   ): void {
+    const since = this.activeSince.get(id);
+    const shownFor = since === undefined ? Infinity : Date.now() - since;
+    if (
+      this.isSeeding(id) ||
+      this.statusOf.get(id) !== 'active' ||
+      shownFor >= STREAM_TURN_MIN_ACTIVE_MS
+    ) {
+      this.applyTurnEnd(id, agent, event);
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.timers.delete(timer);
+      if (this.pendingTurnEnd.get(id)?.timer !== timer) return;
+      this.pendingTurnEnd.delete(id);
+      if (this.store.get(id) === agent)
+        this.guard('turnEnd', () => this.applyTurnEnd(id, agent, event));
+    }, STREAM_TURN_MIN_ACTIVE_MS - shownFor);
+    this.timers.add(timer);
+    this.pendingTurnEnd.set(id, { event, timer });
+  }
+
+  private applyTurnEnd(
+    id: number,
+    agent: AgentState,
+    event: Extract<AgentEvent, { kind: 'turnEnd' }>,
+  ): void {
+    this.activeSince.delete(id);
     if (event.outcome === 'error') {
       const errorMessage = clip(event.errorMessage, AGENT_ERROR_MESSAGE_MAX_LENGTH);
       const key: StatusKey = `error:${errorMessage ?? ''}`;
@@ -701,7 +803,13 @@ export class StreamAgentDriver implements AgentEventSink {
       agent.isErrored = true;
       agent.errorMessage = errorMessage;
       this.statusOf.set(id, key);
-      this.store.broadcast({ type: 'agentStatus', id, status: 'error', errorMessage });
+      this.store.broadcast({
+        type: 'agentStatus',
+        id,
+        status: 'error',
+        errorMessage,
+        ...this.silentFlag(id),
+      });
       return;
     }
     // 'aborted' (interrupted, rejected) reads as Done.
@@ -709,7 +817,7 @@ export class StreamAgentDriver implements AgentEventSink {
     const key: StatusKey = awaitingInput ? 'input' : 'waiting';
     if (this.statusOf.get(id) === key) return;
     clearError(agent);
-    markAgentWaiting(agent, id, this.transitionDeps(), awaitingInput);
+    markAgentWaiting(agent, id, this.transitionDeps(), awaitingInput, this.isSeeding(id));
     this.statusOf.set(id, key);
   }
 
@@ -755,6 +863,7 @@ export class StreamAgentDriver implements AgentEventSink {
   private speciesChanged(id: number, agent: AgentState): void {
     this.remember(agent.sessionId, agent);
     this.store.persist();
+    this.scheduleSnapshot(); // the session list carries the species
     if (agent.species === undefined || this.speciesLoading.has(id)) return;
     this.speciesLoading.add(id);
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -978,11 +1087,23 @@ export class StreamAgentDriver implements AgentEventSink {
     this.store.broadcast({ type: 'conductorSessions', sessions });
   }
 
+  /** Summaries with what only the runtime knows: the agent id of a session in
+   *  the office, and the Pokémon it shows (or was last shown as, from the
+   *  stream memory), so the PC Box can draw sessions it never saw. */
   private withAgentIds(sessions: ConductorSessionSummary[]): ConductorSessionSummary[] {
     return sessions.map((session) => {
-      const { agentId: _providerGuess, ...rest } = session;
+      const { agentId: _providerGuess, species: _s, shiny: _sh, ...rest } = session;
+      const out: ConductorSessionSummary = rest;
       const agentId = this.agentIdBySession.get(session.sessionId);
-      return agentId === undefined ? rest : { ...rest, agentId };
+      if (agentId !== undefined) out.agentId = agentId;
+      const agent = agentId !== undefined ? this.store.get(agentId) : undefined;
+      const record = this.remembered.get(this.key(session.sessionId));
+      const species = agent?.species ?? record?.species;
+      if (species !== undefined) {
+        out.species = species;
+        out.shiny = (agent ? agent.shiny : record?.shiny) === true;
+      }
+      return out;
     });
   }
 

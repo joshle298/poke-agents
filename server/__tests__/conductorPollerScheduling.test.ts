@@ -5,9 +5,13 @@
  * Every scenario runs against the fake API with a manual clock.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AgentEvent } from '../../core/src/provider.js';
+import { AgentRuntime } from '../src/agentRuntime.js';
+import { AgentStateStore } from '../src/agentStateStore.js';
+import { STREAM_TURN_MIN_ACTIVE_MS } from '../src/constants.js';
+import { claudeProvider } from '../src/providers/hook/claude/claude.js';
 import { createConductorProvider } from '../src/providers/stream/conductor/conductor.js';
 import { planIntervals } from '../src/providers/stream/conductor/poller.js';
 import type { ConductorItem } from '../src/providers/stream/conductor/types.js';
@@ -459,7 +463,115 @@ describe('Conductor poller: catch-up batches', () => {
   });
 });
 
+describe('Conductor poller + driver: a short turn between polls (L1)', () => {
+  it('broadcasts a working burst and then the turn end', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    vi.setSystemTime(NOW);
+    const side = uuid(0x7101);
+    const ws = uuid(0x7102);
+    const store = new AgentStateStore();
+    const runtime = new AgentRuntime(store, claudeProvider);
+    const broadcasts: Array<Record<string, unknown> & { at: number }> = [];
+    store.on('broadcast', (m: Record<string, unknown>) =>
+      broadcasts.push({ ...m, at: Date.now() }),
+    );
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    api.addWorkspace({
+      id: ws,
+      state: 'sleeping',
+      lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+    });
+    api.addSession({ id: side, workspaceId: ws, items: idleFeed(side, NOW - 2 * HOUR) });
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+      budgetPerMinute: 60_000,
+    });
+    const advance = async (ms: number) => {
+      const until = clock.t + ms;
+      while (clock.t < until) {
+        clock.t += 500;
+        vi.advanceTimersByTime(500);
+        await provider.tick();
+      }
+    };
+    try {
+      await provider.start(runtime.attachStreamProvider(provider));
+      await settle(provider, 20);
+      await advance(2 * MINUTE);
+      const id = runtime.streamDriver('conductor')?.agentIdFor(side);
+      expect(id).toBeDefined();
+      const from = broadcasts.length;
+
+      // The side session gets a message and runs a 2.5 s turn between polls.
+      const turn = retime(fixture('claude-turn.json'), side, clock.t - 1_000).map((item, i) => ({
+        ...item,
+        id: `${item.id}-live`,
+        sessionIndex: 100 + i,
+      }));
+      api.sessions.get(side)?.items.push(...turn);
+      const workspace = api.workspaces.find((w) => w.id === ws);
+      if (workspace) workspace.lastActivityAt = new Date(clock.t).toISOString();
+      await advance(20_000);
+
+      const statuses = broadcasts
+        .slice(from)
+        .filter((m) => m.type === 'agentStatus' && m.id === id);
+      expect(statuses.map((m) => m.status)).toEqual(['active', 'waiting']);
+      // Long enough to be seen working before the turn-end hop.
+      expect(statuses[1].at - statuses[0].at).toBeGreaterThanOrEqual(STREAM_TURN_MIN_ACTIVE_MS);
+    } finally {
+      await provider.stop();
+      runtime.dispose();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe('Conductor poller: adoption is a silent seed', () => {
+  it('with the runtime driver, a session already waiting walks in without a chime', async () => {
+    const waiting = uuid(0x8101);
+    const store = new AgentStateStore();
+    const runtime = new AgentRuntime(store, claudeProvider);
+    const broadcasts: Array<Record<string, unknown>> = [];
+    store.on('broadcast', (m: Record<string, unknown>) => broadcasts.push(m));
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    api.addWorkspace({ id: uuid(0x8102), lastActivityAt: new Date(NOW - MINUTE).toISOString() });
+    api.addSession({
+      id: waiting,
+      workspaceId: uuid(0x8102),
+      items: retime(fixture('wait-ask-user-question-pending.json'), waiting, NOW - MINUTE),
+      status: { status: 'working' },
+    });
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+      budgetPerMinute: 60_000,
+    });
+    try {
+      await provider.start(runtime.attachStreamProvider(provider));
+      await settle(provider, 20);
+      const statuses = broadcasts.filter((m) => m.type === 'agentStatus');
+      expect(statuses).toContainEqual(
+        expect.objectContaining({ status: 'waiting', awaitingInput: true, silent: true }),
+      );
+      expect(statuses.filter((m) => m.silent !== true)).toEqual([]);
+    } finally {
+      await provider.stop();
+      runtime.dispose();
+    }
+  });
+
   it('adopts a session already waiting on the user inside a silent seed', async () => {
     const waiting = uuid(0x8001);
     const sink = new SeedAwareSink();

@@ -204,6 +204,10 @@ export const STREAM_LINKS_MAX = 500;
 /** Remembered stream sessions (agent id + Pokémon) in <namespace>-state.json;
  *  the oldest entries go first past this. */
 export const STREAM_AGENT_MEMORY_MAX = 1_000;
+/** A stream agent that went active is shown working at least this long: a
+ *  turn that started and ended within one poll would otherwise flash by
+ *  unseen (its turn end is broadcast once this has passed). */
+export const STREAM_TURN_MIN_ACTIVE_MS = 2_500;
 /** An evolved (or promoted) species is announced once its sprites load, or
  *  after this long, whichever comes first (the office keeps the old one meanwhile). */
 export const STREAM_SPECIES_LOAD_TIMEOUT_MS = 15_000;

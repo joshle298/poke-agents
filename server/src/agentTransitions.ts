@@ -90,6 +90,8 @@ export function markAgentWaiting(
   agentId: number,
   deps: TransitionDeps,
   awaitingInput = false,
+  /** A seed (the state a stream session was adopted in), not news: no chime. */
+  silent = false,
 ): void {
   endAgentTurn(agent, agentId, deps);
   deps.store.broadcast({
@@ -97,5 +99,6 @@ export function markAgentWaiting(
     id: agentId,
     status: 'waiting',
     awaitingInput,
+    ...(silent ? { silent: true } : {}),
   });
 }
