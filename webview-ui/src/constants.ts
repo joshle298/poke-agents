@@ -738,6 +738,11 @@ export const PARTY_SLEEP_AFTER_MS = 120_000;
 export const EVOLUTION_LEVELS: readonly number[] = [16, 36];
 /** How often time-derived slot states (asleep, "synced Xs ago") re-render. */
 export const CONDUCTOR_UI_TICK_MS = 5_000;
+/** The local server's same-origin sprite route (standalone only): the PC Box
+ *  asks it for portraits of species nobody in the office uses. */
+export const POKEMON_PORTRAIT_ROUTE_PREFIX = '/api/pokemon';
+/** Highest National Dex number the server's sprite route accepts. */
+export const POKEMON_MAX_DEX = 1025;
 /** Pixel size of a PMD portrait (portraits are drawn at integer multiples). */
 export const PORTRAIT_SOURCE_PX = 40;
 /** Pokédex header portrait size (2× the source). */
