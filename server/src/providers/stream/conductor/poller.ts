@@ -6,19 +6,23 @@
  * 1. Discovery lists in-scope workspaces every 15 s and their sessions when a
  *    workspace's lastActivityAt advanced or its list went stale.
  * 2. Onboarding: `/status`, then item #1 (`offset=0&limit=1`) for the spawn
- *    edge and the queued-first-message check, then, for Hot/Warm sessions, the
- *    tail of the feed (exponential + binary search on `offset`, starting at
- *    128), replayed through the normalizer silently.
+ *    edge and the queued-first-message check, then the tail of the feed
+ *    (exponential + binary search on `offset`, starting at 128), replayed
+ *    through the normalizer silently: for Hot/Warm sessions, and for any
+ *    shown session whose message count (its level) is not known yet.
  * 3. Visible sessions (scope, hidden/pinned, cap with hysteresis, at most 12
- *    children per Lead) are adopted with one consolidated state.
+ *    children per Lead) are adopted with one consolidated state, as a silent
+ *    seed, once their level is known (or after LEVEL_WAIT_MAX_MS).
  * 4. Steady state: `messages?after=<cursor>` per tier (Focus and Hot every
- *    2-3 s, Warm every 15-30 s, Cold never), stretched to fit the budget, and
- *    `/status` every 30-60 s to reconcile turns the feed never closed.
+ *    2-3 s, Warm every 15-30 s, Cold only for a catch-up after its workspace's
+ *    activity), stretched to fit the budget, and `/status` every 30-60 s to
+ *    reconcile turns the feed never closed. Focus is an open Pokédex: it
+ *    lapses FOCUS_TTL_MS after the last request.
  *
  * Only items from a steady tail poll and received within the last 30 s are
  * `live` (they animate links and notices); backfills, re-probes and catch-ups
  * replay silently and then emit the difference against what the office was
- * last told.
+ * last told (opening a recent short turn first, so it still shows).
  */
 
 import type {
