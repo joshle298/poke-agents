@@ -25,16 +25,26 @@ export type ServerMessage =
   | SubagentToolPermission
   | AgentTeamInfo
   | AgentContextUsage
+  | AgentDetails
+  | AgentLinks
+  | AgentMessage
+  | AgentNotice
+  | SessionDetail
+  | ConductorStatus
+  | ConductorSessions
+  | ConductorActionResult
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
   | PetSpritesLoaded
+  | PokemonSpeciesLoaded
   | FloorTilesLoaded
   | WallTilesLoaded
   | CarpetTilesLoaded
   | OfficeAccess
   | SettingsLoaded
   | BypassPermissionsUpdated
+  | PokemonThemeUpdated
   | HooksStatus
   | HooksConsentRequest
   | ExternalAssetDirectoriesUpdated
@@ -75,12 +85,21 @@ export type ClientMessage =
   | SaveDirectory
   | RemoveDirectory
   | RequestDirectorySuggestions
-  | RequestDiagnostics;
+  | RequestDiagnostics
+  | SetPokemonTheme
+  | OpenExternal
+  | RequestSessionDetail
+  | SendSessionMessage
+  | StopSession
+  | RequestConductorSessions
+  | SetConductorScope
+  | SetSessionHidden;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
   readingTools: string[];
   subagentToolNames: string[];
+  activeProviders?: string[];
 }
 
 export interface AgentCreated {
@@ -90,6 +109,16 @@ export interface AgentCreated {
   isExternal?: boolean;
   palette?: number;
   hueShift?: number;
+  isTeammate?: boolean;
+  teammateName?: string;
+  parentAgentId?: number;
+  teamName?: string;
+  hooksOnly?: boolean;
+  providerId?: string;
+  label?: string;
+  species?: number;
+  shiny?: boolean;
+  level?: number;
 }
 
 export interface AgentClosed {
@@ -114,6 +143,8 @@ export interface AgentSeatMeta {
   palette?: number;
   hueShift?: number;
   seatId?: string;
+  species?: number;
+  shiny?: boolean;
 }
 
 export interface AgentStatus {
@@ -121,9 +152,11 @@ export interface AgentStatus {
   id: number;
   status: AgentActivityStatus;
   awaitingInput?: boolean;
+  errorMessage?: string;
+  silent?: boolean;
 }
 
-export type AgentActivityStatus = 'active' | 'waiting';
+export type AgentActivityStatus = 'active' | 'waiting' | 'error';
 
 export interface AgentToolStart {
   type: 'agentToolStart';
@@ -201,6 +234,146 @@ export interface AgentContextUsage {
   maxContextTokens: number;
 }
 
+export interface AgentDetails {
+  type: 'agentDetails';
+  id: number;
+  providerId?: string;
+  label?: string;
+  externalUrl?: string;
+  model?: string;
+  harness?: string;
+  conductorSessionId?: string;
+  conductorWorkspaceId?: string;
+  conductorWorkspaceName?: string;
+  conductorWorkspaceNumber?: number;
+  repo?: string;
+  creatorName?: string;
+  messageCount?: number;
+  lastActivityAt?: number;
+  species?: number;
+  shiny?: boolean;
+  level?: number;
+}
+
+export interface AgentLinks {
+  type: 'agentLinks';
+  links: AgentLink[];
+}
+
+export interface AgentLink {
+  fromId: number;
+  toId: number;
+  kind: AgentLinkKind;
+  count: number;
+  lastAt: number;
+  preview?: string;
+}
+
+export type AgentLinkKind = 'spawned' | 'messaged' | 'watched';
+
+export interface AgentMessage {
+  type: 'agentMessage';
+  fromId: number;
+  toId: number;
+  kind: AgentLinkKind;
+  preview?: string;
+  at: number;
+}
+
+export interface AgentNotice {
+  type: 'agentNotice';
+  id: number;
+  text: string;
+  at: number;
+  tone?: AgentNoticeTone;
+}
+
+export type AgentNoticeTone = 'info' | 'error';
+
+export interface SessionDetail {
+  type: 'sessionDetail';
+  id: number;
+  prompt?: string;
+  entries: SessionDetailEntry[];
+  truncated?: boolean;
+}
+
+export interface SessionDetailEntry {
+  role: SessionDetailRole;
+  text: string;
+  at: number;
+  peerId?: number;
+  peerLabel?: string;
+}
+
+export type SessionDetailRole = 'user' | 'assistant' | 'tool' | 'peerIn' | 'peerOut';
+
+export interface ConductorStatus {
+  type: 'conductorStatus';
+  state: ConductorConnectionState;
+  message?: string;
+  account?: string;
+  workspaceCount?: number;
+  sessionCount?: number;
+  visibleCount?: number;
+  lastSyncAt?: number;
+  scope: ConductorScope;
+}
+
+export type ConductorConnectionState =
+  | 'disabled'
+  | 'connecting'
+  | 'connected'
+  | 'authRequired'
+  | 'unauthorized'
+  | 'unreachable'
+  | 'rateLimited';
+
+export interface ConductorScope {
+  creator: ConductorCreatorScope;
+  activeWithinHours: number;
+  showIdle: boolean;
+  maxSessions: number;
+}
+
+export type ConductorCreatorScope = 'me' | 'all';
+
+export interface ConductorSessions {
+  type: 'conductorSessions';
+  sessions: ConductorSessionSummary[];
+}
+
+export interface ConductorSessionSummary {
+  sessionId: string;
+  label: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceNumber?: number;
+  repo?: string;
+  model?: string;
+  harness?: string;
+  status: ConductorSessionStatus;
+  lastActivityAt?: number;
+  hidden: boolean;
+  agentId?: number;
+  leadSessionId?: string;
+  externalUrl?: string;
+  creatorName?: string;
+}
+
+export type ConductorSessionStatus = 'idle' | 'working' | 'error';
+
+export interface ConductorActionResult {
+  type: 'conductorActionResult';
+  action: ConductorAction;
+  id?: number;
+  ok: boolean;
+  message?: string;
+}
+
+export type ConductorAction =
+  'sendSessionMessage' | 'stopSession' | 'openExternal' | 'setSessionHidden' | 'setConductorScope';
+
 export interface LayoutLoaded {
   type: 'layoutLoaded';
   layout: Record<string, any> | null;
@@ -261,6 +434,35 @@ export interface PetSpriteFrameSet {
   walkRight: string[][][];
 }
 
+export interface PokemonSpeciesLoaded {
+  type: 'pokemonSpeciesLoaded';
+  dex: number;
+  shiny: boolean;
+  name: string;
+  shadowSize: number;
+  anims: Record<string, PokemonAnim>;
+  portraits: Record<string, string>;
+  credits: PokemonCredits;
+}
+
+export interface PokemonAnim {
+  url: string;
+  frameWidth: number;
+  frameHeight: number;
+  frames: number;
+  directions: number;
+  durations: number[];
+  rushFrame?: number;
+  hitFrame?: number;
+  returnFrame?: number;
+}
+
+export interface PokemonCredits {
+  sprite: string[];
+  portrait: string[];
+  pageUrl: string;
+}
+
 export interface FloorTilesLoaded {
   type: 'floorTilesLoaded';
   sprites: string[][][];
@@ -295,10 +497,16 @@ export interface SettingsLoaded {
   showAreas: boolean;
   bypassPermissions: boolean;
   showHostDirectories: boolean;
+  pokemonTheme?: boolean;
 }
 
 export interface BypassPermissionsUpdated {
   type: 'bypassPermissionsUpdated';
+  enabled: boolean;
+}
+
+export interface PokemonThemeUpdated {
+  type: 'pokemonThemeUpdated';
   enabled: boolean;
 }
 
@@ -404,6 +612,8 @@ export interface SeatAssignment {
   palette: number;
   hueShift: number;
   seatId: string | null;
+  species?: number;
+  shiny?: boolean;
 }
 
 export interface SaveLayout {
@@ -514,4 +724,45 @@ export interface RequestDirectorySuggestions {
 
 export interface RequestDiagnostics {
   type: 'requestDiagnostics';
+}
+
+export interface SetPokemonTheme {
+  type: 'setPokemonTheme';
+  enabled: boolean;
+}
+
+export interface OpenExternal {
+  type: 'openExternal';
+  url: string;
+}
+
+export interface RequestSessionDetail {
+  type: 'requestSessionDetail';
+  id: number;
+}
+
+export interface SendSessionMessage {
+  type: 'sendSessionMessage';
+  id: number;
+  text: string;
+}
+
+export interface StopSession {
+  type: 'stopSession';
+  id: number;
+}
+
+export interface RequestConductorSessions {
+  type: 'requestConductorSessions';
+}
+
+export interface SetConductorScope {
+  type: 'setConductorScope';
+  scope: ConductorScope;
+}
+
+export interface SetSessionHidden {
+  type: 'setSessionHidden';
+  sessionId: string;
+  hidden: boolean;
 }

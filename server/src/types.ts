@@ -1,5 +1,7 @@
 import type * as vscode from 'vscode';
 
+import type { StreamSessionDetails } from '../../core/src/provider.js';
+
 export interface AgentState {
   id: number;
   sessionId: string;
@@ -85,6 +87,25 @@ export interface AgentState {
   palette?: number;
   /** Hue shift in degrees (0-360). Rotates the base palette colors. */
   hueShift?: number;
+
+  // -- Stream providers (Conductor) --
+  /** Display name from the provider (the Conductor session name). */
+  label?: string;
+  /** Provider display facts, forwarded to clients as `agentDetails`. */
+  details?: StreamSessionDetails;
+  /** True while the provider reports the session as errored. */
+  isErrored?: boolean;
+  errorMessage?: string;
+
+  // -- Pokémon (server/src/pokemon/) --
+  /** Evolution line id from the species catalog (e.g. 'charmander'). */
+  pokemonLine?: string;
+  /** National dex number currently shown; derived from the line and level. */
+  species?: number;
+  shiny?: boolean;
+  level?: number;
+  /** Tool calls observed. Drives the level for agents without a message count. */
+  toolCallCount?: number;
 }
 
 export interface PersistedAgent {
@@ -119,4 +140,9 @@ export interface PersistedAgent {
   palette?: number;
   /** Hue shift in degrees (0-360). Persisted alongside palette. */
   hueShift?: number;
+  /** Pokémon evolution line, shown species and shiny flag, persisted so a
+   *  character keeps its Pokémon across restarts. */
+  pokemonLine?: string;
+  species?: number;
+  shiny?: boolean;
 }

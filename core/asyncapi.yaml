@@ -100,12 +100,22 @@ components:
         - $ref: '#/components/schemas/AgentTeamInfo'
         # Context window
         - $ref: '#/components/schemas/AgentContextUsage'
+        # Stream-provider details, links and conversation context (Conductor)
+        - $ref: '#/components/schemas/AgentDetails'
+        - $ref: '#/components/schemas/AgentLinks'
+        - $ref: '#/components/schemas/AgentMessage'
+        - $ref: '#/components/schemas/AgentNotice'
+        - $ref: '#/components/schemas/SessionDetail'
+        - $ref: '#/components/schemas/ConductorStatus'
+        - $ref: '#/components/schemas/ConductorSessions'
+        - $ref: '#/components/schemas/ConductorActionResult'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
         - $ref: '#/components/schemas/FurnitureAssetsLoaded'
         - $ref: '#/components/schemas/CharacterSpritesLoaded'
         - $ref: '#/components/schemas/PetSpritesLoaded'
+        - $ref: '#/components/schemas/PokemonSpeciesLoaded'
         - $ref: '#/components/schemas/FloorTilesLoaded'
         - $ref: '#/components/schemas/WallTilesLoaded'
         - $ref: '#/components/schemas/CarpetTilesLoaded'
@@ -113,6 +123,7 @@ components:
         - $ref: '#/components/schemas/OfficeAccess'
         - $ref: '#/components/schemas/SettingsLoaded'
         - $ref: '#/components/schemas/BypassPermissionsUpdated'
+        - $ref: '#/components/schemas/PokemonThemeUpdated'
         - $ref: '#/components/schemas/HooksStatus'
         - $ref: '#/components/schemas/HooksConsentRequest'
         - $ref: '#/components/schemas/ExternalAssetDirectoriesUpdated'
@@ -158,6 +169,14 @@ components:
         - $ref: '#/components/schemas/RemoveDirectory'
         - $ref: '#/components/schemas/RequestDirectorySuggestions'
         - $ref: '#/components/schemas/RequestDiagnostics'
+        - $ref: '#/components/schemas/SetPokemonTheme'
+        - $ref: '#/components/schemas/OpenExternal'
+        - $ref: '#/components/schemas/RequestSessionDetail'
+        - $ref: '#/components/schemas/SendSessionMessage'
+        - $ref: '#/components/schemas/StopSession'
+        - $ref: '#/components/schemas/RequestConductorSessions'
+        - $ref: '#/components/schemas/SetConductorScope'
+        - $ref: '#/components/schemas/SetSessionHidden'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -183,6 +202,13 @@ components:
           items:
             type: string
           description: Tool names that spawn sub-agent characters (e.g. Task, Agent).
+        activeProviders:
+          type: array
+          items:
+            type: string
+          description: >-
+            Provider ids feeding this office (for example ["conductor"] or
+            ["claude", "conductor"]). Absent means ["claude"] (older hosts, VS Code).
 
     AgentCreated:
       description: A new agent has appeared in the office.
@@ -204,6 +230,32 @@ components:
         hueShift:
           type: integer
           description: Server-assigned hue shift in degrees (0-360).
+        isTeammate:
+          type: boolean
+          description: True when the agent has a Lead (leadAgentId is set).
+        teammateName:
+          type: string
+        parentAgentId:
+          type: integer
+          description: The Lead's agent id, when isTeammate is true.
+        teamName:
+          type: string
+        hooksOnly:
+          type: boolean
+          description: The agent has no transcript file; all activity arrives as events.
+        providerId:
+          type: string
+          description: Provider that feeds this agent (claude, conductor, ...).
+        label:
+          type: string
+          description: Display name (for Conductor, the session name).
+        species:
+          type: integer
+          description: National dex number of the Pokémon shown for this agent.
+        shiny:
+          type: boolean
+        level:
+          type: integer
 
     AgentClosed:
       description: An agent has been removed from the office.
@@ -275,11 +327,19 @@ components:
             Only meaningful when status is "waiting". True when the agent went
             idle waiting on the user (drives the "Waiting for input" label);
             absent/false means the agent finished its turn ("Done").
+        errorMessage:
+          type: string
+          description: Only meaningful when status is "error". Short, already truncated.
+        silent:
+          type: boolean
+          description: >-
+            True for state seeding and reconnect resends. Clients skip the done
+            chime and the checkmark bubble.
 
     AgentActivityStatus:
       description: Activity state of an agent.
       type: string
-      enum: [active, waiting]
+      enum: [active, waiting, error]
 
     AgentToolStart:
       description: Agent began executing a tool.
@@ -696,6 +756,11 @@ components:
             Persistent per-host choice whether the host's own Directories (VS
             Code's workspace folders, standalone's start directory) are listed
             in `directoriesLoaded`. Off by default.
+        pokemonTheme:
+          type: boolean
+          description: >-
+            Whether the office uses the Pokémon theme (Pokémon characters, themed
+            panels). Absent means on.
 
     BypassPermissionsUpdated:
       description: |
@@ -966,6 +1031,242 @@ components:
           type: integer
         exitCode:
           type: integer
+
+    # ── Stream providers (Conductor) and the Pokémon theme ─────────
+
+    AgentDetails:
+      description: |
+        Display facts about an agent supplied by its provider: label, deep link,
+        model, Conductor session and workspace, and its Pokémon. Sent after
+        agentCreated, whenever a fact changes, and on reconnect. Absent fields are
+        unknown, not cleared.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: agentDetails
+        id:
+          type: integer
+        providerId:
+          type: string
+        label:
+          type: string
+          description: Session name, shown as the character's nickname.
+        externalUrl:
+          type: string
+          description: Deep link that opens the session in its own app (conductor://...).
+        model:
+          type: string
+        harness:
+          type: string
+          description: Agent harness running the session (claude, codex, cursor, ...).
+        conductorSessionId:
+          type: string
+        conductorWorkspaceId:
+          type: string
+        conductorWorkspaceName:
+          type: string
+        conductorWorkspaceNumber:
+          type: integer
+        repo:
+          type: string
+          description: Repository slug (owner/name).
+        creatorName:
+          type: string
+        messageCount:
+          type: integer
+          description: Messages in the session so far. Drives the level.
+        lastActivityAt:
+          type: number
+          description: Epoch ms of the newest observed activity.
+        species:
+          type: integer
+          description: National dex number of the Pokémon shown for this agent.
+        shiny:
+          type: boolean
+        level:
+          type: integer
+
+    AgentLinks:
+      description: |
+        Full snapshot of links between agents: who spawned, messaged or watched
+        whom. Replaces the previous snapshot. Sent on connect and on change.
+      type: object
+      additionalProperties: false
+      required: [type, links]
+      properties:
+        type:
+          const: agentLinks
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentLink'
+
+    AgentMessage:
+      description: |
+        One agent just sent a message to another (live only, never replayed).
+        Drives the message animation between the two characters.
+      type: object
+      additionalProperties: false
+      required: [type, fromId, toId, kind, at]
+      properties:
+        type:
+          const: agentMessage
+        fromId:
+          type: integer
+        toId:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/AgentLinkKind'
+        preview:
+          type: string
+          description: First characters of the message, whitespace collapsed.
+        at:
+          type: number
+          description: Epoch ms.
+
+    AgentNotice:
+      description: A short transient note to show above an agent (a question it asked, a retry, an error).
+      type: object
+      additionalProperties: false
+      required: [type, id, text, at]
+      properties:
+        type:
+          const: agentNotice
+        id:
+          type: integer
+        text:
+          type: string
+        at:
+          type: number
+        tone:
+          $ref: '#/components/schemas/AgentNoticeTone'
+
+    SessionDetail:
+      description: Recent conversation context for one agent. Reply to requestSessionDetail.
+      type: object
+      additionalProperties: false
+      required: [type, id, entries]
+      properties:
+        type:
+          const: sessionDetail
+        id:
+          type: integer
+        prompt:
+          type: string
+          description: The session's first prompt (its task), truncated.
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionDetailEntry'
+        truncated:
+          type: boolean
+          description: True when older entries were dropped.
+
+    ConductorStatus:
+      description: Connection state of the Conductor provider and its visibility scope. Sent on connect and on change.
+      type: object
+      additionalProperties: false
+      required: [type, state, scope]
+      properties:
+        type:
+          const: conductorStatus
+        state:
+          $ref: '#/components/schemas/ConductorConnectionState'
+        message:
+          type: string
+        account:
+          type: string
+          description: Signed-in account (email or name). Never the token.
+        workspaceCount:
+          type: integer
+        sessionCount:
+          type: integer
+          description: Sessions in scope, including hidden ones.
+        visibleCount:
+          type: integer
+        lastSyncAt:
+          type: number
+        scope:
+          $ref: '#/components/schemas/ConductorScope'
+
+    ConductorSessions:
+      description: Every Conductor session in scope, including hidden ones. Reply to requestConductorSessions, and broadcast when the list changes.
+      type: object
+      additionalProperties: false
+      required: [type, sessions]
+      properties:
+        type:
+          const: conductorSessions
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConductorSessionSummary'
+
+    ConductorActionResult:
+      description: Outcome of a user action against Conductor (send a message, stop a session, open a link).
+      type: object
+      additionalProperties: false
+      required: [type, action, ok]
+      properties:
+        type:
+          const: conductorActionResult
+        action:
+          $ref: '#/components/schemas/ConductorAction'
+        id:
+          type: integer
+        ok:
+          type: boolean
+        message:
+          type: string
+
+    PokemonSpeciesLoaded:
+      description: |
+        One Pokémon species' animation metadata, sheet URLs and credits. Sent after
+        webviewReady for every species in use, and before the first agentCreated or
+        agentDetails that introduces a new species on a connection.
+      type: object
+      additionalProperties: false
+      required: [type, dex, shiny, name, shadowSize, anims, portraits, credits]
+      properties:
+        type:
+          const: pokemonSpeciesLoaded
+        dex:
+          type: integer
+          minimum: 1
+          maximum: 1025
+        shiny:
+          type: boolean
+        name:
+          type: string
+        shadowSize:
+          type: integer
+          minimum: 0
+          maximum: 2
+        anims:
+          type: object
+          description: Animation name (Walk, Idle, Sleep, Charge, ...) to sheet metadata.
+          additionalProperties:
+            $ref: '#/components/schemas/PokemonAnim'
+        portraits:
+          type: object
+          description: Emotion name (Normal, Happy, ...) to image URL.
+          additionalProperties:
+            type: string
+        credits:
+          $ref: '#/components/schemas/PokemonCredits'
+
+    PokemonThemeUpdated:
+      description: The Pokémon theme was switched on or off. Broadcast to every office.
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: pokemonThemeUpdated
+        enabled:
+          type: boolean
 
     # ── Client message variants ────────────────────────────────────
 
@@ -1320,6 +1621,92 @@ components:
         type:
           const: requestDiagnostics
 
+    SetPokemonTheme:
+      type: object
+      additionalProperties: false
+      required: [type, enabled]
+      properties:
+        type:
+          const: setPokemonTheme
+        enabled:
+          type: boolean
+
+    OpenExternal:
+      description: Open an agent's deep link on the host. The server accepts only allowlisted schemes (conductor:).
+      type: object
+      additionalProperties: false
+      required: [type, url]
+      properties:
+        type:
+          const: openExternal
+        url:
+          type: string
+
+    RequestSessionDetail:
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: requestSessionDetail
+        id:
+          type: integer
+
+    SendSessionMessage:
+      description: Send a user message to the agent's session (Conductor sessions only).
+      type: object
+      additionalProperties: false
+      required: [type, id, text]
+      properties:
+        type:
+          const: sendSessionMessage
+        id:
+          type: integer
+        text:
+          type: string
+
+    StopSession:
+      description: Cancel the agent's running turn (Conductor sessions only).
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: stopSession
+        id:
+          type: integer
+
+    RequestConductorSessions:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestConductorSessions
+
+    SetConductorScope:
+      type: object
+      additionalProperties: false
+      required: [type, scope]
+      properties:
+        type:
+          const: setConductorScope
+        scope:
+          $ref: '#/components/schemas/ConductorScope'
+
+    SetSessionHidden:
+      type: object
+      additionalProperties: false
+      required: [type, sessionId, hidden]
+      properties:
+        type:
+          const: setSessionHidden
+        sessionId:
+          type: string
+          description: Conductor session id.
+        hidden:
+          type: boolean
+
     # ── Supporting schemas ─────────────────────────────────────────
 
     AgentSeatMeta:
@@ -1336,6 +1723,10 @@ components:
           type: integer
         seatId:
           type: string
+        species:
+          type: integer
+        shiny:
+          type: boolean
 
     SeatAssignment:
       description: |
@@ -1351,6 +1742,10 @@ components:
           type: integer
         seatId:
           type: [string, 'null']
+        species:
+          type: integer
+        shiny:
+          type: boolean
 
     Directory:
       description: |
@@ -1466,3 +1861,171 @@ components:
           type: string
         frame:
           type: integer
+
+    AgentLink:
+      type: object
+      additionalProperties: false
+      required: [fromId, toId, kind, count, lastAt]
+      properties:
+        fromId:
+          type: integer
+        toId:
+          type: integer
+        kind:
+          $ref: '#/components/schemas/AgentLinkKind'
+        count:
+          type: integer
+        lastAt:
+          type: number
+          description: Epoch ms of the newest message or check on this link.
+        preview:
+          type: string
+          description: The newest message on this link, truncated.
+
+    AgentLinkKind:
+      description: spawned = created the other session with a first message; messaged = sent it a later message; watched = read its transcript or status.
+      type: string
+      enum: [spawned, messaged, watched]
+
+    AgentNoticeTone:
+      type: string
+      enum: [info, error]
+
+    SessionDetailEntry:
+      type: object
+      additionalProperties: false
+      required: [role, text, at]
+      properties:
+        role:
+          $ref: '#/components/schemas/SessionDetailRole'
+        text:
+          type: string
+        at:
+          type: number
+        peerId:
+          type: integer
+          description: For peerIn/peerOut, the other agent's id when it is in the office.
+        peerLabel:
+          type: string
+
+    SessionDetailRole:
+      description: user = a person's message; assistant = the agent's text; tool = an activity label; peerIn/peerOut = a message from/to another session.
+      type: string
+      enum: [user, assistant, tool, peerIn, peerOut]
+
+    ConductorConnectionState:
+      type: string
+      enum: [disabled, connecting, connected, authRequired, unauthorized, unreachable, rateLimited]
+
+    ConductorScope:
+      description: Which Conductor sessions appear in the office.
+      type: object
+      additionalProperties: false
+      required: [creator, activeWithinHours, showIdle, maxSessions]
+      properties:
+        creator:
+          $ref: '#/components/schemas/ConductorCreatorScope'
+        activeWithinHours:
+          type: number
+          description: Only workspaces with activity in this many hours. 0 means no limit.
+        showIdle:
+          type: boolean
+          description: When false, only working sessions (and sessions waiting on you) appear.
+        maxSessions:
+          type: integer
+          description: Cap on characters; the most recently active sessions win.
+
+    ConductorCreatorScope:
+      type: string
+      enum: [me, all]
+
+    ConductorSessionStatus:
+      type: string
+      enum: [idle, working, error]
+
+    ConductorSessionSummary:
+      type: object
+      additionalProperties: false
+      required: [sessionId, label, workspaceId, workspaceName, status, hidden]
+      properties:
+        sessionId:
+          type: string
+        label:
+          type: string
+        workspaceId:
+          type: string
+        workspaceName:
+          type: string
+        workspaceNumber:
+          type: integer
+        repo:
+          type: string
+        model:
+          type: string
+        harness:
+          type: string
+        status:
+          $ref: '#/components/schemas/ConductorSessionStatus'
+        lastActivityAt:
+          type: number
+        hidden:
+          type: boolean
+        agentId:
+          type: integer
+          description: The agent id when the session is in the office.
+        leadSessionId:
+          type: string
+          description: The session that spawned this one, if any.
+        externalUrl:
+          type: string
+        creatorName:
+          type: string
+
+    ConductorAction:
+      type: string
+      enum: [sendSessionMessage, stopSession, openExternal, setSessionHidden, setConductorScope]
+
+    PokemonAnim:
+      type: object
+      additionalProperties: false
+      required: [url, frameWidth, frameHeight, frames, directions, durations]
+      properties:
+        url:
+          type: string
+          description: Same-origin path (standalone) or data URL (VS Code) of the <Anim>-Anim.png sheet.
+        frameWidth:
+          type: integer
+        frameHeight:
+          type: integer
+        frames:
+          type: integer
+        directions:
+          type: integer
+          description: 8 (Down, DownRight, Right, UpRight, Up, UpLeft, Left, DownLeft) or 1.
+        durations:
+          type: array
+          items:
+            type: integer
+          description: Per-frame hold in 60 fps game frames.
+        rushFrame:
+          type: integer
+        hitFrame:
+          type: integer
+        returnFrame:
+          type: integer
+
+    PokemonCredits:
+      type: object
+      additionalProperties: false
+      required: [sprite, portrait, pageUrl]
+      properties:
+        sprite:
+          type: array
+          items:
+            type: string
+        portrait:
+          type: array
+          items:
+            type: string
+        pageUrl:
+          type: string

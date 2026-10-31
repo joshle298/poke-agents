@@ -160,7 +160,7 @@ The extension and CLI are bundled with esbuild; the webview is built with Vite. 
 ## Development
 
 ```bash
-git clone https://github.com/joshle298/pixel-agents.git poke-agents
+git clone https://github.com/joshle298/poke-agents.git
 cd poke-agents
 npm install
 npm run build

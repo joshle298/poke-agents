@@ -1,12 +1,17 @@
 /**
  * Provider abstraction for AI agent tools.
  *
- * Only HookProvider ships today (Claude Code). Transcript-polling and push-based
- * provider types will be added when a real second provider (Codex, Goose,
- * Discord, etc.) actually lands, derived from that provider's needs rather than
- * speculation.
+ * Two provider kinds ship: HookProvider (Claude Code: hooks plus a transcript
+ * fallback) and StreamProvider (Conductor: an in-process poller that pushes
+ * canonical events into the runtime through an AgentEventSink).
  */
 
+import type {
+  ConductorScope,
+  ConductorSessionSummary,
+  ConductorStatus,
+  SessionDetailEntry,
+} from './messages.js';
 import type { TeamProvider } from './teamProvider.js';
 
 // ── Normalized Events (all provider types produce these) ──────
@@ -30,7 +35,24 @@ export type AgentEvent =
        *  its response (Stop). Drives the "Waiting for input" vs "Done" label.
        *  Absent/false = the agent finished its turn (Done). */
       awaitingInput?: boolean;
+      /** Stream providers only. 'error' shows the agent as errored with
+       *  `errorMessage`; 'aborted' (user interrupt or rejection) reads as Done.
+       *  Absent = 'done'. */
+      outcome?: 'done' | 'error' | 'aborted';
+      errorMessage?: string;
     }
+  /** The agent started working (a new prompt, or a wake-up without one). */
+  | { kind: 'turnStart' }
+  /** The agent is blocked on the user's answer while its tools stay open
+   *  (e.g. an open AskUserQuestion). Unlike turnEnd it clears nothing. */
+  | { kind: 'awaitingInput' }
+  /** A pending permission request was resolved (approved or rejected). */
+  | { kind: 'permissionClear' }
+  /** Snapshot of the agent's context occupancy after its newest turn. */
+  | { kind: 'contextUsage'; tokens: number; model?: string; window?: number }
+  /** A short transient note for the office (a question asked in passing, a
+   *  retry, a non-fatal error). */
+  | { kind: 'notice'; text: string; tone?: 'info' | 'error' }
   | {
       kind: 'subagentStart';
       parentToolId: string;
@@ -147,5 +169,117 @@ export interface HookProvider {
   readonly team?: TeamProvider;
 }
 
-// TODO(provider type taxonomy): FileProvider (polling-only CLIs) and StreamProvider
-// (push-based external services) will be added alongside the first real second provider
+// ── Stream Provider (external services polled or pushed in-process) ──
+
+/** Display-only facts about a stream session. Forwarded as `agentDetails`. */
+export interface StreamSessionDetails {
+  /** Deep link that opens the session in its own app (conductor://...). */
+  externalUrl?: string;
+  model?: string;
+  /** Harness running the session: claude | codex | cursor | ... */
+  harness?: string;
+  workspaceId?: string;
+  workspaceName?: string;
+  workspaceNumber?: number;
+  /** Repository slug (owner/name). */
+  repo?: string;
+  creatorName?: string;
+  /** Messages in the session so far (newest sessionIndex). Drives the level. */
+  messageCount?: number;
+  /** Epoch ms of the newest observed activity. */
+  lastActivityAt?: number;
+}
+
+/** What a stream provider knows about one session. Optional fields may change
+ *  over time; `upsertSession` diffs them. */
+export interface StreamSessionInfo {
+  /** Provider-unique id, without any namespace prefix (Conductor session UUID). */
+  sessionId: string;
+  /** Session name, shown as the character's nickname. */
+  label?: string;
+  /** Area-mapping key (repo short name). */
+  directoryName?: string;
+  /** The session that spawned this one, when known and in the office. */
+  leadSessionId?: string;
+  details?: StreamSessionDetails;
+  /** Seed state for a newly adopted session (no history is replayed). */
+  initialStatus?: 'active' | 'waiting' | 'error';
+  errorMessage?: string;
+}
+
+/** One message or check between two sessions. */
+export interface AgentLinkEvent {
+  fromSessionId: string;
+  toSessionId: string;
+  kind: 'spawned' | 'messaged' | 'watched';
+  /** Epoch ms. */
+  at: number;
+  /** First characters of the message, whitespace collapsed. */
+  preview?: string;
+  /** False while backfilling history: update the link, but play no animation. */
+  live: boolean;
+}
+
+export type StreamProviderStatus = Omit<ConductorStatus, 'type'>;
+
+/** What a stream provider pushes into the runtime. Implemented by the
+ *  server's StreamAgentDriver; providers never touch the store directly. */
+export interface AgentEventSink {
+  /** Adopt (create) or update the agent for a session. Idempotent. */
+  upsertSession(info: StreamSessionInfo): void;
+  /** Canonical events for an adopted session, in order. Unknown sessions are ignored. */
+  emit(sessionId: string, event: AgentEvent): void;
+  /** Record a link between two sessions. Links whose ends are not both in the
+   *  office are kept and resolve once both ends are adopted. */
+  link(event: AgentLinkEvent): void;
+  /** Despawn the session's agent (hidden, archived, out of scope). */
+  removeSession(sessionId: string, reason?: string): void;
+  /** Connection state and scope, broadcast as `conductorStatus`. */
+  setStatus(status: StreamProviderStatus): void;
+  /** The session list changed (for the Sessions modal), broadcast as `conductorSessions`. */
+  sessionsChanged(sessions: ConductorSessionSummary[]): void;
+}
+
+/** Recent conversation context for one session (the Pokédex panel). */
+export interface StreamSessionDetail {
+  prompt?: string;
+  /** Entries reference peers by session id; the server maps them to agent ids. */
+  entries: Array<Omit<SessionDetailEntry, 'peerId'> & { peerSessionId?: string }>;
+  truncated?: boolean;
+}
+
+export interface StreamProvider {
+  readonly kind: 'stream';
+  readonly id: string;
+  readonly displayName: string;
+  /** Same contract as HookProvider.protocolVersion. Start at 1. */
+  readonly protocolVersion: number;
+
+  formatToolStatus(toolName: string, input?: unknown): string;
+  readonly permissionExemptTools: ReadonlySet<string>;
+  readonly subagentToolNames: ReadonlySet<string>;
+  readonly readingTools: ReadonlySet<string>;
+  contextWindowForModel?(model: string | undefined): number | undefined;
+
+  /** Begin polling. Resolves after the first full sync (or a definitive
+   *  auth/network failure reported through `sink.setStatus`). Never rejects. */
+  start(sink: AgentEventSink): Promise<void>;
+  stop(): Promise<void>;
+
+  // ── User controls (all optional; the UI hides what a provider lacks) ──
+
+  /** The user dismissed the session's character: hide it until unhidden. */
+  onDismiss?(sessionId: string): void;
+  setSessionHidden?(sessionId: string, hidden: boolean): void;
+  getScope?(): ConductorScope;
+  setScope?(scope: ConductorScope): void;
+  /** Every session in scope, hidden ones included. */
+  listSessions?(): ConductorSessionSummary[];
+  getSessionDetail?(sessionId: string): Promise<StreamSessionDetail | null>;
+  /** Send a user message to the session. Rejects with a user-facing message. */
+  sendMessage?(sessionId: string, text: string): Promise<void>;
+  /** Cancel the session's running turn. Rejects with a user-facing message. */
+  stopSession?(sessionId: string): Promise<void>;
+  /** Mark the session as focused (selected in the office) so it polls faster. */
+  setFocus?(sessionIds: string[]): void;
+}
