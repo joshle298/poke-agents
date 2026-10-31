@@ -16,6 +16,9 @@ export interface ExistingAgentMeta {
   palette?: number;
   hueShift?: number;
   seatId?: string;
+  /** The agent's Pokémon (national dex number) and whether it is shiny. */
+  species?: number;
+  shiny?: boolean;
 }
 
 /** An agent buffered until the layout (and its seats) has been built. */
@@ -26,6 +29,9 @@ export interface PendingAgent {
   seatId?: string;
   directoryName?: string;
   isHeadless?: boolean;
+  /** Present only when the server sent them. */
+  species?: number;
+  shiny?: boolean;
 }
 
 /** Minimal structural view of OfficeState this reconciler needs. */
@@ -40,6 +46,13 @@ export interface ExistingAgentsOffice {
     directoryName?: string,
   ) => void;
   setHeadless: (id: number, headless: boolean) => void;
+  /** Applies the restored Pokémon (OfficeState.setAgentIdentity). */
+  setAgentIdentity?: (id: number, ident: { species?: number; shiny?: boolean }) => void;
+}
+
+/** Give a just-added restored agent its Pokémon, when the server sent one. */
+export function applyPendingIdentity(os: ExistingAgentsOffice, p: PendingAgent): void {
+  if (p.species !== undefined) os.setAgentIdentity?.(p.id, { species: p.species, shiny: p.shiny });
 }
 
 /**
@@ -69,10 +82,15 @@ export function reconcileExistingAgents(
       directoryName: directoryNames[id],
       isHeadless: headlessAgents[id] === true,
     };
+    if (typeof m?.species === 'number') {
+      p.species = m.species;
+      p.shiny = m.shiny === true;
+    }
     if (layoutReady) {
       if (!os.characters.has(p.id)) {
         os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.directoryName);
         if (p.isHeadless) os.setHeadless(p.id, true);
+        applyPendingIdentity(os, p);
         addedDirectly = true;
       }
     } else {

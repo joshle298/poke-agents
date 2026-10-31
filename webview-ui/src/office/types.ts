@@ -24,6 +24,7 @@ export type TileType = (typeof TileType)[keyof typeof TileType];
 
 /** Re-export ColorValue for consumers that import color types from office/types */
 export type { ColorValue } from '../components/ui/types.js';
+import type { AgentLinkKind } from '../../../core/src/messages.js';
 import type { ColorValue } from '../components/ui/types.js';
 
 export const CharacterState = {
@@ -254,6 +255,82 @@ export interface Character {
   contextTokens: number;
   /** Window `contextTokens` is measured against. */
   maxContextTokens: number;
+
+  // -- Pokémon office (all optional: upstream characters never set them) --
+  /** National dex number of the Pokémon shown for this agent. */
+  species?: number;
+  shiny?: boolean;
+  level?: number;
+  /** Nickname shown on the overlay (for Conductor, the session name). */
+  label?: string;
+  /** Provider feeding this agent. Set = a stream agent (never auto-selected). */
+  providerId?: string;
+  /** The session errored: the Pokémon faints until the agent turns active. */
+  isErrored?: boolean;
+  errorMessage?: string;
+  /** Blocked on the user's answer. Unlike `waitingAwaitingInput` (which lives
+   *  only as long as the waiting bubble), this holds until the agent is active. */
+  awaitingInput?: boolean;
+  /** One-shot animation override, or null when the state-driven anim plays. */
+  pmdAnim?: PokemonOneShot | null;
+  /** Seconds into the displayed PMD animation (restarts when it changes). */
+  pmdAnimTime?: number;
+  /** Which animation `pmdAnimTime` belongs to (situation + anim name). */
+  pmdAnimKey?: string;
+  /** Seconds since the agent was last active. */
+  idleSec?: number;
+  /** PMD row (0-7) to face instead of `dir` while a one-shot plays. */
+  faceOverride?: number | null;
+  /** World point the Poké Ball is thrown from on spawn (the Lead or parent);
+   *  absent = the ball drops from above. */
+  effectOrigin?: { x: number; y: number };
+  /** Seconds into the evolution flash; undefined when not evolving. */
+  evolveTimer?: number;
+  /** Species (and shininess) swapped in at the evolution flash's midpoint. */
+  nextSpecies?: number;
+  nextShiny?: boolean;
+}
+
+/** One-shot animations: a tool burst, sending a message, a finished turn,
+ *  waking up, and the hurt flinch that leads into a faint. */
+export type PokemonOneShot = 'toolBurst' | 'message' | 'turnEnd' | 'wake' | 'hurt';
+
+/** A message ball in flight from one agent to another (agentMessage). */
+export interface Projectile {
+  id: number;
+  fromId: number;
+  toId: number;
+  kind: AgentLinkKind;
+  /** Shown near the receiver once the ball lands. */
+  preview?: string;
+  /** Seconds in flight, and the flight's length. */
+  t: number;
+  dur: number;
+}
+
+/** A landed message's preview, shown near its receiver for a few seconds. */
+export interface MessagePreview {
+  id: number;
+  fromId: number;
+  toId: number;
+  text: string;
+  /** Seconds left on screen. */
+  timer: number;
+}
+
+/** A short note above an agent (agentNotice). */
+export interface AgentNoticeBubble {
+  text: string;
+  tone: 'info' | 'error';
+  /** Seconds left on screen. */
+  timer: number;
+}
+
+/** One link to draw: both ends are characters in the office. */
+export interface LinkSegment {
+  from: Character;
+  to: Character;
+  kind: AgentLinkKind;
 }
 
 export const PetState = { IDLE: 'idle', WALK: 'walk', FOLLOW: 'follow' } as const;

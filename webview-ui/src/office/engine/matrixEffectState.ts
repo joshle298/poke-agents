@@ -1,21 +1,45 @@
 /**
- * The matrix spawn/despawn effect's STATE half: starting one, advancing its
- * timer, and reporting when it finished.
+ * The spawn/despawn effect's STATE half: starting one, advancing its timer,
+ * and reporting when it finished.
  *
- * Deliberately separate from `matrixEffect.ts`, which draws it: drawing needs
- * a CanvasRenderingContext2D, and OfficeState — a pure state container the
- * Node-runner unit tests import directly — has no business pulling a DOM type
- * into its module graph just to reset three fields.
+ * Deliberately separate from `matrixEffect.ts` / `pokeballEffect.ts`, which
+ * draw it: drawing needs a CanvasRenderingContext2D, and OfficeState — a pure
+ * state container the Node-runner unit tests import directly — has no
+ * business pulling a DOM type into its module graph just to reset three
+ * fields.
+ *
+ * Two looks share the one `matrixEffect` field (its name and values are an
+ * e2e contract): the upstream matrix rain, and — for a Pokémon while the
+ * theme is on — a Poké Ball thrown open on spawn and a red recall on
+ * despawn. Each has its own duration.
  */
 
-import { MATRIX_SPRITE_COLS } from '../../constants.js';
+import { MATRIX_SPRITE_COLS, POKEBALL_RECALL_SEC, POKEBALL_SPAWN_SEC } from '../../constants.js';
 import type { Character } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
+import { hasPokemonIdentity } from './pokemonCharacter.js';
 
-/** Per-column stagger seeds, one per sprite column. */
-export function matrixEffectSeeds(): number[] {
+export type SpawnEffectStyle = 'matrix' | 'pokeball';
+
+/** Poké Ball for a known Pokémon while the theme is on (even before its
+ *  sheets decode — the ball then opens on the upstream character). The
+ *  greeter, theme-off characters and hosts without species keep the matrix
+ *  rain. */
+export function spawnEffectStyle(ch: Character): SpawnEffectStyle {
+  return hasPokemonIdentity(ch) ? 'pokeball' : 'matrix';
+}
+
+/** How long the character's current effect runs. */
+export function matrixEffectDurationSec(ch: Character): number {
+  if (spawnEffectStyle(ch) === 'matrix') return MATRIX_EFFECT_DURATION;
+  return ch.matrixEffect === 'despawn' ? POKEBALL_RECALL_SEC : POKEBALL_SPAWN_SEC;
+}
+
+/** Per-column stagger seeds. The rain renderer reuses them modulo their count
+ *  for frames wider than MATRIX_SPRITE_COLS. */
+export function matrixEffectSeeds(count = MATRIX_SPRITE_COLS): number[] {
   const seeds: number[] = [];
-  for (let i = 0; i < MATRIX_SPRITE_COLS; i++) {
+  for (let i = 0; i < count; i++) {
     seeds.push(Math.random());
   }
   return seeds;
@@ -42,10 +66,11 @@ export type MatrixEffectTick = 'none' | 'running' | 'spawned' | 'despawned';
 export function advanceMatrixEffect(ch: Character, dt: number): MatrixEffectTick {
   if (!ch.matrixEffect) return 'none';
   ch.matrixEffectTimer += dt;
-  if (ch.matrixEffectTimer < MATRIX_EFFECT_DURATION) return 'running';
+  if (ch.matrixEffectTimer < matrixEffectDurationSec(ch)) return 'running';
   if (ch.matrixEffect === 'despawn') return 'despawned';
   ch.matrixEffect = null;
   ch.matrixEffectTimer = 0;
   ch.matrixEffectSeeds = [];
+  ch.effectOrigin = undefined;
   return 'spawned';
 }

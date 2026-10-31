@@ -1,16 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { HooksConsentRequest } from '../../../core/src/messages.js';
+import type {
+  AgentDetails,
+  AgentLink,
+  AgentLinkKind,
+  HooksConsentRequest,
+  PokemonSpeciesLoaded,
+} from '../../../core/src/messages.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
+import { statusChimeFor } from '../office/chimePolicy.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
-import { reconcileExistingAgents } from '../office/engine/existingAgents.js';
-import type { OfficeState } from '../office/engine/officeState.js';
-import { setGhostHeadlessAgents as setRendererGhostHeadlessAgents } from '../office/engine/renderer.js';
+import { applyPendingIdentity, reconcileExistingAgents } from '../office/engine/existingAgents.js';
+import type { AgentIdentity, OfficeState } from '../office/engine/officeState.js';
+import {
+  setGhostHeadlessAgents as setRendererGhostHeadlessAgents,
+  setPokemonThemeEnabled,
+} from '../office/engine/renderer.js';
+import { placeTeammate } from '../office/engine/teammatePlacement.js';
 import { setFloorSprites } from '../office/floorTiles.js';
 import { buildDynamicCatalog } from '../office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { setCarpetSprites } from '../office/sprites/carpetTiles.js';
 import { setPetTemplates } from '../office/sprites/petSpriteData.js';
+import { installBrowserSheetLoader } from '../office/sprites/pokemonSheetLoader.js';
+import { setPokemonSpecies } from '../office/sprites/pokemonSprites.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
 import {
   extractToolName,
@@ -32,6 +45,42 @@ import { transport } from '../transport/index.js';
  */
 const isHeadlessAgent = (isExternal: boolean | undefined): boolean =>
   isExternal === true && !isBrowserRuntime;
+
+/** Provider ids feeding an office whose host doesn't say (older hosts, VS Code). */
+const DEFAULT_ACTIVE_PROVIDERS = ['claude'];
+
+const LINK_KINDS: readonly AgentLinkKind[] = ['spawned', 'messaged', 'watched'];
+
+/** Agent details as the client holds them: every agentDetails merged in, absent
+ *  fields keeping what an earlier message said. */
+export type AgentDetailsState = Omit<AgentDetails, 'type'>;
+
+const optNumber = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+const optString = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const optBoolean = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
+
+/** The Pokémon identity fields of agentCreated / agentDetails. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function identityOf(msg: any): AgentIdentity {
+  return {
+    species: optNumber(msg.species),
+    shiny: optBoolean(msg.shiny),
+    level: optNumber(msg.level),
+    label: optString(msg.label),
+    providerId: optString(msg.providerId),
+  };
+}
+
+/** Defined fields of an agentDetails message, for merging. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function definedDetails(msg: any): Partial<AgentDetailsState> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(msg as Record<string, unknown>)) {
+    if (key !== 'type' && value !== undefined && value !== null) out[key] = value;
+  }
+  return out as Partial<AgentDetailsState>;
+}
 
 export interface SubagentCharacter {
   id: number;
@@ -157,6 +206,24 @@ interface ExtensionMessageState {
   terminalUnavailableReason: string | null;
   /** Agent ids with a live server-side PTY, in the order they opened. */
   terminalAgentIds: number[];
+  // ── Poke Agents ──
+  /** Provider facts per agent (label, deep link, model, Conductor session and
+   *  workspace, Pokémon), merged from every agentDetails. */
+  agentDetails: Record<number, AgentDetailsState>;
+  /** Last error message per errored agent (agentStatus error); cleared when it
+   *  turns active. `agentStatuses[id] === 'error'` while it lasts. */
+  agentErrorMessages: Record<number, string>;
+  /** The latest agentLinks snapshot. */
+  agentLinks: AgentLink[];
+  /** Providers feeding this office (providerCapabilities.activeProviders;
+   *  ["claude"] when the host doesn't say). */
+  activeProviders: string[];
+  /** Whether the Pokémon theme is on (settingsLoaded.pokemonTheme, absent = on;
+   *  pokemonThemeUpdated). */
+  pokemonTheme: boolean;
+  /** Apply a theme choice locally (state + render flag). The Settings toggle
+   *  calls this and sends setPokemonTheme. */
+  setPokemonTheme: (enabled: boolean) => void;
 }
 
 /** Drop one key from a keyed-by-agent record without touching identity when
@@ -226,6 +293,16 @@ export function useExtensionMessages(
   const [terminalUnavailableReason, setTerminalUnavailableReason] = useState<string | null>(null);
   /** Agent ids with a live PTY, in the order their terminals opened. */
   const [terminalAgentIds, setTerminalAgentIds] = useState<number[]>([]);
+  const [agentDetails, setAgentDetails] = useState<Record<number, AgentDetailsState>>({});
+  const [agentErrorMessages, setAgentErrorMessages] = useState<Record<number, string>>({});
+  const [agentLinks, setAgentLinks] = useState<AgentLink[]>([]);
+  const [activeProviders, setActiveProviders] = useState<string[]>(DEFAULT_ACTIVE_PROVIDERS);
+  const [pokemonTheme, setPokemonThemeState] = useState(true);
+  /** Last status seen per agent, for the chime policy's "changed". */
+  const lastStatusRef = useRef<Record<number, string>>({});
+  /** Agents whose Conductor session is pinned (conductorSessions): their
+   *  errors chime even when they aren't selected. */
+  const pinnedAgentIdsRef = useRef<Set<number>>(new Set());
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -233,6 +310,13 @@ export function useExtensionMessages(
   const applyGhostHeadlessAgents = useCallback((enabled: boolean) => {
     setGhostHeadlessAgentsState(enabled);
     setRendererGhostHeadlessAgents(enabled);
+  }, []);
+
+  // Same two-copies shape for the Pokémon theme: React state for the chrome,
+  // the module flag for the render loop and OfficeState.
+  const applyPokemonTheme = useCallback((enabled: boolean) => {
+    setPokemonThemeState(enabled);
+    setPokemonThemeEnabled(enabled);
   }, []);
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
@@ -285,6 +369,14 @@ export function useExtensionMessages(
           readingTools: msg.readingTools,
           subagentToolNames: msg.subagentToolNames,
         });
+        const providers = Array.isArray(msg.activeProviders)
+          ? (msg.activeProviders as unknown[]).filter((p): p is string => typeof p === 'string')
+          : DEFAULT_ACTIVE_PROVIDERS;
+        setActiveProviders((prev) =>
+          prev.length === providers.length && prev.every((p, i) => p === providers[i])
+            ? prev
+            : providers,
+        );
         return;
       }
 
@@ -332,6 +424,7 @@ export function useExtensionMessages(
         for (const p of pendingAgents) {
           os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.directoryName);
           if (p.isHeadless) os.setHeadless(p.id, true);
+          applyPendingIdentity(os, p);
         }
         pendingAgents = [];
         layoutReadyRef.current = true;
@@ -349,28 +442,43 @@ export function useExtensionMessages(
         const teammateName = msg.teammateName as string | undefined;
         const teammateParentId = msg.parentAgentId as number | undefined;
         const teamName = msg.teamName as string | undefined;
+        const identity = identityOf(msg);
+        // A stream agent (Conductor session) is one of dozens adopted on their
+        // own schedule: never auto-selected, never followed by the camera.
+        const isStream = identity.providerId !== undefined;
+        const seatId = optString(msg.seatId);
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]));
         // Don't auto-select teammates (keep focus on lead)
-        if (!isTeammate) {
+        if (!isTeammate && !isStream) {
           setSelectedAgent(id);
         }
         if (isTeammate && teammateParentId !== undefined) {
-          // Teammate: inherit parent's palette and workspace directoryName (teammate runs
-          // in the same workspace as the lead). Name shown via agentName (teamRoleLabel).
-          // Seat them at the free seat closest to the lead so the team clusters.
+          // Teammate: a Claude teammate inherits its Lead's palette and directory
+          // (it runs in the Lead's workspace) and sits next to it. A stream
+          // teammate is its own session: it keeps what the server sent, and
+          // clusters by its Lead only while the Lead's crowd is small.
           const parentCh = os.characters.get(teammateParentId);
-          const palette = parentCh ? parentCh.palette : undefined;
-          const hueShift = parentCh ? parentCh.hueShift : undefined;
+          const placement = placeTeammate({
+            isStream,
+            msg: {
+              palette: optNumber(msg.palette),
+              hueShift: optNumber(msg.hueShift),
+              directoryName,
+            },
+            leadId: teammateParentId,
+            lead: parentCh,
+            visibleChildren: os.visibleChildCount(teammateParentId),
+          });
           os.addAgent(
             id,
-            palette,
-            hueShift,
+            placement.palette,
+            placement.hueShift,
+            seatId,
             undefined,
-            undefined,
-            parentCh?.directoryName,
-            teammateParentId,
+            placement.directoryName,
+            placement.nearAgentId,
           );
-          noteDirectoryName(parentCh?.directoryName);
+          noteDirectoryName(placement.directoryName);
           // Set team metadata on the character
           const ch = os.characters.get(id);
           if (ch) {
@@ -381,12 +489,15 @@ export function useExtensionMessages(
         } else {
           const palette = msg.palette as number | undefined;
           const hueShift = msg.hueShift as number | undefined;
-          os.addAgent(id, palette, hueShift, undefined, undefined, directoryName);
+          os.addAgent(id, palette, hueShift, seatId, undefined, directoryName);
           noteDirectoryName(directoryName);
           if (isHeadlessAgent(msg.isExternal as boolean | undefined)) {
             os.setHeadless(id, true);
           }
         }
+        os.setAgentIdentity(id, identity);
+        // A child created with a Lead pops out of a ball its Lead throws.
+        if (teammateParentId !== undefined) os.setSpawnOrigin(id, teammateParentId);
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number;
@@ -401,6 +512,9 @@ export function useExtensionMessages(
         setAgentAwaitingInput((prev) => omitKey(prev, id));
         setAgentSeenActivity((prev) => omitKey(prev, id));
         setSubagentTools((prev) => omitKey(prev, id));
+        setAgentDetails((prev) => omitKey(prev, id));
+        setAgentErrorMessages((prev) => omitKey(prev, id));
+        delete lastStatusRef.current[id];
         // Remove all sub-agent characters belonging to this agent
         delete backgroundParentToolIdsRef.current[id];
         os.removeAllSubagents(id);
@@ -463,6 +577,7 @@ export function useExtensionMessages(
         const toolName = (msg.toolName as string | undefined) ?? extractToolName(status);
         os.setAgentTool(id, toolName);
         os.setAgentActive(id, true);
+        os.playToolBurst(id);
         // Don't clear the permission bubble if the hook already confirmed permission is needed
         if (!permissionActive) {
           os.clearPermissionBubble(id);
@@ -559,21 +674,53 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentStatus') {
         const id = msg.id as number;
         const status = msg.status as string;
+        const awaiting = status === 'waiting' && msg.awaitingInput === true;
+        // Seeding and reconnect resends: state only — no chime, no checkmark.
+        const silent = msg.silent === true;
         markSeenActivity(id);
         setAgentStatuses((prev) => {
           if (status === 'active') return omitKey(prev, id);
           return { ...prev, [id]: status };
         });
         setAgentAwaitingInput((prev) => {
-          const awaiting = status === 'waiting' && msg.awaitingInput === true;
           if ((prev[id] ?? false) === awaiting) return prev;
           return { ...prev, [id]: awaiting };
         });
-        os.setAgentActive(id, status === 'active');
-        if (status === 'waiting') {
-          os.showWaitingBubble(id, msg.awaitingInput === true);
-          playDoneSound();
+        if (status === 'error') {
+          const message = optString(msg.errorMessage) ?? '';
+          setAgentErrorMessages((prev) =>
+            prev[id] === message ? prev : { ...prev, [id]: message },
+          );
+        } else if (status === 'active') {
+          setAgentErrorMessages((prev) => omitKey(prev, id));
         }
+        const ch = os.characters.get(id);
+        const wasActive = ch?.isActive === true;
+        const changed = lastStatusRef.current[id] !== status;
+        lastStatusRef.current[id] = status;
+        if (status === 'error') {
+          os.setAgentActive(id, false);
+          os.setAgentError(id, optString(msg.errorMessage));
+        } else {
+          os.setAgentActive(id, status === 'active');
+          os.setAgentAwaitingInput(id, awaiting);
+        }
+        if (status === 'waiting') {
+          // A question is state, not news: it shows even on a silent resend.
+          if (!silent || awaiting) os.showWaitingBubble(id, awaiting);
+          if (!silent && wasActive) os.playTurnEnd(id);
+        }
+        const chime = statusChimeFor({
+          status,
+          awaitingInput: awaiting,
+          silent,
+          streamAgent: ch?.providerId !== undefined,
+          selected: os.selectedAgentId === id,
+          pinned: pinnedAgentIdsRef.current.has(id),
+          changed,
+        });
+        if (chime === 'done') playDoneSound();
+        else if (chime === 'attention') playPermissionSound();
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
         setAgentTools((prev) => {
@@ -694,6 +841,9 @@ export function useExtensionMessages(
         }>;
         console.log(`[Webview] Received ${characters.length} pre-colored character sprites`);
         setCharacterTemplates(characters);
+      } else if (msg.type === 'pokemonSpeciesLoaded') {
+        installBrowserSheetLoader();
+        setPokemonSpecies(msg as PokemonSpeciesLoaded);
       } else if (msg.type === 'petSpritesLoaded') {
         const pets = msg.pets;
         if (!Array.isArray(pets)) {
@@ -768,6 +918,8 @@ export function useExtensionMessages(
         if (typeof msg.showHostDirectories === 'boolean') {
           setShowHostDirectories(msg.showHostDirectories as boolean);
         }
+        // Absent means on (hosts that predate the theme, VS Code).
+        applyPokemonTheme(msg.pokemonTheme !== false);
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[]);
         }
@@ -777,6 +929,8 @@ export function useExtensionMessages(
         if (typeof msg.extensionVersion === 'string') {
           setExtensionVersion(msg.extensionVersion as string);
         }
+      } else if (msg.type === 'pokemonThemeUpdated') {
+        if (typeof msg.enabled === 'boolean') applyPokemonTheme(msg.enabled);
       } else if (msg.type === 'bypassPermissionsUpdated') {
         // Another office (or this one) changed the host's posture: every launch
         // uses it, so the Settings toggle must show it.
@@ -844,6 +998,41 @@ export function useExtensionMessages(
       } else if (msg.type === 'agentContextUsage') {
         const id = msg.id as number;
         os.setAgentContext(id, msg.contextTokens as number, msg.maxContextTokens as number);
+      } else if (msg.type === 'agentDetails') {
+        const id = msg.id as number;
+        const details = definedDetails(msg);
+        setAgentDetails((prev) => ({ ...prev, [id]: { ...prev[id], ...details, id } }));
+        // A new species on a known Pokémon evolves it (flash, swap mid-flash).
+        os.setAgentIdentity(id, identityOf(msg), { evolve: true });
+      } else if (msg.type === 'agentLinks') {
+        const links = (Array.isArray(msg.links) ? msg.links : []) as AgentLink[];
+        os.setLinks(links);
+        setAgentLinks(links);
+      } else if (msg.type === 'agentMessage') {
+        const kind = msg.kind as AgentLinkKind;
+        if (LINK_KINDS.includes(kind)) {
+          os.launchProjectile(
+            msg.fromId as number,
+            msg.toId as number,
+            kind,
+            optString(msg.preview),
+          );
+        }
+      } else if (msg.type === 'conductorSessions') {
+        // The Sessions list is the chrome's; the office only needs who is pinned.
+        const pinned = new Set<number>();
+        for (const session of (Array.isArray(msg.sessions) ? msg.sessions : []) as Array<{
+          pinned?: unknown;
+          agentId?: unknown;
+        }>) {
+          if (session.pinned === true && typeof session.agentId === 'number') {
+            pinned.add(session.agentId);
+          }
+        }
+        pinnedAgentIdsRef.current = pinned;
+      } else if (msg.type === 'agentNotice') {
+        const text = optString(msg.text);
+        if (text) os.showNotice(msg.id as number, text, msg.tone === 'error' ? 'error' : 'info');
       }
     };
     const unsubscribe = transport.onMessage(handler);
@@ -921,5 +1110,11 @@ export function useExtensionMessages(
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    agentDetails,
+    agentErrorMessages,
+    agentLinks,
+    activeProviders,
+    pokemonTheme,
+    setPokemonTheme: applyPokemonTheme,
   };
 }

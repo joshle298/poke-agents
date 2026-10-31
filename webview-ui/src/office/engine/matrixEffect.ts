@@ -3,8 +3,6 @@ import {
   MATRIX_FLICKER_FPS,
   MATRIX_FLICKER_VISIBILITY_THRESHOLD,
   MATRIX_HEAD_COLOR,
-  MATRIX_SPRITE_COLS,
-  MATRIX_SPRITE_ROWS,
   MATRIX_TRAIL_DIM_THRESHOLD,
   MATRIX_TRAIL_EMPTY_ALPHA,
   MATRIX_TRAIL_LENGTH,
@@ -15,7 +13,7 @@ import {
   matrixGreenMid,
 } from '../../constants.js';
 import type { Character, SpriteData } from '../types.js';
-import { MATRIX_EFFECT_DURATION } from '../types.js';
+import { matrixEffectDurationSec } from './matrixEffectState.js';
 
 /** Hash-based flicker: ~70% visible for shimmer effect */
 function flickerVisible(col: number, row: number, time: number): boolean {
@@ -27,6 +25,8 @@ function flickerVisible(col: number, row: number, time: number): boolean {
 /**
  * Render a character with a Matrix-style digital rain spawn/despawn effect.
  * Per-pixel rendering: each column sweeps top-to-bottom with a bright head and fading green trail.
+ * Covers the whole frame, whatever its size; the column seeds repeat across
+ * frames wider than there are seeds.
  */
 export function renderMatrixEffect(
   ctx: CanvasRenderingContext2D,
@@ -36,21 +36,25 @@ export function renderMatrixEffect(
   drawY: number,
   zoom: number,
 ): void {
-  const progress = ch.matrixEffectTimer / MATRIX_EFFECT_DURATION;
+  const progress = ch.matrixEffectTimer / matrixEffectDurationSec(ch);
   const isSpawn = ch.matrixEffect === 'spawn';
   const time = ch.matrixEffectTimer;
-  const totalSweep = MATRIX_SPRITE_ROWS + MATRIX_TRAIL_LENGTH;
+  const rows = spriteData.length;
+  const cols = rows > 0 ? spriteData[0].length : 0;
+  const totalSweep = rows + MATRIX_TRAIL_LENGTH;
+  const seeds = ch.matrixEffectSeeds;
 
-  for (let col = 0; col < MATRIX_SPRITE_COLS; col++) {
+  for (let col = 0; col < cols; col++) {
     // Stagger: each column starts at a slightly different time
-    const stagger = (ch.matrixEffectSeeds[col] ?? 0) * MATRIX_COLUMN_STAGGER_RANGE;
+    const seed = seeds.length > 0 ? seeds[col % seeds.length] : 0;
+    const stagger = seed * MATRIX_COLUMN_STAGGER_RANGE;
     const colProgress = Math.max(
       0,
       Math.min(1, (progress - stagger) / (1 - MATRIX_COLUMN_STAGGER_RANGE)),
     );
     const headRow = colProgress * totalSweep;
 
-    for (let row = 0; row < MATRIX_SPRITE_ROWS; row++) {
+    for (let row = 0; row < rows; row++) {
       const pixel = spriteData[row]?.[col];
       const hasPixel = pixel && pixel !== '';
       const distFromHead = headRow - row;

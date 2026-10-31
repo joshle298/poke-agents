@@ -1,5 +1,8 @@
+import type { AgentLink, AgentLinkKind } from '../../../../core/src/messages.js';
 import { pickDiversePalette } from '../../../../core/src/paletteUtils.js';
 import {
+  AGENT_NOTICE_MAX_CHARS,
+  AGENT_NOTICE_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
   CHARACTER_HIT_HALF_WIDTH,
@@ -12,8 +15,16 @@ import {
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
   MAX_PET_ID_LENGTH,
+  MESSAGE_PREVIEW_MAX_CHARS,
+  MESSAGE_PREVIEW_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  POKEMON_EVOLVE_SEC,
+  PROJECTILE_MAX_IN_FLIGHT,
+  PROJECTILE_MAX_SEC,
+  PROJECTILE_MIN_SEC,
+  PROJECTILE_SPEED_PX_PER_SEC,
+  TEAMMATE_CLUSTER_MAX_CHILDREN,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
@@ -28,12 +39,17 @@ import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
+  AgentNoticeBubble,
   Character,
   FurnitureInstance,
+  LinkSegment,
+  MessagePreview,
   OfficeLayout,
   Pet,
   PlacedFurniture,
   PlacedPet,
+  PokemonOneShot,
+  Projectile,
   Seat,
   TileType as TileTypeVal,
 } from '../types.js';
@@ -41,7 +57,38 @@ import { CharacterState, Direction, PetState, TILE_SIZE } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
 import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
+import {
+  advancePokemonAnim,
+  isOneShotPlaying,
+  isPokemonAsleep,
+  pmdRowToward,
+  startPokemonOneShot,
+} from './pokemonAnim.js';
+import {
+  characterChest,
+  isPokemonCharacter,
+  pokemonAnimSourceOf,
+  pokemonHitBox,
+} from './pokemonCharacter.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
+
+/** Pokémon identity and display facts carried by agentCreated / agentDetails.
+ *  Absent fields are unknown, never a reason to clear what is known. */
+export interface AgentIdentity {
+  species?: number;
+  shiny?: boolean;
+  level?: number;
+  label?: string;
+  providerId?: string;
+}
+
+const LINK_KIND_RANK: Record<AgentLinkKind, number> = { spawned: 3, messaged: 2, watched: 1 };
+
+/** Whitespace collapsed and capped at `max` characters (with an ellipsis). */
+function bubbleText(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
+}
 
 /** Internal helper: facing-tile coords for a seat. Returns null for invalid direction. */
 function seatFacingOffset(direction: Direction): { dCol: number; dRow: number } {
@@ -116,6 +163,18 @@ export class OfficeState {
   /** Latched by a manual pan during the ask: the user took the camera, so the
    *  overlay's per-frame updates stop re-centering. Reset on spawn/despawn. */
   private greeterCameraCancelled = false;
+
+  /** Links between agents from the latest agentLinks snapshot. */
+  links: AgentLink[] = [];
+  /** Message balls in flight (agentMessage), at most PROJECTILE_MAX_IN_FLIGHT. */
+  projectiles: Projectile[] = [];
+  /** Previews of landed messages, shown near their receivers. */
+  messagePreviews: MessagePreview[] = [];
+  /** Short notes above agents (agentNotice), one per agent. */
+  notices: Map<number, AgentNoticeBubble> = new Map();
+  /** Seconds of simulated time: drives the links' marching dashes. */
+  clock = 0;
+  private nextOverlayId = 1;
 
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
@@ -749,7 +808,13 @@ export class OfficeState {
     if (parentCh) ch.dir = parentCh.dir;
     ch.isSubagent = true;
     ch.parentAgentId = parentAgentId;
+    // Same Pokémon as the parent, thrown out from it.
+    if (parentCh?.species !== undefined) {
+      ch.species = parentCh.species;
+      ch.shiny = parentCh.shiny;
+    }
     startMatrixEffect(ch, 'spawn');
+    if (parentCh) ch.effectOrigin = characterChest(parentCh);
     this.characters.set(id, ch);
 
     this.subagentIdMap.set(key, id);
@@ -827,6 +892,13 @@ export class OfficeState {
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id);
     if (ch) {
+      if (active) {
+        // A Pokémon roused from sleep plays Wake before it walks to its desk.
+        if (!ch.isActive && isPokemonAsleep(ch)) this.playOneShot(ch, 'wake', { force: true });
+        ch.idleSec = 0;
+        ch.awaitingInput = false;
+        if (ch.isErrored) this.clearError(ch);
+      }
       ch.isActive = active;
       if (!active) {
         // Sentinel -1: signals turn just ended, skip next seat rest timer.
@@ -912,6 +984,255 @@ export class OfficeState {
     if (ch) {
       ch.currentTool = tool;
     }
+  }
+
+  // ── Pokémon identity, conditions and one-shots ─────────────────
+
+  /**
+   * Apply an agent's Pokémon identity and display facts. Absent fields keep
+   * what is known. With `evolve`, a new species for a character drawn as a
+   * Pokémon plays the evolution flash and swaps mid-flash; otherwise (a new
+   * character, theme off, sheets not decoded) it swaps at once.
+   */
+  setAgentIdentity(id: number, ident: AgentIdentity, opts: { evolve?: boolean } = {}): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    if (ident.label !== undefined) ch.label = ident.label;
+    if (ident.level !== undefined) ch.level = ident.level;
+    if (ident.providerId !== undefined) ch.providerId = ident.providerId;
+    if (ident.species !== undefined) {
+      this.applySpecies(ch, ident.species, ident.shiny ?? ch.shiny, opts.evolve === true);
+    } else if (ident.shiny !== undefined && ch.evolveTimer === undefined) {
+      ch.shiny = ident.shiny;
+    }
+  }
+
+  private applySpecies(
+    ch: Character,
+    species: number,
+    shiny: boolean | undefined,
+    evolve: boolean,
+  ): void {
+    const evolving = ch.evolveTimer !== undefined && ch.nextSpecies !== undefined;
+    const headingTo = evolving ? ch.nextSpecies : ch.species;
+    const headingShiny = evolving ? ch.nextShiny : ch.shiny;
+    if (species === headingTo && shiny === headingShiny) return;
+    if (evolve && ch.species !== undefined && species !== ch.species && isPokemonCharacter(ch)) {
+      ch.nextSpecies = species;
+      ch.nextShiny = shiny;
+      ch.evolveTimer = 0;
+      return;
+    }
+    ch.species = species;
+    ch.shiny = shiny;
+    ch.nextSpecies = undefined;
+    ch.nextShiny = undefined;
+    ch.evolveTimer = undefined;
+    ch.pmdAnimKey = undefined;
+  }
+
+  /** The species swaps at the flash's midpoint; the flash ends at its end. */
+  private advanceEvolution(ch: Character, dt: number): void {
+    if (ch.evolveTimer === undefined) return;
+    ch.evolveTimer += dt;
+    if (ch.nextSpecies !== undefined && ch.evolveTimer >= POKEMON_EVOLVE_SEC / 2) {
+      ch.species = ch.nextSpecies;
+      ch.shiny = ch.nextShiny;
+      ch.nextSpecies = undefined;
+      ch.nextShiny = undefined;
+      ch.pmdAnimKey = undefined;
+    }
+    if (ch.evolveTimer >= POKEMON_EVOLVE_SEC) ch.evolveTimer = undefined;
+  }
+
+  /** The session errored: the Pokémon flinches (Hurt) and faints until the
+   *  agent turns active again. */
+  setAgentError(id: number, message?: string): void {
+    const ch = this.characters.get(id);
+    if (!ch) return;
+    const wasErrored = ch.isErrored === true;
+    ch.isErrored = true;
+    ch.errorMessage = message;
+    ch.awaitingInput = false;
+    if (!wasErrored) this.playOneShot(ch, 'hurt', { force: true });
+  }
+
+  clearAgentError(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch?.isErrored) this.clearError(ch);
+  }
+
+  private clearError(ch: Character): void {
+    ch.isErrored = false;
+    ch.errorMessage = undefined;
+    if (ch.pmdAnim === 'hurt') ch.pmdAnim = null;
+  }
+
+  /** Blocked on the user's answer: "!" and the Pose anim until it turns active. */
+  setAgentAwaitingInput(id: number, awaiting: boolean): void {
+    const ch = this.characters.get(id);
+    if (ch) ch.awaitingInput = awaiting;
+  }
+
+  /** One-shots only start on characters drawn as Pokémon. */
+  private playOneShot(
+    ch: Character,
+    kind: PokemonOneShot,
+    opts: { force?: boolean; faceRow?: number } = {},
+  ): boolean {
+    if (!isPokemonCharacter(ch)) return false;
+    return startPokemonOneShot(ch, kind, opts);
+  }
+
+  /** agentToolStart: a burst of energy at the desk. Ignored mid-walk so a run
+   *  of tool calls never stalls the walk to the desk. */
+  playToolBurst(id: number): void {
+    const ch = this.characters.get(id);
+    if (!ch || ch.state === CharacterState.WALK) return;
+    this.playOneShot(ch, 'toolBurst');
+  }
+
+  /** A turn ended: a little hop. */
+  playTurnEnd(id: number): void {
+    const ch = this.characters.get(id);
+    if (ch) this.playOneShot(ch, 'turnEnd', { force: true });
+  }
+
+  /** The Lead (or whoever created it) throws the ball a new character pops
+   *  out of. No-op unless `id` is still spawning and `fromId` is present. */
+  setSpawnOrigin(id: number, fromId: number): void {
+    const ch = this.characters.get(id);
+    const from = this.liveCharacter(fromId);
+    if (!ch || !from || ch === from || ch.matrixEffect !== 'spawn') return;
+    ch.effectOrigin = characterChest(from);
+  }
+
+  /** Teammates of `leadId` in the office (despawning ones don't count). */
+  visibleChildCount(leadId: number): number {
+    let count = 0;
+    for (const ch of this.characters.values()) {
+      if (ch.leadAgentId === leadId && !ch.isSubagent && ch.matrixEffect !== 'despawn') count++;
+    }
+    return count;
+  }
+
+  private liveCharacter(id: number): Character | undefined {
+    const ch = this.characters.get(id);
+    return ch && ch.matrixEffect !== 'despawn' ? ch : undefined;
+  }
+
+  // ── Links, message projectiles and notices ─────────────────────
+
+  /** Replace the links with the latest agentLinks snapshot. */
+  setLinks(links: readonly AgentLink[]): void {
+    this.links = links.filter(
+      (l) =>
+        Number.isInteger(l.fromId) &&
+        Number.isInteger(l.toId) &&
+        l.fromId !== l.toId &&
+        l.kind in LINK_KIND_RANK,
+    );
+  }
+
+  /** Links to draw: both ends present, one per pair of agents (spawned beats
+   *  messaged beats watched; the winner's direction is kept). */
+  getLinkSegments(): LinkSegment[] {
+    const best = new Map<string, AgentLink>();
+    for (const link of this.links) {
+      if (!this.liveCharacter(link.fromId) || !this.liveCharacter(link.toId)) continue;
+      const lo = Math.min(link.fromId, link.toId);
+      const hi = Math.max(link.fromId, link.toId);
+      const key = `${lo}:${hi}`;
+      const held = best.get(key);
+      if (!held || LINK_KIND_RANK[link.kind] > LINK_KIND_RANK[held.kind]) best.set(key, link);
+    }
+    const segments: LinkSegment[] = [];
+    for (const link of best.values()) {
+      segments.push({
+        from: this.characters.get(link.fromId)!,
+        to: this.characters.get(link.toId)!,
+        kind: link.kind,
+      });
+    }
+    return segments;
+  }
+
+  /**
+   * One agent messaged another: the sender attacks toward the receiver and a
+   * ball flies between them; its preview shows near the receiver on landing.
+   * Refused (false) when either end is missing or PROJECTILE_MAX_IN_FLIGHT
+   * balls are already in the air.
+   */
+  launchProjectile(fromId: number, toId: number, kind: AgentLinkKind, preview?: string): boolean {
+    if (fromId === toId) return false;
+    const from = this.liveCharacter(fromId);
+    const to = this.liveCharacter(toId);
+    if (!from || !to) return false;
+    if (this.projectiles.length >= PROJECTILE_MAX_IN_FLIGHT) return false;
+    const a = characterChest(from);
+    const b = characterChest(to);
+    const dist = Math.hypot(b.x - a.x, b.y - a.y);
+    const dur = Math.min(
+      PROJECTILE_MAX_SEC,
+      Math.max(PROJECTILE_MIN_SEC, dist / PROJECTILE_SPEED_PX_PER_SEC),
+    );
+    const text = preview ? bubbleText(preview, MESSAGE_PREVIEW_MAX_CHARS) : '';
+    this.projectiles.push({
+      id: this.nextOverlayId++,
+      fromId,
+      toId,
+      kind,
+      preview: text || undefined,
+      t: 0,
+      dur,
+    });
+    this.playOneShot(from, 'message', {
+      force: true,
+      faceRow: pmdRowToward(b.x - a.x, b.y - a.y),
+    });
+    return true;
+  }
+
+  /** Show a short note above an agent for AGENT_NOTICE_SEC (replacing its last). */
+  showNotice(id: number, text: string, tone: 'info' | 'error' = 'info'): void {
+    if (!this.liveCharacter(id)) return;
+    const clean = bubbleText(text, AGENT_NOTICE_MAX_CHARS);
+    if (!clean) return;
+    this.notices.set(id, { text: clean, tone, timer: AGENT_NOTICE_SEC });
+  }
+
+  private advanceOverlays(dt: number): void {
+    // Age what is on screen first, so a preview born this tick gets its full time.
+    this.messagePreviews = this.messagePreviews.filter((m) => {
+      m.timer -= dt;
+      return m.timer > 0 && this.liveCharacter(m.toId) !== undefined;
+    });
+    for (const [id, notice] of this.notices) {
+      notice.timer -= dt;
+      if (notice.timer <= 0 || !this.liveCharacter(id)) this.notices.delete(id);
+    }
+
+    const flying: Projectile[] = [];
+    for (const p of this.projectiles) {
+      if (!this.liveCharacter(p.fromId) || !this.liveCharacter(p.toId)) continue;
+      p.t += dt;
+      if (p.t < p.dur) {
+        flying.push(p);
+        continue;
+      }
+      if (p.preview) {
+        // One preview per receiver: the newest message wins.
+        this.messagePreviews = this.messagePreviews.filter((m) => m.toId !== p.toId);
+        this.messagePreviews.push({
+          id: p.id,
+          fromId: p.fromId,
+          toId: p.toId,
+          text: p.preview,
+          timer: MESSAGE_PREVIEW_SEC,
+        });
+      }
+    }
+    this.projectiles = flying;
   }
 
   showPermissionBubble(id: number): void {
@@ -1103,8 +1424,15 @@ export class OfficeState {
     // A teammate discovered only after its plain external session was adopted is
     // linked here, not at creation, so it never went through the seat-next-to-lead
     // path addAgent runs for inline teammates. Cluster it now, once, on first link.
+    // A stream Lead's crowd (Conductor orchestrators spawn dozens) clusters only
+    // up to TEAMMATE_CLUSTER_MAX_CHILDREN; the rest keep their own seats.
     if (wasUnlinked && leadAgentId !== undefined && !isTeamLead) {
-      this.reseatNextToLead(id, leadAgentId);
+      if (
+        ch.providerId === undefined ||
+        this.visibleChildCount(leadAgentId) <= TEAMMATE_CLUSTER_MAX_CHILDREN
+      ) {
+        this.reseatNextToLead(id, leadAgentId);
+      }
     }
   }
 
@@ -1123,6 +1451,7 @@ export class OfficeState {
   }
 
   update(dt: number): void {
+    this.clock += dt;
     // Furniture animation cycling
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
     this.furnitureAnimTimer += dt;
@@ -1145,10 +1474,29 @@ export class OfficeState {
         continue; // skip normal FSM while the effect is (or just was) active
       }
 
-      // Temporarily unblock own seat so character can pathfind to it
-      this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
-      );
+      // A Pokémon holds still while a one-shot plays (Wake before walking to
+      // its desk, Attack while messaging), and stays put while asleep or
+      // fainted instead of wandering. Upstream characters always run the FSM.
+      const pokemon = isPokemonCharacter(ch);
+      const anims = pokemonAnimSourceOf(ch);
+      const holdStill = pokemon && anims !== null && isOneShotPlaying(ch, anims.has);
+      const restInPlace =
+        pokemon &&
+        ch.state === CharacterState.IDLE &&
+        !ch.isActive &&
+        (ch.isErrored === true || isPokemonAsleep(ch));
+      if (!holdStill && !restInPlace) {
+        // Temporarily unblock own seat so character can pathfind to it
+        this.withOwnSeatUnblocked(ch, () =>
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
+        );
+      }
+      if (anims) {
+        advancePokemonAnim(ch, dt, anims);
+      } else {
+        ch.idleSec = ch.isActive ? 0 : (ch.idleSec ?? 0) + dt;
+      }
+      this.advanceEvolution(ch, dt);
 
       // Tick bubble timer for waiting bubbles
       if (ch.bubbleType === 'waiting') {
@@ -1163,6 +1511,8 @@ export class OfficeState {
     for (const id of toDelete) {
       this.characters.delete(id);
     }
+
+    this.advanceOverlays(dt);
 
     // ── Pet FSM ────────────────────────────────────────────────
     for (const pet of this.pets) {
@@ -1212,6 +1562,19 @@ export class OfficeState {
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
+      // A Pokémon is hit on its measured body.
+      const box = pokemonHitBox(ch);
+      if (box) {
+        if (
+          worldX >= box.left &&
+          worldX <= box.right &&
+          worldY >= box.top &&
+          worldY <= box.bottom
+        ) {
+          return ch.id;
+        }
+        continue;
+      }
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;

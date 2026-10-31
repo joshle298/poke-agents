@@ -17,6 +17,7 @@ import {
   BUTTON_RADIUS_ZOOM_FACTOR,
   CARPET_DEFAULT_ACCENT_COLOR,
   CARPET_DEFAULT_COLOR,
+  CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
@@ -65,8 +66,21 @@ import type {
 import { CharacterState, TILE_SIZE, TileType } from '../types.js';
 import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
 import { getCharacterSprite } from './characters.js';
+import type { ConnectionsRenderState } from './connectionsRender.js';
+import { renderLinks, renderProjectiles } from './connectionsRender.js';
+import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
+import { spawnEffectStyle } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
+import { renderPokeballEffect } from './pokeballEffect.js';
+import type { ZDrawable } from './pokemonRender.js';
+import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
+
+export type { ConnectionsRenderState } from './connectionsRender.js';
+/** The Pokémon theme switch: set from settingsLoaded.pokemonTheme (absent =
+ *  on) and pokemonThemeUpdated. Lives in a DOM-free module so OfficeState
+ *  reads the same flag. */
+export { setPokemonThemeEnabled } from './pokemonTheme.js';
 
 // ── Settings ────────────────────────────────────────────────────
 
@@ -335,11 +349,6 @@ export function renderTileGrid(
   }
 }
 
-interface ZDrawable {
-  zY: number;
-  draw: (ctx: CanvasRenderingContext2D) => void;
-}
-
 /** @internal */
 export function renderScene(
   ctx: CanvasRenderingContext2D,
@@ -382,6 +391,30 @@ export function renderScene(
 
   // Characters
   for (const ch of characters) {
+    // Headless agents (adopted, no terminal to focus) render translucent while
+    // the "Display headless as ghosts" setting is on.
+    const alpha = ch.isHeadless && ghostHeadlessAgents ? HEADLESS_CHARACTER_ALPHA : 1;
+    const isSelected = selectedAgentId !== null && ch.id === selectedAgentId;
+    const isHovered = hoveredAgentId !== null && ch.id === hoveredAgentId;
+
+    // Pokémon branch: a decoded species replaces the upstream character.
+    // Anything not ready (theme off, no species, sheets loading) falls through.
+    const pokemonFrame = resolvePokemonFrame(ch);
+    if (pokemonFrame) {
+      pushPokemonDrawables(
+        drawables,
+        ch,
+        pokemonFrame,
+        offsetX,
+        offsetY,
+        zoom,
+        isSelected,
+        isHovered,
+        alpha,
+      );
+      continue;
+    }
+
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const spriteData = getCharacterSprite(ch, sprites);
     const cached = getCachedSprite(spriteData, zoom);
@@ -396,9 +429,29 @@ export function renderScene(
     // at lower rows (e.g. desks, bookshelves that occlude from below).
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
 
-    // Headless agents (adopted, no terminal to focus) render translucent while
-    // the "Display headless as ghosts" setting is on.
-    const alpha = ch.isHeadless && ghostHeadlessAgents ? HEADLESS_CHARACTER_ALPHA : 1;
+    // A Pokémon still decoding opens out of its Poké Ball as the upstream
+    // character; everyone else gets the matrix rain.
+    if (ch.matrixEffect && spawnEffectStyle(ch) === 'pokeball') {
+      const frame = spriteFrame(spriteData);
+      const ground = { x: ch.x, y: ch.y + sittingOffset };
+      const pCh = ch;
+      drawables.push({
+        zY: charZY,
+        draw: (c) =>
+          renderPokeballEffect(
+            c,
+            pCh,
+            frame,
+            ground,
+            CHARACTER_HIT_HEIGHT,
+            offsetX,
+            offsetY,
+            zoom,
+            alpha,
+          ),
+      });
+      continue;
+    }
 
     // Matrix spawn/despawn effect — skip outline, use per-pixel rendering
     if (ch.matrixEffect) {
@@ -419,8 +472,6 @@ export function renderScene(
     }
 
     // White outline: full opacity for selected, 50% for hover
-    const isSelected = selectedAgentId !== null && ch.id === selectedAgentId;
-    const isHovered = hoveredAgentId !== null && ch.id === hoveredAgentId;
     if (isSelected || isHovered) {
       const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
       const outlineData = getOutlineSprite(spriteData);
@@ -870,6 +921,7 @@ export function renderFrame(
   showAreas?: boolean,
   activeAreaLabel?: string | null,
   pets?: Pet[],
+  connections?: ConnectionsRenderState,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -909,6 +961,11 @@ export function renderFrame(
     );
   }
 
+  // Links between agents lie on the floor, under walls, furniture and everyone
+  if (connections && connections.links.length > 0) {
+    renderLinks(ctx, connections.links, connections.time, offsetX, offsetY, zoom);
+  }
+
   // Build wall instances for z-sorting with furniture and characters
   const wallInstances = hasWallSprites() ? getWallInstances(tileMap, tileColors, layoutCols) : [];
   const allFurniture = wallInstances.length > 0 ? [...wallInstances, ...furniture] : furniture;
@@ -927,6 +984,11 @@ export function renderFrame(
     hoveredId,
     pets ?? [],
   );
+
+  // Message projectiles fly over everyone
+  if (connections && connections.projectiles.length > 0) {
+    renderProjectiles(ctx, connections, offsetX, offsetY, zoom);
+  }
 
   // Character speech bubbles render in ToolOverlay (DOM, above the labels).
   // Pet heart bubbles (canvas overlay pass)
