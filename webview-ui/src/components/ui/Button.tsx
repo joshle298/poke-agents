@@ -15,7 +15,7 @@ const variants = {
   default: `${base} bg-btn-bg border-transparent hover:bg-btn-hover`,
   active: `${base} bg-active-bg border-accent`,
   disabled: `${base} bg-btn-bg border-transparent cursor-default opacity-[var(--btn-disabled-opacity)]`,
-  accent: `${base} bg-accent! hover:bg-accent-bright! border-accent hover:border-accent-bright`,
+  accent: `${base} bg-accent! hover:bg-accent-bright! border-accent hover:border-accent-bright text-on-accent`,
   ghost: `${base} bg-transparent text-text-muted border-transparent hover:text-text`,
 } as const;
 
