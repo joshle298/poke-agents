@@ -30,6 +30,7 @@ export type ServerMessage =
   | AgentMessage
   | AgentNotice
   | SessionDetail
+  | SessionHistory
   | ConductorStatus
   | ConductorSessions
   | ConductorActionResult
@@ -96,7 +97,8 @@ export type ClientMessage =
   | SetSessionHidden
   | SetSessionPinned
   | ArchiveSession
-  | RestoreSession;
+  | RestoreSession
+  | RequestSessionHistory;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -300,6 +302,7 @@ export interface SessionDetail {
   prompt?: string;
   entries: SessionDetailEntry[];
   truncated?: boolean;
+  question?: SessionQuestion;
 }
 
 export interface SessionDetailEntry {
@@ -308,9 +311,28 @@ export interface SessionDetailEntry {
   at: number;
   peerId?: number;
   peerLabel?: string;
+  toolName?: string;
+  key?: string;
 }
 
 export type SessionDetailRole = 'user' | 'assistant' | 'tool' | 'peerIn' | 'peerOut';
+
+export interface SessionQuestion {
+  kind: SessionQuestionKind;
+  text: string;
+  options?: string[];
+}
+
+export type SessionQuestionKind = 'askUser' | 'plan' | 'notice';
+
+export interface SessionHistory {
+  type: 'sessionHistory';
+  id: number;
+  entries: SessionDetailEntry[];
+  before?: string;
+  hasMore: boolean;
+  error?: string;
+}
 
 export interface ConductorStatus {
   type: 'conductorStatus';
@@ -361,6 +383,8 @@ export interface ConductorSessionSummary {
   hidden: boolean;
   pinned?: boolean;
   archived?: boolean;
+  species?: number;
+  shiny?: boolean;
   archivedAt?: number;
   agentId?: number;
   leadSessionId?: string;
@@ -795,4 +819,10 @@ export interface ArchiveSession {
 export interface RestoreSession {
   type: 'restoreSession';
   sessionId: string;
+}
+
+export interface RequestSessionHistory {
+  type: 'requestSessionHistory';
+  id: number;
+  before?: string;
 }

@@ -106,6 +106,7 @@ components:
         - $ref: '#/components/schemas/AgentMessage'
         - $ref: '#/components/schemas/AgentNotice'
         - $ref: '#/components/schemas/SessionDetail'
+        - $ref: '#/components/schemas/SessionHistory'
         - $ref: '#/components/schemas/ConductorStatus'
         - $ref: '#/components/schemas/ConductorSessions'
         - $ref: '#/components/schemas/ConductorActionResult'
@@ -180,6 +181,7 @@ components:
         - $ref: '#/components/schemas/SetSessionPinned'
         - $ref: '#/components/schemas/ArchiveSession'
         - $ref: '#/components/schemas/RestoreSession'
+        - $ref: '#/components/schemas/RequestSessionHistory'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -1169,6 +1171,31 @@ components:
         truncated:
           type: boolean
           description: True when older entries were dropped.
+        question:
+          $ref: '#/components/schemas/SessionQuestion'
+
+    SessionHistory:
+      description: One page of an agent's conversation, older than the given cursor. Reply to requestSessionHistory.
+      type: object
+      additionalProperties: false
+      required: [type, id, entries, hasMore]
+      properties:
+        type:
+          const: sessionHistory
+        id:
+          type: integer
+        entries:
+          type: array
+          description: Oldest first.
+          items:
+            $ref: '#/components/schemas/SessionDetailEntry'
+        before:
+          type: string
+          description: Opaque cursor to request the next older page.
+        hasMore:
+          type: boolean
+        error:
+          type: string
 
     ConductorStatus:
       description: Connection state of the Conductor provider and its visibility scope. Sent on connect and on change.
@@ -1748,6 +1775,20 @@ components:
         sessionId:
           type: string
 
+    RequestSessionHistory:
+      description: Ask for an older page of an agent's conversation (the Pokédex chat view).
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: requestSessionHistory
+        id:
+          type: integer
+        before:
+          type: string
+          description: Cursor from a previous sessionHistory; absent means the newest page.
+
     # ── Supporting schemas ─────────────────────────────────────────
 
     AgentSeatMeta:
@@ -1948,6 +1989,12 @@ components:
           description: For peerIn/peerOut, the other agent's id when it is in the office.
         peerLabel:
           type: string
+        toolName:
+          type: string
+          description: For role tool, the canonical tool name (Bash, Read, Edit, ...).
+        key:
+          type: string
+          description: Stable id of the source message, for de-duplicating merged pages.
 
     SessionDetailRole:
       description: user = a person's message; assistant = the agent's text; tool = an activity label; peerIn/peerOut = a message from/to another session.
@@ -2017,6 +2064,11 @@ components:
         archived:
           type: boolean
           description: Archived in Conductor (shown in the PC Box, never in the office).
+        species:
+          type: integer
+          description: The Pokémon this session was last shown as, when known.
+        shiny:
+          type: boolean
         archivedAt:
           type: number
         agentId:
@@ -2088,3 +2140,22 @@ components:
             type: string
         pageUrl:
           type: string
+
+    SessionQuestion:
+      description: A question the session is waiting on (AskUserQuestion, a plan to approve, or an async question).
+      type: object
+      additionalProperties: false
+      required: [kind, text]
+      properties:
+        kind:
+          $ref: '#/components/schemas/SessionQuestionKind'
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+
+    SessionQuestionKind:
+      type: string
+      enum: [askUser, plan, notice]

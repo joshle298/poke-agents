@@ -11,6 +11,7 @@ import type {
   ConductorSessionSummary,
   ConductorStatus,
   SessionDetailEntry,
+  SessionQuestion,
 } from './messages.js';
 import type { TeamProvider } from './teamProvider.js';
 
@@ -243,6 +244,7 @@ export interface AgentEventSink {
 /** Recent conversation context for one session (the Pokédex panel). */
 export interface StreamSessionDetail {
   prompt?: string;
+  question?: SessionQuestion;
   /** Entries reference peers by session id; the server maps them to agent ids. */
   entries: Array<Omit<SessionDetailEntry, 'peerId'> & { peerSessionId?: string }>;
   truncated?: boolean;
@@ -277,6 +279,16 @@ export interface StreamProvider {
   /** Every session in scope, hidden ones included. */
   listSessions?(): ConductorSessionSummary[];
   getSessionDetail?(sessionId: string): Promise<StreamSessionDetail | null>;
+  /** One page of older conversation for the chat view. `before` is the cursor
+   *  from a previous page; absent means the newest page. */
+  getSessionHistory?(
+    sessionId: string,
+    before?: string,
+  ): Promise<{
+    entries: StreamSessionDetail['entries'];
+    before?: string;
+    hasMore: boolean;
+  }>;
   /** Send a user message to the session. Rejects with a user-facing message. */
   sendMessage?(sessionId: string, text: string): Promise<void>;
   /** Cancel the session's running turn. Rejects with a user-facing message. */
