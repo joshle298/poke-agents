@@ -805,6 +805,68 @@ describe('StreamAgentDriver', () => {
       expect(store.get(leadId)!.teamName).toBeUndefined();
     });
 
+    it('throws a handoff (Switch model) out of the original without making it a Lead', async () => {
+      sink.upsertSession(session('orig'));
+      const origId = agentIdOf('orig');
+      sent = [];
+
+      // The link comes first: the new session is then adopted as the original's.
+      sink.link({
+        fromSessionId: 'orig',
+        toSessionId: 'next',
+        kind: 'spawned',
+        at: 1,
+        preview: 'Continue the work',
+        live: true,
+        handoff: true,
+      });
+      sink.upsertSession(session('next', { initialStatus: 'active' }));
+
+      expect(ofType('agentCreated')[0]).toMatchObject({
+        id: agentIdOf('next'),
+        isTeammate: true,
+        parentAgentId: origId,
+      });
+      expect(species.promoteToOrchestrator).not.toHaveBeenCalled();
+      expect(store.get(origId)!.species).toBe(172);
+      // Linked to the original (nested, seated by it), which is no Lead: no
+      // LEAD badge, no lectern, no legendary.
+      expect(store.get(origId)!.isTeamLead).toBeUndefined();
+      expect(store.get(agentIdOf('next'))!.leadAgentId).toBe(origId);
+      await vi.advanceTimersByTimeAsync(STREAM_SNAPSHOT_DEBOUNCE_MS);
+      expect(ofType('agentLinks').at(-1)).toMatchObject({
+        links: [{ fromId: origId, toId: agentIdOf('next'), kind: 'spawned', count: 1 }],
+      });
+
+      // A session it spawns itself still makes it a legendary.
+      sink.link({
+        fromSessionId: 'orig',
+        toSessionId: 'worker',
+        kind: 'spawned',
+        at: 2,
+        live: false,
+      });
+      sink.upsertSession(session('worker'));
+      expect(store.get(origId)!.isTeamLead).toBe(true);
+      expect(species.promoteToOrchestrator).toHaveBeenCalledWith(store.get(origId), store);
+    });
+
+    it('adopts an original whose only child is a handoff without promoting it', () => {
+      sink.link({
+        fromSessionId: 'orig',
+        toSessionId: 'next',
+        kind: 'spawned',
+        at: 1,
+        live: false,
+        handoff: true,
+      });
+      sink.upsertSession(session('next'));
+      sink.upsertSession(session('orig'));
+      expect(species.promoteToOrchestrator).not.toHaveBeenCalled();
+      expect(store.get(agentIdOf('orig'))!.isTeamLead).toBeUndefined();
+      expect(store.get(agentIdOf('next'))!.leadAgentId).toBe(agentIdOf('orig'));
+    });
+
     it('announces a child adopted after its Lead as a teammate from the start', () => {
       sink.upsertSession(session('lead'));
       sent = [];

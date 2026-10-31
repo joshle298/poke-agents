@@ -350,6 +350,45 @@ test('evolution: a drawn Pokémon flashes and swaps species at the midpoint', as
   assert.equal(ch.evolveTimer, undefined);
 });
 
+test('Change Pokémon: turning shiny (same species) plays the flash too', async () => {
+  const plain = speciesMessage(1);
+  const shiny = speciesMessage(1, { shiny: true });
+  installFakeLoader([plain, shiny]);
+  setPokemonSpecies(plain);
+  setPokemonSpecies(shiny);
+  await flushDecodes();
+  const os = new OfficeState(floorLayout());
+  const ch = placeAgent(os, 1, 3, 3);
+  os.setAgentIdentity(1, { species: 1, shiny: false });
+  os.setAgentIdentity(1, { species: 1, shiny: true }, { evolve: true });
+  assert.equal(ch.shiny, false, 'not yet');
+  assert.equal(ch.nextShiny, true);
+  assert.equal(ch.evolveTimer, 0);
+  os.update(POKEMON_EVOLVE_SEC / 2 + 0.05);
+  assert.equal(ch.shiny, true, 'swapped mid-flash');
+  // An unchanged identity does not flash.
+  os.update(POKEMON_EVOLVE_SEC);
+  os.setAgentIdentity(1, { species: 1, shiny: true }, { evolve: true });
+  assert.equal(ch.evolveTimer, undefined);
+});
+
+test('Change Pokémon: turning shiny before its sheets decode holds the flash white', async () => {
+  await loadSpecies(1);
+  const os = new OfficeState(floorLayout());
+  const ch = placeAgent(os, 1, 3, 3);
+  os.setAgentIdentity(1, { species: 1, shiny: false });
+  os.setAgentIdentity(1, { species: 1, shiny: true }, { evolve: true });
+  os.update(POKEMON_EVOLVE_SEC / 2 + 0.05);
+  assert.equal(ch.shiny, false, 'the shiny sheets never arrived: no swap yet');
+  assert.equal(ch.evolveTimer, POKEMON_EVOLVE_SEC / 2, 'held at the midpoint');
+  const shiny = speciesMessage(1, { shiny: true });
+  installFakeLoader([shiny]);
+  setPokemonSpecies(shiny);
+  await flushDecodes();
+  os.update(0.05);
+  assert.equal(ch.shiny, true, 'swapped once they decoded');
+});
+
 test('evolution swaps at once for new characters, theme off, or undecoded species', async () => {
   await loadSpecies(1);
   const os = new OfficeState(floorLayout());

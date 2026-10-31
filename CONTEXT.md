@@ -45,7 +45,7 @@ _Avoid_: subtask (UI label prefix only)
 A Lead plus the Teammates it spawned. A team exists because a teammate was spawned — whether or not the CLI recorded one. A CLI's team registry is evidence of a team, never its definition.
 
 **Lead**:
-The agent that spawned a Team's teammates. An agent becomes a lead the moment it spawns its first teammate. A cloud session becomes a lead once it has created another session with a first message: the created sessions are its teammates, linked to it in the office. With the Pokémon theme, a lead is a legendary.
+The agent that spawned a Team's teammates. An agent becomes a lead the moment it spawns its first teammate. A cloud session becomes a lead once it has created another session with a first message: the created sessions are its teammates, linked to it in the office. With the Pokémon theme, a lead is a legendary. A session the user continues with another model (Switch model) is linked to the new session and throws it, but that doesn't make it a lead: the user started the new session, not the session.
 _Avoid_: parent (that's the sub-agent relationship), orchestrator
 
 **Teammate**:

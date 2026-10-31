@@ -34,6 +34,8 @@ export type ServerMessage =
   | ConductorStatus
   | ConductorSessions
   | ConductorActionResult
+  | ModelCatalog
+  | PokemonCatalog
   | LayoutLoaded
   | FurnitureAssetsLoaded
   | CharacterSpritesLoaded
@@ -105,6 +107,10 @@ export type ClientMessage =
   | RequestSessionHistory
   | ConnectConductor
   | DisconnectConductor
+  | RequestModelCatalog
+  | ContinueWithModel
+  | RequestPokemonCatalog
+  | SetAgentPokemon
   | RequestMusicLibrary
   | MusicCommand;
 
@@ -255,7 +261,10 @@ export interface AgentDetails {
   label?: string;
   externalUrl?: string;
   model?: string;
+  modelId?: string;
   harness?: string;
+  effort?: string;
+  fastMode?: boolean;
   conductorSessionId?: string;
   conductorWorkspaceId?: string;
   conductorWorkspaceName?: string;
@@ -267,6 +276,7 @@ export interface AgentDetails {
   species?: number;
   shiny?: boolean;
   level?: number;
+  pokemonChosen?: boolean;
 }
 
 export interface AgentLinks {
@@ -406,6 +416,7 @@ export interface ConductorSessionSummary {
   archivedAt?: number;
   agentId?: number;
   leadSessionId?: string;
+  handoff?: boolean;
   externalUrl?: string;
   creatorName?: string;
 }
@@ -418,6 +429,7 @@ export interface ConductorActionResult {
   id?: number;
   ok: boolean;
   message?: string;
+  sessionId?: string;
 }
 
 export type ConductorAction =
@@ -430,7 +442,62 @@ export type ConductorAction =
   | 'archiveSession'
   | 'restoreSession'
   | 'connect'
-  | 'disconnect';
+  | 'disconnect'
+  | 'continueWithModel'
+  | 'setAgentPokemon';
+
+export interface ModelCatalog {
+  type: 'modelCatalog';
+  agents: ModelCatalogAgent[];
+  favorites: FavoriteModel[];
+  defaultAgent?: string;
+  error?: string;
+}
+
+export interface ModelCatalogAgent {
+  agent: string;
+  label: string;
+  models: ModelCatalogModel[];
+  efforts: string[];
+  defaultEffort?: string;
+  fastModeModels: string[];
+  limitedEfforts?: string[];
+}
+
+export interface ModelCatalogModel {
+  id: string;
+  label: string;
+}
+
+export interface FavoriteModel {
+  agent: string;
+  model: string;
+  effort?: string;
+  fastMode?: boolean;
+}
+
+export interface PokemonCatalog {
+  type: 'pokemonCatalog';
+  lines: PokemonCatalogLine[];
+  legendaries: PokemonCatalogLegendary[];
+}
+
+export interface PokemonCatalogLine {
+  id: string;
+  members: PokemonCatalogMember[];
+}
+
+export interface PokemonCatalogMember {
+  dex: number;
+  name: string;
+  stage: number;
+}
+
+export interface PokemonCatalogLegendary {
+  id: string;
+  dex: number;
+  name: string;
+}
 
 export interface LayoutLoaded {
   type: 'layoutLoaded';
@@ -956,6 +1023,31 @@ export interface ConnectConductor {
 
 export interface DisconnectConductor {
   type: 'disconnectConductor';
+}
+
+export interface RequestModelCatalog {
+  type: 'requestModelCatalog';
+}
+
+export interface ContinueWithModel {
+  type: 'continueWithModel';
+  id: number;
+  agent: string;
+  model: string;
+  effort?: string;
+  fastMode?: boolean;
+  message: string;
+}
+
+export interface RequestPokemonCatalog {
+  type: 'requestPokemonCatalog';
+}
+
+export interface SetAgentPokemon {
+  type: 'setAgentPokemon';
+  id: number;
+  line?: string | null;
+  shiny?: boolean;
 }
 
 export interface RequestMusicLibrary {

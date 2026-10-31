@@ -1503,7 +1503,10 @@ export class OfficeState {
     if (species === headingTo && shiny === headingShiny) return;
     // A species a sweep released decodes again before anyone draws it.
     retainPokemonSpecies(species, shiny === true);
-    if (evolve && ch.species !== undefined && species !== ch.species && isPokemonCharacter(ch)) {
+    // A new species, or the same one turning shiny or back (Change Pokémon),
+    // swaps mid-flash.
+    const changed = species !== ch.species || (shiny === true) !== (ch.shiny === true);
+    if (evolve && ch.species !== undefined && changed && isPokemonCharacter(ch)) {
       ch.nextSpecies = species;
       ch.nextShiny = shiny;
       ch.evolveTimer = 0;

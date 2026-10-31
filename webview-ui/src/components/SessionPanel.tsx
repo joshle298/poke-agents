@@ -6,6 +6,7 @@ import {
   archiveSession,
   openInConductor,
   requestConductorSessions,
+  requestModelCatalog,
   reviveSession,
   sendSessionMessage,
   setSessionHidden,
@@ -21,14 +22,9 @@ import {
   isStreamProvider,
   useConductor,
 } from '../conductor/conductorStore.js';
-import {
-  agoText,
-  isConductorDeepLink,
-  modelLabel,
-  shortAge,
-  workspaceLabel,
-} from '../conductor/format.js';
+import { agoText, isConductorDeepLink, shortAge, workspaceLabel } from '../conductor/format.js';
 import { useSleepClock } from '../conductor/hooks.js';
+import { sessionModelRows } from '../conductor/modelPicker.js';
 import type { PartyCondition } from '../conductor/party.js';
 import {
   agentCondition,
@@ -55,10 +51,14 @@ import type { AgentAppearance } from './AgentCard.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { HpBar } from './HpBar.js';
+import { ModelPickerModal } from './ModelPickerModal.js';
 import { PokedexChat } from './PokedexChat.js';
+import { PokemonPickerModal } from './PokemonPickerModal.js';
 import { CapsuleIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { ReplyBox } from './ReplyBox.js';
 import { Button } from './ui/Button.js';
+import { tabButtonId, tabPanelId } from './ui/tabKeys.js';
+import { TabList } from './ui/TabList.js';
 
 /** docked = flex sibling of the office (wide windows); drawer = over the
  *  office's right edge (narrow windows); sheet = mobile bottom sheet. */
@@ -111,6 +111,7 @@ const TABS: ReadonlyArray<{ id: PokedexTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'chat', label: 'Chat' },
 ];
+const TABS_ID = 'pokedex';
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -219,11 +220,14 @@ export function SessionPanel({
   const speciesMap = useConductor((s) => s.species);
   const sessions = useConductor((s) => s.sessions);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
+  const modelCatalog = useConductor((s) => s.modelCatalog);
+  const pokemonTheme = useConductor((s) => s.pokemonTheme);
   const now = useSleepClock(CONDUCTOR_UI_TICK_MS, true, agentId);
   const pokemonOffice = usePokemonOffice();
 
   const [draft, setDraft] = useState('');
   const [confirm, setConfirm] = useState<'stop' | 'deposit' | null>(null);
+  const [picker, setPicker] = useState<'model' | 'pokemon' | null>(null);
   // The message last sent from here, until its conductorActionResult.
   const [sent, setSent] = useState<{ at: number; text: string } | null>(null);
 
@@ -259,6 +263,17 @@ export function SessionPanel({
   const nickname = agent?.label ?? `Agent ${agentId}`;
   const portraitUrl = pickPortrait(species?.portraits, portraitEmotion(condition));
   const question = detail?.question;
+  const modelRows = sessionModelRows(agent, modelCatalog);
+  const canChangePokemon = canAct && pokemonTheme && agent?.species !== undefined;
+  // The Overview names the model with the catalog's labels: fetch it once
+  // (the server caches it; the picker asks again for fresh favorites).
+  const needModelCatalog = canAct && modelCatalog === null;
+  useEffect(() => {
+    if (needModelCatalog) requestModelCatalog();
+  }, [needModelCatalog]);
+  // The picker's own outcomes report inside it.
+  const pickerAction =
+    outcome?.action === 'continueWithModel' || outcome?.action === 'setAgentPokemon';
 
   // The reply box's state: a send waits for its conductorActionResult; the
   // outcome line fades after POKEDEX_ACTION_RESULT_VISIBLE_MS.
@@ -284,6 +299,7 @@ export function SessionPanel({
   const showOutcome =
     outcome &&
     !(outcome.action === 'sendSessionMessage' && answersSend) &&
+    !pickerAction &&
     now - outcome.at < POKEDEX_ACTION_RESULT_VISIBLE_MS;
 
   const sendText = (text: string) => {
@@ -369,25 +385,30 @@ export function SessionPanel({
         </Button>
       </div>
 
-      <div role="tablist" aria-label="Pokédex view" className="flex shrink-0 gap-4 px-8 pt-6">
-        {TABS.map(({ id, label }) => (
-          <Button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            size="sm"
-            variant={tab === id ? 'active' : 'default'}
-            className="flex-1"
-            onClick={() => onTabChange(id)}
-          >
-            {label}
-            {id === 'chat' && question ? <span className="text-accent"> !</span> : null}
-          </Button>
-        ))}
-      </div>
+      <TabList
+        label="Pokédex view"
+        idPrefix={TABS_ID}
+        className="shrink-0 px-8 pt-6"
+        tabs={TABS.map(({ id, label }) => ({
+          id,
+          label: (
+            <>
+              {label}
+              {id === 'chat' && question ? <span className="text-accent"> !</span> : null}
+            </>
+          ),
+        }))}
+        selected={tab}
+        onSelect={onTabChange}
+      />
 
       {tab === 'chat' ? (
-        <>
+        <div
+          role="tabpanel"
+          id={tabPanelId(TABS_ID)}
+          aria-labelledby={tabButtonId(TABS_ID, tab)}
+          className="flex-1 min-h-0 flex flex-col"
+        >
           <div className="flex items-center gap-6 shrink-0 px-8 pt-6">
             <PokemonPortrait
               url={portraitUrl}
@@ -419,9 +440,14 @@ export function SessionPanel({
             isInOffice={isInOffice}
             onJump={onJump}
           />
-        </>
+        </div>
       ) : (
-        <div className="flex-1 min-h-0 overflow-y-auto pixel-scrollbar px-8 py-8 flex flex-col gap-10">
+        <div
+          role="tabpanel"
+          id={tabPanelId(TABS_ID)}
+          aria-labelledby={tabButtonId(TABS_ID, tab)}
+          className="flex-1 min-h-0 overflow-y-auto pixel-scrollbar px-8 py-8 flex flex-col gap-10"
+        >
           {/* Header: portrait, nickname, species, level, condition */}
           <div className="pixel-dialog flex items-center gap-8 p-6">
             <PokemonPortrait
@@ -434,6 +460,16 @@ export function SessionPanel({
               <span className="text-lg leading-none break-words">{nickname}</span>
               <span className="text-xs leading-none text-text-muted">{speciesLine}</span>
               {hp !== null && <HpBar fraction={hp} widthPx={120} heightPx={4} />}
+              {canChangePokemon && (
+                <Button
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setPicker('pokemon')}
+                  title="Choose which Pokémon this session is"
+                >
+                  Change Pokémon…
+                </Button>
+              )}
             </div>
             {badge && <span className="self-start text-sm text-accent">{badge}</span>}
           </div>
@@ -457,7 +493,9 @@ export function SessionPanel({
               value={workspaceLabel(agent?.workspaceNumber, agent?.workspaceName)}
             />
             <InfoRow label="Repo" value={agent?.repo} />
-            <InfoRow label="Model" value={modelLabel(agent?.model, agent?.harness)} />
+            <InfoRow label="Agent" value={modelRows.agent} />
+            <InfoRow label="Model" value={modelRows.model} />
+            <InfoRow label="Effort" value={modelRows.effort} />
             <InfoRow label="Status" value={statusText} />
             <InfoRow label="Doing" value={activity} />
             <InfoRow
@@ -502,6 +540,15 @@ export function SessionPanel({
                   title="Open this session in the Conductor app"
                 >
                   Open in Conductor
+                </Button>
+              )}
+              {canAct && sessionId && (
+                <Button
+                  size="sm"
+                  onClick={() => setPicker('model')}
+                  title="Continue this work in a new session with another model"
+                >
+                  Switch model…
                 </Button>
               )}
               {canAct && agent?.status === 'error' && (
@@ -577,6 +624,17 @@ export function SessionPanel({
         </div>
       )}
 
+      {picker === 'model' && (
+        <ModelPickerModal
+          agentId={agentId}
+          agent={agent}
+          onStop={canAct && isRunning ? () => setConfirm('stop') : undefined}
+          onClose={() => setPicker(null)}
+        />
+      )}
+      {picker === 'pokemon' && (
+        <PokemonPickerModal agentId={agentId} agent={agent} onClose={() => setPicker(null)} />
+      )}
       <ConfirmDialog
         isOpen={confirm === 'stop'}
         title="Stop session?"

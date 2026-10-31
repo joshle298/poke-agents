@@ -10,6 +10,8 @@ import type {
   ConductorScope,
   ConductorSessionSummary,
   ConductorStatus,
+  FavoriteModel,
+  ModelCatalogAgent,
   SessionDetailEntry,
   SessionQuestion,
 } from './messages.js';
@@ -177,8 +179,15 @@ export interface StreamSessionDetails {
   /** Deep link that opens the session in its own app (conductor://...). */
   externalUrl?: string;
   model?: string;
+  /** The model id the provider's create-session takes (Conductor's `model`
+   *  alias, e.g. `opus-5-5-1m`, where `model` may be the resolved
+   *  `claude-opus-5-5[1m]`): what Switch model's catalog names. */
+  modelId?: string;
   /** Harness running the session: claude | codex | cursor | ... */
   harness?: string;
+  /** Reasoning effort the session runs with, when the provider reports one. */
+  effort?: string;
+  fastMode?: boolean;
   workspaceId?: string;
   workspaceName?: string;
   workspaceNumber?: number;
@@ -219,6 +228,11 @@ export interface AgentLinkEvent {
   preview?: string;
   /** False while backfilling history: update the link, but play no animation. */
   live: boolean;
+  /** A `spawned` link the user made by continuing `fromSessionId` in a new
+   *  session (Switch model): the new session is linked to it and thrown out of
+   *  it like any spawned session, but the continuation does not make the
+   *  original a delegating Lead, so its Pokémon stays. */
+  handoff?: boolean;
 }
 
 export type StreamProviderStatus = Omit<ConductorStatus, 'type'>;
@@ -239,6 +253,24 @@ export interface AgentEventSink {
   setStatus(status: StreamProviderStatus): void;
   /** The session list changed (for the Sessions modal), broadcast as `conductorSessions`. */
   sessionsChanged(sessions: ConductorSessionSummary[]): void;
+}
+
+/** The agents and models a session can continue with (Switch model), and
+ *  the user's favorites among them. Sent to clients as `modelCatalog`. */
+export interface StreamModelCatalog {
+  agents: ModelCatalogAgent[];
+  favorites: FavoriteModel[];
+  defaultAgent?: string;
+}
+
+/** A validated continueWithModel request (see server/src/providers/stream/modelCatalog.ts). */
+export interface ModelChoice {
+  agent: string;
+  model: string;
+  effort?: string;
+  fastMode?: boolean;
+  /** The new session's first message. */
+  message: string;
 }
 
 /** Recent conversation context for one session (the Pokédex panel). */
@@ -298,4 +330,12 @@ export interface StreamProvider {
   restoreSession?(sessionId: string): Promise<void>;
   /** Mark the session as focused (selected in the office) so it polls faster. */
   setFocus?(sessionIds: string[]): void;
+  /** The agents and models `continueWithModel` accepts, with the user's
+   *  favorites. Never rejects: favorites that can't be read are left out. */
+  getModelCatalog?(): Promise<StreamModelCatalog>;
+  /** Start a new session in the same workspace as `sessionId` with another
+   *  agent or model (the provider's API can't change a running session's
+   *  model), and link it to `sessionId`. Resolves with the new session's id;
+   *  rejects with a user-facing message. */
+  continueWithModel?(sessionId: string, choice: ModelChoice): Promise<{ sessionId: string }>;
 }

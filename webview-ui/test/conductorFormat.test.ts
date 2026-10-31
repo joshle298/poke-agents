@@ -184,6 +184,18 @@ describe('Sessions modal lists', () => {
     expect([...leadSessionIds(sessions)]).toEqual(['a']);
   });
 
+  it('a session continued with another model (Switch model) is not a Lead for it', () => {
+    const list = [
+      session({ sessionId: 'orig', label: 'Write migration' }),
+      session({ sessionId: 'next', leadSessionId: 'orig', handoff: true }),
+    ];
+    expect([...leadSessionIds(list)]).toEqual([]);
+    // A real spawn from it still makes it one.
+    expect([
+      ...leadSessionIds([...list, session({ sessionId: 'kid', leadSessionId: 'orig' })]),
+    ]).toEqual(['orig']);
+  });
+
   it('lists the PC Box newest deposit first', () => {
     expect(archivedSessions(sessions).map((s) => s.sessionId)).toEqual(['f', 'g']);
   });

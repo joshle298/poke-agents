@@ -837,6 +837,20 @@ function createReplies(seed: number): DemoReplies {
         'Thanks, will do once this step finishes.',
       ]);
     },
+    handoff(_spec, from) {
+      const p = poolsOf(from);
+      const file = rng.pick(p.files);
+      const command = rng.pick(p.commands);
+      return [
+        say(`Picking up "${from.label}". Checking its recent commits and changes first.`, 1.2),
+        bash('git log --oneline -10', 2),
+        bash('git status --short', 1.5),
+        read(file, 2.5),
+        bash(command, 4),
+        say(`Caught up: ${rng.pick(p.notes)} Continuing from there.`),
+        end,
+      ];
+    },
   };
 }
 

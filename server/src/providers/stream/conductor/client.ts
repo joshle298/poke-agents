@@ -31,6 +31,8 @@ import {
   USER_ACTION_DETAIL_MAX,
 } from './constants.js';
 import type {
+  ConductorCreatedSession,
+  ConductorCreateSessionBody,
   ConductorItem,
   ConductorMe,
   ConductorPage,
@@ -296,7 +298,28 @@ export class ConductorClient {
     });
   }
 
+  /** The user's favorite model configurations, in Conductor's picker order. */
+  listFavoriteModels(): Promise<{ favoriteModels?: unknown }> {
+    return this.request({
+      method: 'GET',
+      path: '/v0/favorite-models',
+      priority: PRIORITY_USER,
+      backoffKey: 'favorites',
+    });
+  }
+
   // ── Endpoints (POST, explicit user actions only) ──
+
+  /** Create a session in an existing workspace with its first message (Switch model). */
+  createSession(body: ConductorCreateSessionBody): Promise<ConductorCreatedSession> {
+    return this.request({
+      method: 'POST',
+      path: '/v0/sessions',
+      body,
+      priority: PRIORITY_USER,
+      backoffKey: 'actions',
+    });
+  }
 
   sendMessage(
     sessionId: string,

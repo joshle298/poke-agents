@@ -103,6 +103,13 @@ export interface AgentState {
   /** National dex number currently shown; derived from the line and level. */
   species?: number;
   shiny?: boolean;
+  /** The user chose the line and shiny flag (Change Pokémon): automatic
+   *  assignment and Lead promotion leave them alone until a reset. */
+  pokemonChosen?: boolean;
+  /** The automatic line and shiny flag the first choice replaced, which
+   *  Reset to automatic gives back. */
+  pokemonAutoLine?: string;
+  pokemonAutoShiny?: boolean;
   level?: number;
   /** Tool calls observed. Drives the level for agents without a message count. */
   toolCallCount?: number;
@@ -145,6 +152,11 @@ export interface PersistedAgent {
   pokemonLine?: string;
   species?: number;
   shiny?: boolean;
+  /** The user chose the Pokémon (Change Pokémon); kept until a reset. */
+  pokemonChosen?: boolean;
+  /** The automatic line and shiny flag the choice replaced (for the reset). */
+  pokemonAutoLine?: string;
+  pokemonAutoShiny?: boolean;
   /** Tool calls observed, which level an agent without a message count. */
   toolCallCount?: number;
 }

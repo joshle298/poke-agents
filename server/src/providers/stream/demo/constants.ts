@@ -63,6 +63,17 @@ export const DEMO_SAY_TOKENS = 600;
 export const DEMO_BACKSTORY_SPAN_MIN = 90;
 export const DEMO_BACKSTORY_MAX_ENTRIES = 72;
 
+/** Switch model in the demo: new sessions get ids from this number up (after
+ *  the cast's), and start with this much context. */
+export const DEMO_CONTINUED_ID_BASE = 900;
+export const DEMO_CONTINUED_CONTEXT_TOKENS = 18_000;
+/** The demo's favorite models (as GET /v0/favorite-models would list them). */
+export const DEMO_FAVORITE_MODELS = [
+  { agent: 'claude', model: 'opus-5-5-1m', effort: 'high' },
+  { agent: 'codex', model: 'gpt-5.5', effort: 'medium', fastMode: true },
+  { agent: 'cursor', model: 'composer-2.5' },
+] as const;
+
 /** Deep links look like Conductor's, but the demo never opens them. */
 export const DEMO_DEEP_LINK_BASE = 'conductor://workspace';
 export const DEMO_OPEN_EXTERNAL_REFUSAL =

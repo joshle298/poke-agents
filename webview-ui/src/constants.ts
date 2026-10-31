@@ -950,6 +950,21 @@ export const POKEDEX_CHAT_STICK_SLACK_PX = 24;
 export const POKEDEX_CHAT_PORTRAIT_PX = 40;
 /** What Revive sends to a fainted (errored) session. */
 export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
+/** Switch model: a start with no conductorActionResult after this long can be
+ *  tried again (until then Start stays disabled; the server also runs one
+ *  start per session at a time). */
+export const MODEL_PICKER_START_TIMEOUT_MS = 60_000;
+/** Longest handoff message the picker sends (the server's
+ *  SESSION_MESSAGE_MAX_LENGTH). */
+export const MODEL_PICKER_MESSAGE_MAX_LENGTH = 32_000;
+/** Switch model: how long the office waits for the new session to walk in
+ *  before it stops waiting to open its Pokédex. */
+export const FOLLOW_SESSION_WAIT_MS = 180_000;
+/** Change Pokémon: portrait size in the picker's grid (the source size). */
+export const POKEMON_PICKER_PORTRAIT_PX = 40;
+/** Change Pokémon: a choice with no conductorActionResult after this long can
+ *  be made again. */
+export const POKEMON_PICKER_TIMEOUT_MS = 15_000;
 /** Deep links the UI will hand to openExternal (the server re-validates). */
 export const CONDUCTOR_DEEP_LINK_PROTOCOL = /^conductor(-[a-z0-9-]+)?:$/;
 export const CONDUCTOR_DEEP_LINK_HOST = 'workspace';

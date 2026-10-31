@@ -176,6 +176,9 @@ export class AgentStateStore {
         pokemonLine: agent.pokemonLine,
         species: agent.species,
         shiny: agent.shiny,
+        pokemonChosen: agent.pokemonChosen || undefined,
+        pokemonAutoLine: agent.pokemonAutoLine,
+        pokemonAutoShiny: agent.pokemonAutoShiny,
         toolCallCount: agent.toolCallCount || undefined,
       });
     }

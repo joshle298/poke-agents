@@ -11,10 +11,11 @@ export interface SessionGroup {
   sessions: ConductorSessionSummary[];
 }
 
-/** Sessions some other session names as its Lead. */
+/** Sessions some other session names as its Lead. A session continued with
+ *  another model (Switch model, `handoff`) is not a Lead for it. */
 export function leadSessionIds(sessions: readonly ConductorSessionSummary[]): Set<string> {
   const leads = new Set<string>();
-  for (const s of sessions) if (s.leadSessionId) leads.add(s.leadSessionId);
+  for (const s of sessions) if (s.leadSessionId && !s.handoff) leads.add(s.leadSessionId);
   return leads;
 }
 

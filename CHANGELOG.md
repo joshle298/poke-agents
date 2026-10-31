@@ -2,6 +2,13 @@
 
 ## Poke Agents (unreleased)
 
+### Features
+
+- **Switch model…** in the Pokédex. Conductor's API can't change the model of a running session, so this starts a new session in the same workspace (same files and branch) instead: pick Claude, Codex or Cursor, a model (your Conductor favorites first, starred), an effort and fast mode where the model has it, and edit the first message, which starts as a note to continue the work and check the recent commits and changes. The new session is named after the original and the model, thrown out of the original Pokémon and linked to it, and its Pokédex opens when it walks in. The original session isn't changed and doesn't become a Lead (nor get a LEAD badge in Sessions); while it is still working, the picker says so and offers **Stop it**. A create whose answer was lost is retried with the same session and message ids, Poke Agents then asks Conductor whether the session exists, and starting again with the same choice reuses those ids, so Conductor makes it once. Effort levels only some models take say "(some models)". The demo plays it against its own sessions.
+- **Change Pokémon…** in the Pokédex's header: choose a session's evolution line (a Lead can also be a legendary) from a grid of portraits, turn Shiny on or off (at once), or reset it to the Pokémon it had before. The level still picks the stage within the line, the change plays the evolution flash, and the choice is kept across restarts and never replaced by a Lead's legendary. It is Poke Agents' own view; Conductor isn't told.
+- The Pokédex's Overview shows the session's agent, model and effort (and fast mode), with the model's name from the catalog.
+- Dialogs are announced as dialogs, take focus when they open and give it back when they close; checkboxes state whether they are checked; the Pokédex's and Switch model's tabs work with the arrow keys.
+
 ### Changes
 
 - **Calm desks.** A Pokémon at work breathes at its desk instead of shaking: no looping power-up shiver, and a tool start, a message or a turn end plays at most one short gesture every 6 seconds.

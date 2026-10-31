@@ -54,6 +54,7 @@ import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
 import type { Directory } from './hooks/useExtensionMessages.js';
 import { useExtensionMessages } from './hooks/useExtensionMessages.js';
+import { useFollowSession } from './hooks/useFollowSession.js';
 import { useIntroTour } from './hooks/useIntroTour.js';
 import { useIsMobile } from './hooks/useIsMobile.js';
 import { useKeyboardViewport } from './hooks/useKeyboardViewport.js';
@@ -549,6 +550,9 @@ function App() {
       if (!officeReadOnly) setIsSettingsOpen(true);
     },
   });
+
+  // Switch model: the new session's Pokédex opens when it walks in.
+  useFollowSession(isInOffice, handleJumpToAgent);
 
   // The Pokédex closes when its agent leaves the office (hidden, deposited,
   // scoped out).

@@ -21,12 +21,15 @@ import type {
 } from '../../../../../core/src/messages.js';
 import type {
   AgentEventSink,
+  ModelChoice,
+  StreamModelCatalog,
   StreamProvider,
   StreamProviderStatus,
   StreamSessionDetail,
 } from '../../../../../core/src/provider.js';
 import { SERVER_JSON_DIR } from '../../../constants.js';
 import { contextWindowForModel as claudeContextWindow } from '../../hook/claude/claude.js';
+import { buildModelCatalog, continuationName, parseModelChoice } from '../modelCatalog.js';
 import {
   type ConductorAuth,
   defaultExecFile,
@@ -47,16 +50,23 @@ import {
   CLAUDE_MODEL_PREFIX,
   CONDUCTOR_DISPLAY_NAME,
   CONDUCTOR_PROVIDER_ID,
+  CONTINUE_RETRY_BASE_MS,
+  CONTINUE_RETRY_MAX,
+  CONTINUE_REUSE_MS,
   DEFAULT_BUDGET_PER_MINUTE,
   DISCOVERY_INTERVAL_MS,
   ENV_BUDGET,
   envUnauthorizedMessage,
+  FAVORITES_RETRY_MS,
+  FAVORITES_TTL_MS,
   GPT_CONTEXT_WINDOW,
   GPT_MODEL_PREFIX,
   LOG_PREFIX,
+  PRIORITY_USER,
   STATE_FILE_NAME,
   UNAUTHORIZED_MESSAGE,
 } from './constants.js';
+import type { Harness } from './harness.js';
 import { type ConductorKeyStore, createConductorKeyStore } from './keyStore.js';
 import { LinkTracker } from './links.js';
 import { ConductorPoller } from './poller.js';
@@ -68,6 +78,7 @@ import {
   CONDUCTOR_SUBAGENT_TOOLS,
   formatConductorToolStatus,
 } from './tools.js';
+import type { ConductorCreatedSession, ConductorCreateSessionBody } from './types.js';
 
 export interface ConductorProviderOptions {
   /** Directory for conductor-state.json. Defaults to ~/.pixel-agents. */
@@ -113,6 +124,8 @@ type ConductorControls = Required<
     | 'archiveSession'
     | 'restoreSession'
     | 'setFocus'
+    | 'getModelCatalog'
+    | 'continueWithModel'
   >
 >;
 
@@ -149,6 +162,77 @@ function describeSource(auth: ConductorAuth): string {
   }
 }
 
+/** Why a create-session failed, for the office (a 404 there is the workspace). */
+function continueFailureMessage(err: unknown): string {
+  if (err instanceof ConductorApiError && err.kind === 'notFound') {
+    return "Conductor couldn't find this session's workspace.";
+  }
+  return userFacingMessage(err);
+}
+
+/** Conductor never confirmed the create, and couldn't say whether it exists. */
+const CONTINUE_UNCONFIRMED_MESSAGE =
+  "Conductor didn't confirm the new session. Start again with the same choice: it won't make a second one.";
+
+/** Network failures and 5xx may have created the session anyway: retry with
+ *  the same ids and let Conductor deduplicate. */
+function retryableCreate(err: unknown): boolean {
+  return err instanceof ConductorApiError && (err.kind === 'network' || err.kind === 'server');
+}
+
+/** A 409 isn't in the create's documented answers; it may mean the session
+ *  (our id) already exists, which is checked before believing it. */
+function isConflict(err: unknown): boolean {
+  return err instanceof ConductorApiError && err.status === 409;
+}
+
+/** Identity of a Switch model request: the same one again reuses its ids. */
+function choiceKey(choice: ModelChoice): string {
+  return JSON.stringify([
+    choice.agent,
+    choice.model,
+    choice.effort ?? '',
+    choice.fastMode === true,
+    choice.message,
+  ]);
+}
+
+/** The last create-session from one source session (Switch model). */
+interface RecentCreate {
+  key: string;
+  body: ConductorCreateSessionBody;
+  at: number;
+  /** Set once Conductor confirmed it (201, or found it afterwards). */
+  createdId?: string;
+}
+
+/**
+ * Whether the session a create named exists in its workspace: true or false
+ * when Conductor says, undefined when it can't be asked. The id is a random
+ * UUID the office chose, so finding it means the create went through.
+ */
+async function createdSessionExists(
+  client: ConductorClient,
+  body: ConductorCreateSessionBody,
+): Promise<boolean | undefined> {
+  try {
+    const status = await client.getSessionStatus(body.sessionId, PRIORITY_USER);
+    return status?.workspaceId === undefined || status.workspaceId === body.workspaceId;
+  } catch (err) {
+    if (err instanceof ConductorApiError && err.kind === 'notFound') return false;
+    return undefined;
+  }
+}
+
+/** Favorites reads Conductor refused (the endpoint is cloud-only: a local
+ *  organization answers 404) are not asked again for a full TTL. */
+function favoritesRefused(err: unknown): boolean {
+  return (
+    err instanceof ConductorApiError &&
+    (err.kind === 'notFound' || err.kind === 'unauthorized' || err.kind === 'badRequest')
+  );
+}
+
 function resolveBudget(opts: ConductorProviderOptions, env: NodeJS.ProcessEnv): number {
   if (typeof opts.budgetPerMinute === 'number' && opts.budgetPerMinute > 0) {
     return opts.budgetPerMinute;
@@ -182,6 +266,16 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   let stopped = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let connectFailures = 0;
+  /** The favorites last read (GET /v0/favorite-models) and when. */
+  let favorites: { raw: unknown; at: number } | undefined;
+  /** After a failed favorites read: not before this (epoch ms). */
+  let favoritesRetryAt = 0;
+  /** The favorites read in flight, shared by concurrent callers. */
+  let favoritesRead: Promise<void> | undefined;
+  /** Sessions with a Switch model create in flight: one at a time each. */
+  const continuing = new Set<string>();
+  /** Per source session, its last Switch model create (CONTINUE_REUSE_MS). */
+  const recentCreates = new Map<string, RecentCreate>();
 
   /** Where the key came from, where a pasted one is kept, and in the sign-in
    *  states where to get one: the Connect card and Settings read them. */
@@ -267,6 +361,68 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       throw new Error(userFacingMessage(err));
     }
     poller.promote(sessionId, true);
+  };
+
+  /** Read the favorites once for every caller waiting; a failure keeps the
+   *  last ones read and isn't retried before favoritesRetryAt. */
+  const readFavorites = (c: ConductorClient): Promise<void> => {
+    favoritesRead ??= (async () => {
+      try {
+        favorites = { raw: await c.listFavoriteModels(), at: clock.now() };
+        favoritesRetryAt = 0;
+      } catch (err) {
+        // The catalog still works without them.
+        favoritesRetryAt =
+          clock.now() + (favoritesRefused(err) ? FAVORITES_TTL_MS : FAVORITES_RETRY_MS);
+        log(`favorite models unavailable: ${(err as Error).message}`);
+      } finally {
+        favoritesRead = undefined;
+      }
+    })();
+    return favoritesRead;
+  };
+
+  /**
+   * POST /v0/sessions with `body`: network failures and 5xx are retried with
+   * the same ids. When a request with these ids may have gone through (no
+   * answer, a 5xx, an undocumented 409, or any failure after an earlier
+   * attempt, or an earlier click, sent them), Conductor is asked whether the
+   * session exists before anything is said. Resolves with what Conductor
+   * returned, or a stand-in built from `body` when the session was found
+   * afterwards; `unconfirmed` when nobody knows.
+   */
+  const createOnce = async (
+    c: ConductorClient,
+    body: ConductorCreateSessionBody,
+    sentBefore: boolean,
+  ): Promise<ConductorCreatedSession | 'unconfirmed'> => {
+    let failure: unknown;
+    let attempts = 0;
+    for (;;) {
+      attempts++;
+      try {
+        return await c.createSession(body);
+      } catch (err) {
+        failure = err;
+        if (attempts <= CONTINUE_RETRY_MAX && retryableCreate(err) && !stopped) {
+          await clock.sleep(CONTINUE_RETRY_BASE_MS * 2 ** (attempts - 1));
+          continue;
+        }
+        break;
+      }
+    }
+    const mayExist = sentBefore || attempts > 1 || retryableCreate(failure) || isConflict(failure);
+    if (!mayExist) throw new Error(continueFailureMessage(failure));
+    const exists = await createdSessionExists(c, body);
+    if (exists === undefined) return 'unconfirmed';
+    if (!exists) throw new Error(continueFailureMessage(failure));
+    return {
+      id: body.sessionId,
+      name: body.name,
+      model: body.model,
+      effort: body.effort,
+      fastMode: body.fastMode,
+    };
   };
 
   return {
@@ -398,6 +554,102 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     setFocus(sessionIds: string[]): void {
       poller?.setFocus(sessionIds);
+    },
+
+    async getModelCatalog(): Promise<StreamModelCatalog> {
+      const now = clock.now();
+      const fresh = favorites !== undefined && now - favorites.at < FAVORITES_TTL_MS;
+      if (client && !fresh && now >= favoritesRetryAt) await readFavorites(client);
+      return buildModelCatalog(favorites?.raw);
+    },
+
+    async continueWithModel(
+      sessionId: string,
+      request: ModelChoice,
+    ): Promise<{ sessionId: string }> {
+      if (!client || !poller) throw new Error('Conductor is not connected');
+      const parsed = parseModelChoice({ ...request }, buildModelCatalog(undefined));
+      if (!parsed.ok) throw new Error(parsed.message);
+      const choice = parsed.choice;
+      const facts = poller.sessionFacts(sessionId);
+      if (!facts) throw new Error('Session not found');
+      if (continuing.has(sessionId)) throw new Error('A new session is already starting.');
+      continuing.add(sessionId);
+      const c = client;
+      const p = poller;
+      try {
+        const key = choiceKey(choice);
+        let recent = recentCreates.get(sessionId);
+        if (recent && clock.now() - recent.at >= CONTINUE_REUSE_MS) {
+          recentCreates.delete(sessionId);
+          recent = undefined;
+        }
+        // The same request again: if it went through, it's the same session
+        // (its answer may have been lost on the way to the office).
+        if (recent?.key === key && recent.createdId) return { sessionId: recent.createdId };
+        if (recent && recent.key !== key && !recent.createdId) {
+          // Another choice after an unconfirmed create: find out whether that
+          // one exists before starting a second session in the same files.
+          const exists = await createdSessionExists(c, recent.body);
+          if (exists === undefined) throw new Error(CONTINUE_UNCONFIRMED_MESSAGE);
+          if (exists) {
+            p.addContinuation(
+              { id: recent.body.sessionId, name: recent.body.name, model: recent.body.model },
+              facts.workspaceId,
+              sessionId,
+              { agent: recent.body.agent as Harness, message: recent.body.message },
+            );
+            recentCreates.set(sessionId, { ...recent, createdId: recent.body.sessionId });
+            throw new Error(`The last try did start “${recent.body.name}”.`);
+          }
+          recentCreates.delete(sessionId);
+          recent = undefined;
+        }
+        // Both ids are ours, so a retry after a lost response (this call's or
+        // an earlier click's) names the same session and message, and
+        // Conductor creates (and sends) them once.
+        const reuse = recent?.key === key ? recent.body : undefined;
+        const body: ConductorCreateSessionBody = reuse ?? {
+          workspaceId: facts.workspaceId,
+          sessionId: randomUUID(),
+          agent: choice.agent,
+          model: choice.model,
+          ...(choice.effort ? { effort: choice.effort } : {}),
+          ...(choice.fastMode ? { fastMode: true } : {}),
+          name: continuationName(facts.name, choice.model),
+          message: choice.message,
+          messageId: randomUUID(),
+        };
+        let created;
+        try {
+          created = await createOnce(c, body, reuse !== undefined);
+        } catch (err) {
+          recentCreates.delete(sessionId);
+          throw err;
+        }
+        if (created === 'unconfirmed') {
+          recentCreates.set(sessionId, { key, body, at: clock.now() });
+          throw new Error(CONTINUE_UNCONFIRMED_MESSAGE);
+        }
+        const id = typeof created.id === 'string' && created.id ? created.id : body.sessionId;
+        p.addContinuation(
+          {
+            ...created,
+            id,
+            name: created.name ?? body.name,
+            model: created.model ?? body.model,
+            effort: created.effort ?? body.effort,
+            fastMode: created.fastMode ?? body.fastMode,
+          },
+          facts.workspaceId,
+          sessionId,
+          { agent: choice.agent as Harness, message: choice.message },
+        );
+        recentCreates.set(sessionId, { key, body, at: clock.now(), createdId: id });
+        return { sessionId: id };
+      } finally {
+        continuing.delete(sessionId);
+      }
     },
 
     async tick(): Promise<void> {

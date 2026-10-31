@@ -349,6 +349,78 @@ describe('demo provider (synthetic sessions through the real stream driver)', ()
     expect(entries.slice(asked + 1).some((e) => e.role === 'assistant')).toBe(true);
   });
 
+  it('continues a session with another model: a new session thrown out of the original, which stays as it was', async () => {
+    await start();
+    await play(1);
+    const origId = requireAgent('deps');
+    const origSpecies = store.get(origId)!.species;
+    const catalog = (await client({ type: 'requestModelCatalog' }))[0] as {
+      favorites: Array<{ agent: string }>;
+    };
+    expect(catalog.favorites[0]).toEqual({ agent: 'claude', model: 'opus-5-5-1m', effort: 'high' });
+
+    const refused = await client({
+      type: 'continueWithModel',
+      id: origId,
+      agent: 'codex',
+      model: 'opus-5-5-1m',
+      message: 'Go on.',
+    });
+    expect(refused[0]).toMatchObject({ ok: false, message: "Codex doesn't offer that model." });
+
+    sent = [];
+    const replies = await client({
+      type: 'continueWithModel',
+      id: origId,
+      agent: 'codex',
+      model: 'gpt-5.5',
+      effort: 'medium',
+      fastMode: true,
+      message: 'Continue the work from the session "Dependency bumps" in this workspace.',
+    });
+    expect(replies[0]).toMatchObject({ action: 'continueWithModel', id: origId, ok: true });
+    const newSession = String(replies[0].sessionId);
+    const newId = runtime.streamDriver('conductor')!.agentIdFor(newSession)!;
+    expect(newId).toBeDefined();
+    // Thrown out of the original, which neither becomes a legendary nor changes.
+    expect(ofType('agentCreated').find((m) => m.id === newId)).toMatchObject({
+      isTeammate: true,
+      parentAgentId: origId,
+    });
+    expect(store.get(origId)!.species).toBe(origSpecies);
+    expect(LEGENDARY_DEX.has(store.get(origId)!.species!)).toBe(false);
+    expect(store.get(origId)!.isTeamLead).toBeUndefined();
+    const created = store.get(newId)!;
+    expect(created.label).toBe('Dependency bumps · GPT-5.5');
+    expect(created.details).toMatchObject({
+      model: 'gpt-5.5',
+      modelId: 'gpt-5.5',
+      harness: 'codex',
+      effort: 'medium',
+      fastMode: true,
+      workspaceId: DEMO_CAST.deps.spec.workspace.id,
+    });
+    expect(summaries().find((s) => s.sessionId === newSession)).toMatchObject({
+      leadSessionId: DEMO_IDS.deps,
+      handoff: true,
+    });
+    // It works through its handoff turn, then is done.
+    expect(ofType('agentStatus').find((m) => m.id === newId)).toMatchObject({ status: 'active' });
+    await play(30);
+    expect(
+      ofType('agentStatus')
+        .filter((m) => m.id === newId)
+        .at(-1),
+    ).toMatchObject({
+      status: 'waiting',
+    });
+    await play(1);
+    expect(ofType('agentLinks').at(-1)?.links).toContainEqual(
+      expect.objectContaining({ fromId: origId, toId: newId, kind: 'spawned' }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('pages back through a synthetic transcript for the Chat tab', async () => {
     await start();
     const lead = requireAgent('lead');

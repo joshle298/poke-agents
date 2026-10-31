@@ -29,8 +29,8 @@ const NO_CONSENT_CONFIG = {
   // hooksConsent deliberately absent -> parses to unanswered -> dialog shows.
 };
 
-/** The in-app Intro. IntroBubble is the only role="dialog" element
- *  in the webview (the Settings/changelog modals don't carry the role). */
+/** The in-app Intro. Modals carry role="dialog" too, but none is open while
+ *  these checks run, so the IntroBubble is the only dialog on screen. */
 function consentDialog(frame: Frame): Locator {
   return frame.getByRole('dialog');
 }

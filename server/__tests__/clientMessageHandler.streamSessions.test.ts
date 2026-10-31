@@ -9,8 +9,10 @@ import { AgentRuntime } from '../src/agentRuntime.js';
 import { AgentStateStore } from '../src/agentStateStore.js';
 import { type ClientMessageContext, handleClientMessage } from '../src/clientMessageHandler.js';
 import { readConfig } from '../src/configPersistence.js';
+import { MODEL_CATALOG_WAIT_MS } from '../src/constants.js';
 import { FileStateAdapter } from '../src/fileStateAdapter.js';
 import { claudeProvider } from '../src/providers/hook/claude/claude.js';
+import { buildModelCatalog } from '../src/providers/stream/modelCatalog.js';
 import { isAllowedExternalUrl } from '../src/streamSessionMessages.js';
 
 type Message = Record<string, unknown>;
@@ -81,6 +83,10 @@ function fakeConductor(overrides: Partial<StreamProvider> = {}): StreamProvider 
     stopSession: vi.fn(async () => {}),
     archiveSession: vi.fn(async () => {}),
     restoreSession: vi.fn(async () => {}),
+    getModelCatalog: vi.fn(async () =>
+      buildModelCatalog({ favoriteModels: [{ agent: 'codex', model: 'gpt-5.5', effort: 'high' }] }),
+    ),
+    continueWithModel: vi.fn(async () => ({ sessionId: 'new-session' })),
     ...overrides,
   };
 }
@@ -589,6 +595,154 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       store.on('broadcast', (m) => broadcasts.push(m));
       send({ type: 'setPokemonTheme', enabled: true });
       expect(broadcasts).toEqual([{ type: 'pokemonThemeUpdated', enabled: true }]);
+    });
+  });
+
+  // ── Switch model ──────────────────────────────────────────────
+
+  describe('Switch model', () => {
+    const request = {
+      type: 'continueWithModel',
+      agent: 'claude',
+      model: 'opus-5-5-1m',
+      effort: 'xhigh',
+      fastMode: true,
+      message: 'Continue the work from the session "s1" in this workspace.',
+    };
+
+    it('answers requestModelCatalog with the provider’s catalog', async () => {
+      send({ type: 'requestModelCatalog' });
+      await settle();
+      const catalog = ofType('modelCatalog')[0] as {
+        agents: Array<{ agent: string }>;
+        favorites: unknown[];
+        defaultAgent?: string;
+      };
+      expect(catalog.agents.map((a) => a.agent)).toEqual(['claude', 'codex', 'cursor']);
+      expect(catalog.favorites).toEqual([{ agent: 'codex', model: 'gpt-5.5', effort: 'high' }]);
+      expect(catalog.defaultAgent).toBe('codex');
+      expect(ofType('modelCatalog')).toHaveLength(1);
+    });
+
+    it('sends the table at once when the favorites are slow, then the full catalog', async () => {
+      let release: () => void = () => {};
+      provider.getModelCatalog = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof buildModelCatalog>>((resolve) => {
+            release = () => resolve(buildModelCatalog([{ agent: 'cursor', model: 'auto' }]));
+          }),
+      );
+      send({ type: 'requestModelCatalog' });
+      await new Promise((resolve) => setTimeout(resolve, MODEL_CATALOG_WAIT_MS + 50));
+      const first = ofType('modelCatalog') as Array<{ agents: unknown[]; favorites: unknown[] }>;
+      expect(first).toHaveLength(1);
+      expect(first[0].agents).toHaveLength(3);
+      expect(first[0].favorites).toEqual([]);
+      release();
+      await settle();
+      const both = ofType('modelCatalog') as Array<{ favorites: unknown[] }>;
+      expect(both).toHaveLength(2);
+      expect(both[1].favorites).toEqual([{ agent: 'cursor', model: 'auto' }]);
+    });
+
+    it('validates against the catalog, then asks the provider and names the new session', async () => {
+      const id = adopt('s1');
+      send({ ...request, id });
+      await settle();
+      // Validation uses the maintained table: no favorites read before a start.
+      expect(provider.getModelCatalog).not.toHaveBeenCalled();
+      expect(provider.continueWithModel).toHaveBeenCalledWith('s1', {
+        agent: 'claude',
+        model: 'opus-5-5-1m',
+        effort: 'xhigh',
+        fastMode: true,
+        message: request.message,
+      });
+      expect(ofType('conductorActionResult')).toEqual([
+        {
+          type: 'conductorActionResult',
+          action: 'continueWithModel',
+          id,
+          ok: true,
+          sessionId: 'new-session',
+        },
+      ]);
+    });
+
+    it('refuses what the catalog does not offer without asking the provider', async () => {
+      const id = adopt('s1');
+      send({ ...request, id, model: 'gpt-5.5' });
+      send({ ...request, id, agent: 'cursor', model: 'auto', effort: 'ultracode' });
+      send({ ...request, id, model: 'sonnet-4-6' });
+      send({ ...request, id, message: ' ' });
+      send({ ...request, id: 'x' });
+      send({ ...request, id: 999 });
+      await settle();
+      expect(provider.continueWithModel).not.toHaveBeenCalled();
+      // Answered in request order: nothing waits on the network.
+      expect(ofType('conductorActionResult').map((m) => [m.action, m.ok, m.message])).toEqual([
+        ['continueWithModel', false, "Claude doesn't offer that model."],
+        ['continueWithModel', false, "Cursor doesn't accept that effort."],
+        ['continueWithModel', false, 'Sonnet 4.6 has no fast mode.'],
+        ['continueWithModel', false, 'Type a message first.'],
+        ['continueWithModel', false, 'Invalid request.'],
+        ['continueWithModel', false, 'This agent is not a Conductor session.'],
+      ]);
+    });
+
+    it('passes the provider’s refusal on', async () => {
+      provider.continueWithModel = vi.fn(async () => {
+        throw new Error('Conductor refused: no permission');
+      });
+      const id = adopt('s1');
+      send({ ...request, id });
+      await settle();
+      expect(ofType('conductorActionResult')[0]).toMatchObject({
+        action: 'continueWithModel',
+        id,
+        ok: false,
+        message: 'Conductor refused: no permission',
+      });
+    });
+
+    it('says so when the provider can’t switch models', async () => {
+      delete provider.getModelCatalog;
+      delete provider.continueWithModel;
+      const id = adopt('s1');
+      send({ type: 'requestModelCatalog' });
+      send({ ...request, id });
+      await settle();
+      expect(ofType('modelCatalog')[0]).toMatchObject({ agents: [], favorites: [] });
+      expect(ofType('conductorActionResult')[0]).toMatchObject({
+        ok: false,
+        message: 'Conductor does not support this.',
+      });
+    });
+
+    it('is privileged: a read-only office starts nothing and its picker settles', async () => {
+      const id = adopt('s1');
+      send({ ...request, id }, ctx({ privileged: false }));
+      send({ type: 'requestModelCatalog' }, ctx({ privileged: false }));
+      await settle();
+      expect(provider.continueWithModel).not.toHaveBeenCalled();
+      expect(provider.getModelCatalog).not.toHaveBeenCalled();
+      expect(ofType('conductorActionResult')).toEqual([
+        {
+          type: 'conductorActionResult',
+          action: 'continueWithModel',
+          id,
+          ok: false,
+          message: 'Read-only office: open the tokened URL to make changes.',
+        },
+      ]);
+      expect(ofType('modelCatalog')).toEqual([
+        {
+          type: 'modelCatalog',
+          agents: [],
+          favorites: [],
+          error: 'Read-only office: open the tokened URL to make changes.',
+        },
+      ]);
     });
   });
 

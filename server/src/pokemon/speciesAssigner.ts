@@ -12,6 +12,10 @@
  * - promoteToOrchestrator switches an agent to a legendary when it starts
  *   delegating to other sessions. Returns true when the species (or its shiny
  *   flag) changed.
+ * - choosePokemon applies the user's choice (Change Pokémon): a line (or a
+ *   legendary, for a Lead), the shiny flag, or a reset to automatic. A chosen
+ *   Pokémon is never replaced by assignment or promotion; the level still
+ *   picks the stage within the chosen line.
  * None of them persists; callers persist after a change.
  *
  * Policy:
@@ -51,6 +55,13 @@ export interface SpeciesAssignOptions {
   stableKey?: string;
   /** Sessions that delegate to other sessions get a legendary. */
   orchestrator?: boolean;
+}
+
+/** A user's Change Pokémon request: `line` null = back to automatic, absent =
+ *  keep the line (change only `shiny`). */
+export interface PokemonChoice {
+  line?: string | null;
+  shiny?: boolean;
 }
 
 export interface LevelChange {
@@ -260,6 +271,8 @@ export function promoteToOrchestrator(agent: AgentState, store: AgentStateStore)
 }
 
 function promote(agent: AgentState, store: AgentStateStore, key: string): boolean {
+  // The user's choice stands, legendary or not.
+  if (agent.pokemonChosen) return false;
   if (agent.pokemonLine && LEGENDARY_BY_ID.has(agent.pokemonLine)) return false;
   if (LEAD_POOL.length === 0) return false;
   const before = { species: agent.species, shiny: agent.shiny };
@@ -272,6 +285,97 @@ function promote(agent: AgentState, store: AgentStateStore, key: string): boolea
   return before.species !== agent.species || before.shiny !== agent.shiny;
 }
 
+// ── The user's choice (Change Pokémon) ─────────────────────────
+
+/** What the picker offers: every assignable line (members by stage, large
+ *  stages out) and the legendaries a Lead can be. */
+export function pokemonPickerCatalog(): {
+  lines: Array<{ id: string; members: Array<{ dex: number; name: string; stage: number }> }>;
+  legendaries: Array<{ id: string; dex: number; name: string }>;
+} {
+  return {
+    lines: POOL_LINES.map((line) => ({
+      id: line.id,
+      members: line.stages.flatMap((members, index) =>
+        members.map((m) => ({ dex: m.dex, name: m.name, stage: index + 1 })),
+      ),
+    })),
+    legendaries: LEAD_POOL.map((l) => ({ id: l.id, dex: l.dex, name: l.name })),
+  };
+}
+
+/** Why a line can't be chosen for an agent, or null when it can: a pool line
+ *  for anyone, a Lead legendary for a Lead only. */
+export function choiceRefusal(line: string, opts: { lead: boolean }): string | null {
+  if (POOL_LINE_BY_ID.has(line)) return null;
+  if (LEAD_POOL.some((l) => l.id === line)) {
+    return opts.lead ? null : 'Only a Lead can be a legendary.';
+  }
+  return 'Unknown Pokémon.';
+}
+
+/** A line id the assigner knows (a pool line or a showable legendary). */
+function isKnownLine(id: unknown): id is string {
+  return typeof id === 'string' && (POOL_LINE_BY_ID.has(id) || LEGENDARY_BY_ID.has(id));
+}
+
+/**
+ * Apply a Change Pokémon request (validate it with choiceRefusal first). A
+ * line is shown at the stage the agent's level reaches in it (a legendary as
+ * itself), and stays the agent's until a reset. The first choice remembers
+ * the automatic line and shiny flag it replaces; `line: null` drops the
+ * choice and gives them back, at the stage the level reaches now (without
+ * them, it assigns automatically again; either way a delegating Lead gets a
+ * legendary with `orchestrator`). Returns true when anything the office shows
+ * changed.
+ */
+export function choosePokemon(
+  agent: AgentState,
+  store: AgentStateStore,
+  choice: PokemonChoice,
+  opts: SpeciesAssignOptions = {},
+): boolean {
+  const before = JSON.stringify([
+    agent.pokemonLine,
+    agent.species,
+    agent.shiny,
+    agent.pokemonChosen,
+  ]);
+  const key = stableKeyFor(agent, opts.stableKey);
+  if (choice.line === null) {
+    if (!agent.pokemonChosen) return false;
+    const autoLine = isKnownLine(agent.pokemonAutoLine) ? agent.pokemonAutoLine : undefined;
+    agent.pokemonChosen = undefined;
+    agent.pokemonLine = autoLine;
+    agent.species = undefined;
+    agent.shiny = autoLine ? (agent.pokemonAutoShiny ?? false) : undefined;
+    agent.pokemonAutoLine = undefined;
+    agent.pokemonAutoShiny = undefined;
+    assignSpeciesIfNeeded(agent, store, { ...opts, stableKey: key });
+  } else {
+    if (!agent.pokemonChosen && agent.pokemonLine) {
+      agent.pokemonAutoLine = agent.pokemonLine;
+      agent.pokemonAutoShiny = agent.shiny === true;
+    }
+    if (typeof choice.line === 'string' && choice.line !== agent.pokemonLine) {
+      const legendary = LEGENDARY_BY_ID.get(choice.line);
+      const line = POOL_LINE_BY_ID.get(choice.line);
+      if (!legendary && !line) return false;
+      if (agent.level === undefined) agent.level = agentLevel(agent);
+      agent.pokemonLine = choice.line;
+      agent.species = legendary
+        ? legendary.dex
+        : speciesForLevel(line as PoolLine, agent.level, undefined, key);
+    }
+    if (typeof choice.shiny === 'boolean') agent.shiny = choice.shiny;
+    else if (agent.shiny === undefined) agent.shiny = false;
+    agent.pokemonChosen = true;
+  }
+  return (
+    before !== JSON.stringify([agent.pokemonLine, agent.species, agent.shiny, agent.pokemonChosen])
+  );
+}
+
 // ── Persistence ────────────────────────────────────────────────
 
 /**
@@ -281,15 +385,30 @@ function promote(agent: AgentState, store: AgentStateStore, key: string): boolea
  */
 export function restoredPokemonFields(
   persisted: object,
-): Pick<AgentState, 'pokemonLine' | 'species' | 'shiny'> {
-  const { pokemonLine, species, shiny } = persisted as Record<string, unknown>;
+): Pick<
+  AgentState,
+  'pokemonLine' | 'species' | 'shiny' | 'pokemonChosen' | 'pokemonAutoLine' | 'pokemonAutoShiny'
+> {
+  const { pokemonLine, species, shiny, pokemonChosen, pokemonAutoLine, pokemonAutoShiny } =
+    persisted as Record<string, unknown>;
   if (typeof pokemonLine !== 'string') return {};
   const restoredShiny = typeof shiny === 'boolean' ? shiny : undefined;
+  // A choice survives only with the line it chose, and with it the automatic
+  // Pokémon it replaced (when that line still exists).
+  const chosen =
+    pokemonChosen === true
+      ? {
+          pokemonChosen: true,
+          ...(isKnownLine(pokemonAutoLine)
+            ? { pokemonAutoLine, pokemonAutoShiny: pokemonAutoShiny === true }
+            : {}),
+        }
+      : {};
   const legendary = LEGENDARY_BY_ID.get(pokemonLine);
-  if (legendary) return { pokemonLine, species: legendary.dex, shiny: restoredShiny };
+  if (legendary) return { pokemonLine, species: legendary.dex, shiny: restoredShiny, ...chosen };
   const line = POOL_LINE_BY_ID.get(pokemonLine);
   if (!line) return {};
   const restoredSpecies =
     typeof species === 'number' && stageOf(line, species) > 0 ? species : undefined;
-  return { pokemonLine, species: restoredSpecies, shiny: restoredShiny };
+  return { pokemonLine, species: restoredSpecies, shiny: restoredShiny, ...chosen };
 }

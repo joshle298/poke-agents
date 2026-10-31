@@ -17,6 +17,8 @@ export interface FakeSession {
   name?: string | null;
   model?: string | null;
   resolvedModel?: string | null;
+  effort?: string | null;
+  fastMode?: boolean | null;
   archivedAt?: string | null;
   items: ConductorItem[];
   status: ConductorSessionStatus;
@@ -52,6 +54,8 @@ export class FakeConductorApi {
   readonly calls: FakeCall[] = [];
   /** Server-side cap on session list pages (tests lower it to force paging). */
   sessionsPageLimit = 100;
+  /** GET /v0/favorite-models entries (synthetic). */
+  favoriteModels: unknown[] = [];
   private readonly overrides: Override[] = [];
 
   constructor(private readonly now: () => number) {}
@@ -88,18 +92,25 @@ export class FakeConductorApi {
     return full;
   }
 
-  /** Answer the next matching request with `response` (once unless `times`). */
+  /** Answer the next matching request with `response` (once unless `times`).
+   *  `response` gets the call, so it can let the fake act first (`answer`)
+   *  and then answer otherwise, like a server whose reply is lost. */
   override(
     match: (call: FakeCall) => boolean,
-    response: () => Response | Promise<Response>,
+    response: (call: FakeCall) => Response | Promise<Response>,
     times = 1,
   ): void {
     let left = times;
     this.overrides.push((call) => {
       if (left <= 0 || !match(call)) return undefined;
       left--;
-      return response();
+      return response(call);
     });
+  }
+
+  /** What the fake would answer `call` (and do: a create commits). */
+  answer(call: FakeCall): Response {
+    return this.route(call);
   }
 
   callsTo(pathPart: string): FakeCall[] {
@@ -127,6 +138,10 @@ export class FakeConductorApi {
     const parts = call.path.split('/').filter(Boolean);
     if (call.method === 'GET' && call.path === '/me') return json(200, this.me);
     if (parts[0] !== 'v0') return json(404, { userMessage: 'Not found', code: 'NOT_FOUND' });
+    if (call.method === 'GET' && call.path === '/v0/favorite-models') {
+      return json(200, { favoriteModels: this.favoriteModels });
+    }
+    if (call.method === 'POST' && call.path === '/v0/sessions') return this.createSession(call);
 
     if (parts[1] === 'workspaces' && parts.length === 2) {
       const since = call.query.since ? Date.parse(call.query.since) : 0;
@@ -179,8 +194,62 @@ export class FakeConductorApi {
       name: s.name,
       model: s.model,
       resolvedModel: s.resolvedModel,
+      effort: s.effort ?? undefined,
+      fastMode: s.fastMode ?? undefined,
       archivedAt: s.archivedAt ?? undefined,
     };
+  }
+
+  /** POST /v0/sessions: a session in an existing workspace with its first
+   *  message. A repeat with the same sessionId returns the same session
+   *  (Conductor deduplicates a retried create). */
+  private createSession(call: FakeCall): Response {
+    const body = (call.body ?? {}) as Record<string, unknown>;
+    const ws = this.workspaces.find((w) => w.id === body.workspaceId);
+    if (!ws) return json(404, { userMessage: 'Workspace not found', code: 'NOT_FOUND' });
+    const id =
+      typeof body.sessionId === 'string'
+        ? body.sessionId
+        : `5e55c0de-0000-4000-8000-${String(this.sessions.size).padStart(12, '0')}`;
+    let session = this.sessions.get(id);
+    if (!session) {
+      const at = new Date(this.now()).toISOString();
+      session = this.addSession({
+        id,
+        workspaceId: ws.id,
+        name: typeof body.name === 'string' ? body.name : null,
+        model: typeof body.model === 'string' ? body.model : null,
+        resolvedModel: typeof body.model === 'string' ? body.model : null,
+        effort: typeof body.effort === 'string' ? body.effort : null,
+        fastMode: typeof body.fastMode === 'boolean' ? body.fastMode : null,
+        items: [
+          {
+            id: `${id.slice(0, 8)}-item-1`,
+            sessionId: id,
+            sessionIndex: 1,
+            type: 'userMessage',
+            content: {
+              type: 'userMessage',
+              id: body.messageId,
+              message: body.message,
+              state: 'sent',
+              config: { harness: body.agent },
+            },
+            receivedAt: at,
+          },
+        ],
+        status: { status: 'working', updatedAt: at },
+      });
+      ws.lastActivityAt = at;
+    }
+    return json(201, {
+      ...this.sessionJson(session),
+      initialMessage: {
+        messageId: body.messageId,
+        state: 'sent',
+        deepLink: `conductor://workspace?id=${ws.id}&session=${id}`,
+      },
+    });
   }
 
   private messages(session: FakeSession, call: FakeCall): Response {

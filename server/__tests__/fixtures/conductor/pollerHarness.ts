@@ -69,16 +69,20 @@ export class RecordingSink implements AgentEventSink {
   statuses: StreamProviderStatus[] = [];
   lists: ConductorSessionSummary[][] = [];
   adopted = new Set<string>();
+  /** Upserts and links in arrival order (`upsert:<id>`, `link:<kind>:<from>><to>`). */
+  order: string[] = [];
 
   upsertSession(info: StreamSessionInfo): void {
     this.upserts.push(structuredClone(info));
     this.adopted.add(info.sessionId);
+    this.order.push(`upsert:${info.sessionId}`);
   }
   emit(sessionId: string, event: AgentEvent): void {
     this.events.push([sessionId, event]);
   }
   link(event: AgentLinkEvent): void {
     this.links.push(event);
+    this.order.push(`link:${event.kind}:${event.fromSessionId}>${event.toSessionId}`);
   }
   removeSession(sessionId: string, reason?: string): void {
     this.removed.push([sessionId, reason]);
