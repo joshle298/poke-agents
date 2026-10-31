@@ -75,6 +75,7 @@ import {
   GLOBAL_KEY_GHOST_HEADLESS_AGENTS,
   GLOBAL_KEY_HOOKS_INFO_SHOWN,
   GLOBAL_KEY_LAST_SEEN_VERSION,
+  GLOBAL_KEY_POKEMON_THEME,
   GLOBAL_KEY_SHOW_AREAS,
   GLOBAL_KEY_SHOW_HOST_DIRECTORIES,
   GLOBAL_KEY_SOUND_ENABLED,
@@ -555,6 +556,15 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           this.adapter.setSetting(GLOBAL_KEY_SHOW_HOST_DIRECTORIES, message.enabled);
           this.sendDirectories();
         }
+      } else if (message.type === 'setPokemonTheme') {
+        // The themed chrome only: VS Code draws upstream characters (no sprites).
+        if (typeof message.enabled === 'boolean') {
+          this.adapter.setSetting(GLOBAL_KEY_POKEMON_THEME, message.enabled);
+          this.store.broadcast({
+            type: 'pokemonThemeUpdated',
+            enabled: this.adapter.getSetting<boolean>(GLOBAL_KEY_POKEMON_THEME, true),
+          });
+        }
       } else if (message.type === 'setBypassPermissions') {
         if (typeof message.enabled === 'boolean') {
           this.adapter.setSetting(GLOBAL_KEY_BYPASS_PERMISSIONS, message.enabled);
@@ -677,6 +687,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
           showAreas,
           bypassPermissions,
           showHostDirectories,
+          pokemonTheme: this.adapter.getSetting<boolean>(GLOBAL_KEY_POKEMON_THEME, true),
         });
 
         // One status + at most one consent ask PER PROVIDER. Install state is distinct from the hooksEnabled

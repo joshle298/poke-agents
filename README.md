@@ -106,13 +106,14 @@ A session becomes a Lead when it creates another session with a first message, f
 
 Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as described under [Upstream Pixel Agents](#upstream-pixel-agents). The embedded terminal only exists with `--claude`.
 
-| Environment variable     | Effect                                                         |
-| ------------------------ | -------------------------------------------------------------- |
-| `CONDUCTOR_API_KEY`      | Conductor API key. Checked first.                              |
-| `CONDUCTOR_API_TOKEN`    | Used when `CONDUCTOR_API_KEY` is not set.                      |
-| `CONDUCTOR_API_URL`      | Conductor API base URL. Default `https://api.conductor.build`. |
-| `POKE_AGENTS_SPRITES`    | `off` disables sprite downloads, like `--no-sprites`.          |
-| `POKE_AGENTS_SKIP_BUILD` | `1` skips building `dist/` during `npm install` or `npm ci`.   |
+| Environment variable           | Effect                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `CONDUCTOR_API_KEY`            | Conductor API key. Checked first.                                         |
+| `CONDUCTOR_API_TOKEN`          | Used when `CONDUCTOR_API_KEY` is not set.                                 |
+| `CONDUCTOR_API_URL`            | Conductor API base URL. Default `https://api.conductor.build`.            |
+| `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                     |
+| `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
+| `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
 
 Without either variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
 

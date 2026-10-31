@@ -774,7 +774,6 @@ export const BATTLE_LOG_BOTTOM_MOBILE_PX = 10;
 export const BATTLE_LOG_MAX_WIDTH_PX = 520;
 /** Per-device preferences (localStorage, not synced through the server). */
 export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
-export const CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 /** Toasts for Conductor action outcomes: lifetime and how many stack. */
 export const TOAST_VISIBLE_MS = 4_000;
 export const TOAST_MAX_VISIBLE = 3;

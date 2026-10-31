@@ -37,7 +37,9 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     providers/stream/conductor/      StreamProvider for Conductor cloud sessions (see "Conductor provider")
     pokemon/                         Sprite cache + route, species catalog, species assigner (see "Pokémon theme")
     streamAgentDriver.ts             AgentEventSink for stream providers: drives the store with the hook path's broadcast shapes
-    agentTransitions.ts              markAgentWaiting, shared by HookEventHandler and the stream driver
+    streamSessionMessages.ts         Client messages for stream sessions (Pokédex detail, session actions, scope, openExternal, setPokemonTheme)
+    agentTransitions.ts              markAgentWaiting / endAgentTurn, shared by HookEventHandler and the stream driver
+    agentMessages.ts                 agentCreatedMessage / agentDetailsMessage, one builder for standalone, VS Code and replays
     openAppWindow.ts                 --open: tokened URL in a Chromium app window (injectable exec)
     agentRuntime.ts                  Lifecycle core: timers, scanners, HookEventHandler, SessionRouter, DismissalTracker
     agentStateStore.ts               EventEmitter-backed single source of truth (typed mutations + events)
@@ -85,6 +87,8 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
     constants.ts                     Webview magic numbers/strings
     notificationSound.ts             Web Audio API chime
     changelogData.ts                 Changelog modal content
+    conductor/                       Conductor chrome: DOM-free conductorStore (+ useConductor), useConductorFeed, actions,
+                                     pure party/format/sessionsView rules, per-device preferences
     components/                      React UI (toolbars, modals, settings)
       BottomToolbar.tsx, ZoomControls.tsx, SettingsModal.tsx, ChangelogModal.tsx,
       Tooltip.tsx, DebugView.tsx, ui/Button.tsx, ...
@@ -151,10 +155,23 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
         renderer.ts                  Canvas: tiles, z-sorted entities, overlays, edit UI
         matrixEffect.ts              Spawn/despawn digital rain (drawing only)
         matrixEffectState.ts         Effect state: startMatrixEffect/advanceMatrixEffect (DOM-free)
+        pokemonAnim.ts               Pure PMD anim choice (PMD_ROW, pmdFrameIndex, choosePokemonAnim, one-shots)
+        pokemonCharacter.ts          Pokémon state on a Character (identity, evolution flash, faint/sleep)
+        pokemonRender.ts             Renderer branch for Pokémon (frames, outline, faint tint)
+        pokemonTheme.ts              Theme flag as module state (render loop + OfficeState read it)
+        pokeballEffect.ts            Poké Ball throw/open/recall behind the matrixEffect field
+        frameCanvas.ts               Lazily built, cached derived frame canvases (outline, silhouette, tint)
+        connectionsRender.ts         Link lines (floor pass) and message projectiles
+        teammatePlacement.ts         Where a teammate sits (stream children cluster only by a small Lead)
       components/
         OfficeCanvas.tsx             Canvas, resize, DPR, mouse hit-testing, drag-to-move
         useCanvasTouchGestures.ts    Touch pan / pinch zoom / tap on the canvas
-        ToolOverlay.tsx              Activity label + speech bubbles (DOM, above the labels) per character
+        ToolOverlay.tsx              Activity label + speech bubbles (DOM, above the labels) per character; themed label + HP bar
+        pokemonOverlay.ts            Themed label, HP fraction and colour helpers
+      sprites/pokemonSprites.ts      Species store fed by pokemonSpeciesLoaded (DOM-free; injectable sheet loader)
+      sprites/pokemonSheetLoader.ts  Browser loader: fetch → blob → createImageBitmap (same-origin only)
+      chimePolicy.ts                 Which status changes chime (restricted policy for stream agents)
+      showConnections.ts             Local "Show connections" preference (localStorage, useSyncExternalStore)
 
 e2e/                                 Playwright suite (real VS Code + mock-claude scenarios)
   playwright.config.ts
@@ -279,7 +296,7 @@ The sink: `upsertSession(StreamSessionInfo)` (create or update an agent, with `d
 
 `AgentRuntime.attachStreamProvider(provider)` returns a `StreamAgentDriver` (`server/src/streamAgentDriver.ts`), the sink implementation; `dispose()` disposes drivers. The driver mirrors the broadcasts the hook and transcript paths already send, so the webview needs no provider-specific code:
 
-- **Agents**: `isExternal`, `hooksOnly`, `hookDelivered`, `jsonlFile: ''`, `projectDir: ''`, `providerId: 'conductor'`, `sessionId: 'conductor:<uuid>'`, `directoryName` = repo short name, `label` = session name else `#<number> <workspace>`. Ids are stable through `conductor-state.json`. `agentCreated` carries `providerId`, `label`, `species`, `shiny`, `level` and `seatId`; `agentDetails` follows on creation, on every change and on reconnect.
+- **Agents**: `isExternal`, `hooksOnly`, `hookDelivered`, `jsonlFile: ''`, `projectDir: ''`, `providerId: 'conductor'`, `sessionId: 'conductor:<uuid>'`, `directoryName` = repo short name, `label` = session name else `#<number> <workspace>`. Agent ids and Pokémon (`pokemonLine`, `species`, `shiny`) are remembered per `conductor:<uuid>` in `<namespace>-state.json` under `streamAgents` (`StreamAgentMemory`, implemented by `FileStateAdapter`, capped at 1000), so a session keeps its seat and species across restarts; attaching bumps `store.nextAgentId` past every remembered id. `agentCreated` carries `providerId`, `label`, `species`, `shiny`, `level` and `seatId`; `agentDetails` follows on creation, on every change and on reconnect.
 - **Events**: `turnStart` → `agentStatus active`; tools tracked as the transcript path does (`toolEnd` delayed `TOOL_DONE_DELAY_MS`); `permissionRequest/Clear` → `agentToolPermission(Clear)`; `awaitingInput` → `agentStatus waiting awaitingInput:true` (clears nothing); `turnEnd` → `markAgentWaiting`, and `outcome: 'error'` → `agentStatus error` with `errorMessage` (≤ 200 chars) until the next `turnStart`; `contextUsage` → `reportContextUsage`; `notice` → `agentNotice`. Identical statuses are never re-broadcast; seeding and reconnect resends are `silent`.
 - **Runtime guards**: the stale check skips agents without a `jsonlFile`; `/clear` detection needs `isExternal && !hooksOnly`; permission and waiting timers return early for `hooksOnly` agents; `providerCapabilities` sends the union of active providers' tool sets plus `activeProviders`.
 - **Links and teams**: links keyed `(from, to, kind)` with `count`, `lastAt`, `preview`; `agentLinks` snapshots (both ends in the office) debounced 500 ms; live `agentMessage` coalesced to one per pair per 2 s and 6/s overall. A session with an outgoing `spawned` link is a Lead (`isTeamLead`, `promoteToOrchestrator`); its targets get `leadAgentId`, `agentName`, `teamUsesTmux: true`, never `teamName`. Removing a Lead clears its children's `leadAgentId`; closing a Conductor agent hides it (`onDismiss`) and never removes its children.
@@ -326,7 +343,7 @@ Teammate dismissal is driven by team config polling (`getTeamMembers(teamName)` 
 - **Reconcile with `/status`**: `idle` while active forces `turnEnd` (for Claude only when no permission is pending); `working` while done forces `turnStart`; `error` or a new `lastErrorAt` forces `turnEnd { outcome: 'error' }`.
 - **Context windows**: `claude-*` from Claude's table, `gpt-*` 272,000, otherwise unknown (gauge hidden until usage appears).
 - **Scope**, default `{ creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 24 }`. Cap order: pinned, waiting/permission, working, errored, Leads with visible active children, most recent activity; stable by first-seen order. A shown session stays until it falls 4 places past the cap. At most 12 children per Lead are shown.
-- **State file** `~/.pixel-agents/conductor-state.json`: `version: 1`, atomic tmp+rename, mode 0600; `scope` plus `sessions[id] = { agentId, hidden?, pinned?, pokemonLine?, shiny?, cursor?, harness?, firstSender?, lastActivityAt? }`. Never the token.
+- **State file** `~/.pixel-agents/conductor-state.json`: `version: 1`, atomic tmp+rename, mode 0600; `scope` plus `sessions[id] = { hidden?, pinned?, cursor?, harness?, firstSender?, lastActivityAt? }` (the schema also reserves `agentId`, `pokemonLine` and `shiny`, but the runtime keeps those in `streamAgents`, beside the seats they key). Never the token.
 - **Pokédex log**: per session, a 40-entry ring: the first prompt (≤ 600 chars), user messages, assistant text (≤ 400 chars), the last 5 tool labels and peer messages. `getSessionDetail` fetches the tail first for a never-tailed Cold session.
 - **Writes** come only from explicit UI actions, through privileged client messages, each answered with `conductorActionResult`: `sendMessage` → `POST /v0/sessions/:id/messages` (`messageId` = random UUID), `stopSession` → `/cancel` (Conductor drops queued messages, so the UI confirms), `archiveSession`/`restoreSession` → `/archive`/`/unarchive`. Tests use a fake client: never call a write endpoint from tests or during development. `openExternal` re-validates the URL on the server (scheme `^conductor(-[a-z0-9-]+)?:$`, host `workspace`).
 
@@ -402,11 +419,11 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
 ~/.pixel-agents/
   config.json              { vscode, standalone, externalAssetDirectories, hooksConsent, hooksEnabled (both per-provider) }
   vscode-state.json        { agents, seats }
-  standalone-state.json    { agents, seats }
+  standalone-state.json    { agents, seats, streamAgents }  (streamAgents: 'conductor:<uuid>' → { agentId, pokemonLine, species, shiny })
   layout.json              OfficeLayout (shared across surfaces)
   server.json              { port, pid, authToken }
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
-  conductor-state.json     Conductor scope + per-session { agentId, hidden, pinned, pokemonLine, shiny, cursor, harness, firstSender } (0600, never the token)
+  conductor-state.json     Conductor scope + per-session { hidden, pinned, cursor, harness, firstSender } (0600, never the token)
   cache/pmd/               Runtime-downloaded Pokémon sprites, portraits and metadata
 ```
 

@@ -1414,6 +1414,10 @@ export class OfficeState {
     ch.leadAgentId = leadAgentId;
     if (teamUsesTmux !== undefined) {
       ch.teamUsesTmux = teamUsesTmux;
+    } else if (ch.providerId !== undefined && leadAgentId === undefined) {
+      // A stream child released by its Lead (the Lead left the office) gets
+      // every field cleared; Claude messages that omit the flag keep it.
+      ch.teamUsesTmux = undefined;
     }
     // A teammate is not a headless agent: clicking it focuses its lead's terminal.
     // Adopted sessions are marked headless at creation and only later discovered

@@ -111,3 +111,20 @@ test('linking a stream child reseats it by its Lead only while the crowd is smal
     'Claude teammates always cluster (upstream)',
   );
 });
+
+test('a stream child released by its Lead loses every team field', () => {
+  const os = linkLater(0, 'conductor');
+  assert.equal(os.characters.get(50)!.teamUsesTmux, true);
+  // The Lead left the office: the server sends agentTeamInfo with nothing set.
+  os.setTeamInfo(50, undefined, undefined, undefined, undefined, undefined);
+  const child = os.characters.get(50)!;
+  assert.equal(child.leadAgentId, undefined);
+  assert.equal(child.agentName, undefined);
+  assert.equal(child.teamUsesTmux, undefined);
+});
+
+test('a Claude agentTeamInfo that omits the tmux flag keeps it (upstream)', () => {
+  const os = linkLater(0);
+  os.setTeamInfo(50, undefined, 'child', false, undefined, undefined);
+  assert.equal(os.characters.get(50)!.teamUsesTmux, true);
+});

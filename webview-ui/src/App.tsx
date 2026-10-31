@@ -37,7 +37,6 @@ import {
   BATTLE_LOG_BOTTOM_MOBILE_PX,
   BATTLE_LOG_BOTTOM_PX,
   BATTLE_LOG_STORAGE_KEY,
-  CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY,
   OFFICE_CANVAS_TEST_ID,
   PARTY_WIDE_MIN_WINDOW_PX,
   POKEMON_THEME_NAME,
@@ -63,6 +62,11 @@ import { exportLayoutToFile } from './office/layout/exportLayout.js';
 import { isRotatable } from './office/layout/furnitureCatalog.js';
 import { migrateLayoutColors } from './office/layout/layoutSerializer.js';
 import { overlayProjection } from './office/projection.js';
+import {
+  getShowConnections,
+  setShowConnections,
+  subscribeShowConnections,
+} from './office/showConnections.js';
 import { getPetCount } from './office/sprites/petSpriteData.js';
 import { EditTool, type OfficeLayout, TILE_SIZE } from './office/types.js';
 import { isBrowserRuntime, isE2E } from './runtime.js';
@@ -157,6 +161,7 @@ function App() {
     terminalAvailable,
     terminalUnavailableReason,
     terminalAgentIds,
+    setPokemonTheme: applyOfficePokemonTheme,
   } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty);
 
   // Show migration notice once layout reset is detected
@@ -185,22 +190,22 @@ function App() {
   // The agent whose Pokédex is open (stream agents only).
   const [detailAgentId, setDetailAgentId] = useState<number | null>(null);
   const [battleLogOn, setBattleLogOn] = useBoolPref(BATTLE_LOG_STORAGE_KEY, true);
-  // Per-device (localStorage). The office's link layer must follow the same
-  // value: integration hands it to the office's setShowConnections.
-  const [showConnections, setShowConnections] = useBoolPref(
-    CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY,
-    true,
-  );
+  // Per-device (localStorage), owned by the office: its link layer reads the
+  // same module state every frame.
+  const showConnections = useSyncExternalStore(subscribeShowConnections, getShowConnections);
   const windowWidth = useWindowWidth();
   const wideWindow = windowWidth >= PARTY_WIDE_MIN_WINDOW_PX;
 
   // The theme is the server's setting (settingsLoaded / pokemonThemeUpdated),
   // applied as <html data-theme>, which swaps the index.css palette.
+  // The office's render flag (Poké Balls, sprites, themed labels) follows the
+  // same value, including the Settings toggle's optimistic change.
   useEffect(() => {
     const root = document.documentElement;
     if (pokemonTheme) root.dataset.theme = POKEMON_THEME_NAME;
     else delete root.dataset.theme;
-  }, [pokemonTheme]);
+    applyOfficePokemonTheme(pokemonTheme);
+  }, [pokemonTheme, applyOfficePokemonTheme]);
 
   // Mobile shell (phones, touch tablets): office and terminal as sliding
   // full-screen pages with the cards in a bottom bar. Desktop keeps the
@@ -1051,14 +1056,14 @@ function App() {
         zIndex={52}
       >
         <div className="text-base text-text px-10" style={{ lineHeight: 1.4 }}>
-          <p className="mb-8">Your Pixel Agents office now reacts in real-time:</p>
+          <p className="mb-8">Your Poke Agents office now reacts in real-time:</p>
           <ul className="mb-8 pl-18 list-disc m-0">
             <li className="text-sm mb-2">Permission prompts appear instantly</li>
             <li className="text-sm mb-2">Turn completions detected the moment they happen</li>
             <li className="text-sm mb-2">Sound notifications play immediately</li>
           </ul>
           <p className="mb-12 text-text-muted">
-            This works through Claude Code Hooks, small event listeners that notify Pixel Agents
+            This works through Claude Code Hooks, small event listeners that notify Poke Agents
             whenever something happens in your Claude sessions.
           </p>
           <div className="text-center">
