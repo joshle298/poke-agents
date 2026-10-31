@@ -159,3 +159,57 @@ test('the committed icon files are what the script draws (run it after changing 
     }
   }
 });
+
+/** Cells that belong to the capsule (everything but the sparkles). */
+const CAPSULE_KEYS = new Set('kngGrRpPwsS');
+
+function capsuleBox(grid) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  grid.forEach((row, y) =>
+    row.forEach((key, x) => {
+      if (!CAPSULE_KEYS.has(key)) return;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }),
+  );
+  return { width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+test('every size keeps the original mark: a terminal cursor, and a prompt from 32 px up', () => {
+  for (const size of [16, 32, 48, 64, 128, 1024]) {
+    const keys = new Set(designFor(size).flat());
+    assert.ok(keys.has('G'), `${size} px shows the cursor`);
+    if (size >= 32) assert.ok(keys.has('g'), `${size} px shows the > prompt`);
+  }
+});
+
+test('the capsule is a pill, clearly wider than tall, at every size', () => {
+  for (const size of [16, 32, 64, 1024]) {
+    const { width, height } = capsuleBox(designFor(size));
+    assert.ok(width / height >= 1.25, `${size} px: ${width} x ${height} cells`);
+  }
+});
+
+test('at 16 px a full pixel of tile surrounds the capsule', () => {
+  const grid = designFor(16);
+  const body = bodyCoverage(16);
+  grid.forEach((row, y) =>
+    row.forEach((key, x) => {
+      if (!CAPSULE_KEYS.has(key)) return;
+      for (const [nx, ny] of [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ]) {
+        if (CAPSULE_KEYS.has(grid[ny][nx])) continue;
+        assert.equal(body[ny * 16 + nx], 1, `tile around (${x}, ${y})`);
+      }
+    }),
+  );
+});

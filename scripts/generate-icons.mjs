@@ -4,11 +4,17 @@
 //   node scripts/generate-icons.mjs --preview <dir> also write nearest-neighbor
 //                                                  previews (1024/128/32/16 px)
 //
-// The art is original: a pixel capsule (red top, white bottom, dark band)
-// whose center button is a tiny terminal showing `>_`, with a sparkle, on a
+// The art is original: a pixel capsule shaped like a pill, wider than tall
+// (red top, white bottom, dark band), with a small terminal screen set into
+// the band where a button would be. The screen shows a green `>` prompt and a
+// block cursor. Two sparkles sit at the upper right, and everything is on a
 // macOS-style rounded square in the app's palette. It copies no official
-// Pokémon art or logo. Each size is drawn on an integer pixel grid, so edges
-// stay crisp; 16 and 32 px use simplified hand-tuned grids.
+// Pokémon art or logo: the capsule is not round and has no round button.
+//
+// Each size is drawn on an integer pixel grid, so edges stay crisp. 64 px and
+// up draw the full design; 32 and 48 px a simpler one (one sparkle, smaller
+// glint, same screen); 16 px a hand-drawn one where the screen is a bright
+// cursor in the band.
 //
 // Outputs (all committed; scripts/generate-icons.test.mjs fails when they
 // drift from this script):
@@ -32,7 +38,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 // ── Palette ───────────────────────────────────────────────────
 // The app's Pokémon theme (webview-ui/src/index.css): night-dark #1a1c2c,
-// accent red #dc0a2d, dialog white #f8f8f0, panel slate, status green/yellow.
+// accent red #dc0a2d, dialog white #f8f8f0, status green #78c850 and yellow
+// #f8d030.
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16),
@@ -40,13 +47,21 @@ const hex = (h) => [
   parseInt(h.slice(5, 7), 16),
 ];
 
-const BG_TOP = hex('#323c5a');
-const BG_BOTTOM = hex('#161927');
-const GLOW = hex('#5a6a96');
+const BG_TOP = hex('#363f60');
+/** Light enough that the tile's lower half still separates from a dark Dock. */
+const BG_BOTTOM = hex('#202439');
+const GLOW = hex('#56658f');
+/** A faint light line just inside the tile's edge, all the way round. */
+const INNER_STROKE_ALPHA = 0.1;
+/** The brighter part of that line along the top edge. */
+const TOP_RIM_ALPHA = 0.2;
 
 /** Cell colors by key. */
 const INK = {
-  k: hex('#12141f'), // outline, band, button ring, prompt
+  k: hex('#12141f'), // outline, band, screen frame
+  n: hex('#2a3350'), // terminal screen
+  g: hex('#78c850'), // prompt
+  G: hex('#b8f088'), // cursor
   r: hex('#dc0a2d'), // capsule red
   R: hex('#98081f'), // red in shadow
   p: hex('#ff6b7d'), // red highlight
@@ -68,112 +83,150 @@ function emptyGrid(n) {
   return Array.from({ length: n }, () => Array(n).fill(null));
 }
 
-/**
- * The capsule on a 32-cell grid, centered on cell (15, 16), 19 cells across,
- * lit from the upper left. `detail` prints `>_` on the button and adds a
- * second sparkle; without it (the 32 px icon) the button is a plain white dot.
- */
-function capsuleGrid({ detail }) {
-  const n = 32;
-  const grid = emptyGrid(n);
-  const cx = 15;
-  const cy = 16;
-  const radius = 9.5;
-  const inBall = (x, y) => (x - cx) ** 2 + (y - cy) ** 2 <= radius * radius;
+/** Copy a hand-drawn block onto the grid with its top-left cell at (x0, y0);
+ *  '.' leaves the cell below as it is. */
+function stamp(grid, rows, x0, y0) {
+  rows.forEach((row, dy) => {
+    [...row].forEach((key, dx) => {
+      if (key !== '.') grid[y0 + dy][x0 + dx] = key;
+    });
+  });
+}
 
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      if (!inBall(x, y)) continue;
-      const dx = x - cx;
-      const dy = y - cy;
-      const edge = !inBall(x - 1, y) || !inBall(x + 1, y) || !inBall(x, y - 1) || !inBall(x, y + 1);
-      if (edge || Math.abs(dy) <= 1) {
+/** A four-point star centered on (sx, sy) that brightens toward its middle. */
+function sparkle(grid, sx, sy, arm) {
+  for (let i = -arm; i <= arm; i++) {
+    const key = Math.abs(i) === arm ? 'y' : 'Y';
+    grid[sy][sx + i] = key;
+    grid[sy + i][sx] = key;
+  }
+  grid[sy][sx] = 'W';
+}
+
+/** The capsule's half-width, in cells, on each row of its top half (rows 9
+ *  to 15 of the 32-cell grid); the bottom half mirrors it. Hand-tuned so the
+ *  round ends step like a drawn circle rather than an octagon. */
+const CAPSULE_PROFILE = [6, 8, 9, 10, 10, 11, 11];
+/** Half the capsule's height, and of its flat middle stretch, for shading. */
+const CAPSULE_RADIUS = CAPSULE_PROFILE.length;
+const CAPSULE_STRAIGHT = CAPSULE_PROFILE.at(-1) - CAPSULE_RADIUS;
+
+/** Light from the upper left and front, as a unit vector (x right, y down,
+ *  z toward the viewer). */
+const LIGHT = [-0.35, -0.35, 0.87].map((c) => c / Math.hypot(-0.35, -0.35, 0.87));
+
+/** How lit the capsule's surface is at (px, py) cells from its center: a
+ *  cylinder along the flat middle, half-spheres at the ends. */
+function capsuleLight(px, py) {
+  const dx = Math.sign(px) * Math.max(0, Math.abs(px) - CAPSULE_STRAIGHT);
+  const nx = dx / CAPSULE_RADIUS;
+  const ny = py / CAPSULE_RADIUS;
+  const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+  return nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
+}
+
+/**
+ * The capsule: a pill 22 cells wide and 14 tall (round ends, flat top and
+ * bottom) centered on the 32-cell grid, outlined, with a two-cell dark band
+ * across the middle, lit from the upper left.
+ */
+function paintCapsule(grid) {
+  const c = grid.length / 2;
+  const top = c - CAPSULE_PROFILE.length;
+  const halfWidth = (y) => {
+    const i = y < c ? y - top : 2 * c - 1 - y - top;
+    return i >= 0 && i < CAPSULE_PROFILE.length ? CAPSULE_PROFILE[i] : 0;
+  };
+  const inside = (x, y) => {
+    const hw = halfWidth(y);
+    return hw > 0 && x >= c - hw && x < c + hw;
+  };
+  for (let y = 0; y < grid.length; y++) {
+    for (let x = 0; x < grid.length; x++) {
+      if (!inside(x, y)) continue;
+      const px = x + 0.5 - c;
+      const py = y + 0.5 - c;
+      const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+      if (edge || Math.abs(py) < 1) {
         grid[y][x] = 'k';
         continue;
       }
-      // How far out (0 center .. 1 rim) and how much the cell faces away from
-      // the light (toward the lower right).
-      const d = Math.hypot(dx, dy);
-      const rim = d / radius;
-      const away = (dx * 0.6 + dy * 0.8) / d;
-      if (dy < 0) grid[y][x] = rim > 0.74 && away > -0.25 ? 'R' : 'r';
-      else if (rim > 0.8 && away > 0.55) grid[y][x] = 'S';
-      else if (rim > 0.66 && away > 0.2) grid[y][x] = 's';
+      const light = capsuleLight(px, py);
+      if (py < 0) grid[y][x] = light < 0.5 ? 'R' : 'r';
+      else if (light < 0.15) grid[y][x] = 'S';
+      else if (light < 0.4) grid[y][x] = 's';
       else grid[y][x] = 'w';
     }
   }
+}
 
-  // The button: a dark ring that joins the band around a white disc. The
-  // detailed design prints a terminal prompt, `>_`, on it.
-  const ring = detail ? 4.6 : 3.2;
-  const white = detail ? 3.6 : 2.2;
-  for (let y = cy - 5; y <= cy + 5; y++) {
-    for (let x = cx - 5; x <= cx + 5; x++) {
-      const d = Math.hypot(x - cx, y - cy);
-      if (d <= white) grid[y][x] = !detail && x - cx + (y - cy) >= 2 ? 's' : 'w';
-      else if (d <= ring) grid[y][x] = 'k';
-    }
-  }
-  if (detail) {
-    for (const [dx, dy] of [
-      [-2, -1],
-      [-1, 0],
-      [-2, 1],
-      [1, 1],
-      [2, 1],
-    ]) {
-      grid[cy + dy][cx + dx] = 'k';
-    }
-  }
+/**
+ * The terminal set into the band, 10 by 8 cells around the canvas center: a
+ * dark frame round a screen showing a bold `>` prompt and a block cursor.
+ */
+const SCREEN = [
+  '.kkkkkkkk.',
+  'knnnnnnnnk',
+  'knggnnGGnk',
+  'knnggnGGnk',
+  'knnggnGGnk',
+  'knggnnGGnk',
+  'knnnnnnnnk',
+  '.kkkkkkkk.',
+];
 
-  // Glint on the red cap.
+/**
+ * The full design on a 32-cell grid (64 px and up). `detail` adds a larger
+ * glint and a second sparkle; without it (32 and 48 px) the art keeps only
+ * what still reads at one or two pixels per cell.
+ */
+function capsuleGrid({ detail }) {
+  const grid = emptyGrid(32);
+  paintCapsule(grid);
+  stamp(grid, SCREEN, 11, 12);
+
+  // Glint on the red cap, upper left.
   const glint = detail
     ? [
-        ['p', -6, -4],
-        ['p', -5, -5],
-        ['p', -4, -6],
-        ['p', -6, -3],
-        ['P', -5, -4],
-        ['P', -4, -5],
+        ['p', 8, 12],
+        ['p', 9, 11],
+        ['p', 10, 10],
+        ['p', 8, 13],
+        ['P', 9, 12],
+        ['P', 10, 11],
       ]
     : [
-        ['p', -5, -4],
-        ['P', -4, -5],
+        ['p', 8, 12],
+        ['P', 9, 11],
       ];
-  for (const [key, dx, dy] of glint) grid[cy + dy][cx + dx] = key;
+  for (const [key, x, y] of glint) grid[y][x] = key;
 
-  // Sparkles at the upper right: a four-point star that brightens toward
-  // its middle, and in the detailed design a small one beside it.
-  const star = (sx, sy, arm) => {
-    for (let i = -arm; i <= arm; i++) {
-      const key = Math.abs(i) === arm ? 'y' : 'Y';
-      grid[sy][sx + i] = key;
-      grid[sy + i][sx] = key;
-    }
-    grid[sy][sx] = 'W';
-  };
-  star(24, 7, 2);
-  if (detail) star(26, 12, 1);
+  // Sparkles above the capsule's right shoulder, well inside the tile's
+  // rounded corner.
+  sparkle(grid, 24, 7, 2);
+  if (detail) sparkle(grid, 20, 5, 1);
   return grid;
 }
 
-/** Hand-drawn 16 px design: the same capsule, reduced to what 16 px can show.
- *  No outline: at this size it would melt into the dark square. */
+/** Hand-drawn 16 px design: the same pill, 10 px wide with at least a pixel
+ *  of tile all round, a bright cursor in the band where the screen is, and
+ *  one sparkle. The pill sits a pixel low so the sparkle clears it. No
+ *  outline: at this size it would melt into the dark square. */
 const GRID_16 = [
   '................',
   '................',
-  '......rrrr......',
-  '....rrPrrrrr....',
-  '...rrprrrrrrR...',
-  '...rrrrrrrrRR...',
-  '..rrrrkkkkrrRR..',
-  '..kkkkkwwkkkkk..',
-  '..kkkkkwskkkkk..',
-  '..wwwwkkkkwwss..',
+  '............y...',
+  '...........yWy..',
+  '............y...',
+  '.....rrrrrr.....',
+  '....rPrrrrrR....',
+  '...rprrrrrrRR...',
+  '...kkkkGGkkkk...',
+  '...kkkkGGkkkk...',
   '...wwwwwwwwss...',
-  '...wwwwwwwsss...',
-  '....ssssssss....',
-  '......SSSS......',
+  '....wwwwwwss....',
+  '.....ssssSS.....',
+  '................',
   '................',
   '................',
 ].map((row) => [...row].map((c) => (c === '.' ? null : c)));
@@ -193,11 +246,6 @@ export function designFor(size) {
 
 // ── Rendering ─────────────────────────────────────────────────
 
-function normalize(v) {
-  const len = Math.hypot(...v);
-  return v.map((c) => c / len);
-}
-
 const lerp = (a, b, t) => a + (b - a) * t;
 
 /** The rounded square: a superellipse close to the macOS icon shape, 824/1024
@@ -205,6 +253,9 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const BODY_FRACTION = 824 / 1024;
 const SUPERELLIPSE_N = 5;
 const SUPERSAMPLE = 4;
+/** Sizes at or below this get no drop shadow: a blurred pixel or two reads
+ *  as a grey frame on a light background. */
+const NO_SHADOW_MAX_SIZE = 48;
 
 export function bodyCoverage(size, offsetY = 0) {
   const half = (size * BODY_FRACTION) / 2;
@@ -269,11 +320,26 @@ function over(data, i, rgb, alpha) {
 }
 
 /**
+ * How much of pixel p lies in the band `width` px wide just inside the
+ * rounded square's edge (0 deep inside or outside, up to 1 on the edge).
+ * `fromAbove` only counts the top edge.
+ */
+function edgeBand(body, size, p, width, fromAbove) {
+  const x = p % size;
+  const y = (p - x) / size;
+  const at = (xx, yy) => (xx < 0 || yy < 0 || xx >= size || yy >= size ? 0 : body[yy * size + xx]);
+  const neighbors = fromAbove
+    ? [at(x, y - width)]
+    : [at(x, y - width), at(x, y + width), at(x - width, y), at(x + width, y)];
+  return Math.max(0, body[p] - Math.min(...neighbors));
+}
+
+/**
  * Render the icon at `size` px as an RGBA buffer. Deterministic.
  *
  * `fullBleed` fills the whole square with the background and scales the art
- * up to match, with no rounding or shadow: for iOS home-screen icons, which
- * the system masks itself (transparent corners would turn black).
+ * up to match, with no rounding, shadow or edge lines: for iOS home-screen
+ * icons, which the system masks itself (transparent corners would turn black).
  */
 export function renderIcon(size, { fullBleed = false } = {}) {
   const data = Buffer.alloc(size * size * 4);
@@ -288,7 +354,7 @@ export function renderIcon(size, { fullBleed = false } = {}) {
   const origin = fullBleed ? Math.round(size / 2 - (cells / 2) * cellPx) : 0;
   const edge = (cell) => Math.min(size, Math.max(0, Math.round(origin + cell * cellPx)));
 
-  if (!fullBleed) {
+  if (!fullBleed && size > NO_SHADOW_MAX_SIZE) {
     // Drop shadow under the rounded square.
     const shadowOffset = Math.max(1, Math.round(size * 0.012));
     const shadowRadius = Math.max(1, Math.round(size * 0.01));
@@ -296,14 +362,14 @@ export function renderIcon(size, { fullBleed = false } = {}) {
     for (let p = 0; p < size * size; p++) over(data, p * 4, [0, 0, 0], shadow[p] * 0.32);
   }
 
-  // The rounded square: a vertical gradient, a soft glow behind the capsule
-  // and, from 64 px up, a faint light edge along the top.
+  // The rounded square: a vertical gradient, a soft glow behind the capsule,
+  // and a faint light line just inside the edge, brighter along the top.
   const top = fullBleed ? 0 : (size * (1 - BODY_FRACTION)) / 2;
   const span = fullBleed ? size : size * BODY_FRACTION;
-  const glowX = origin + (15.5 / 32) * cells * cellPx;
-  const glowY = origin + (16.5 / 32) * cells * cellPx;
-  const glowR = cells * cellPx * 0.38;
-  const edgeShift = Math.max(1, Math.round(size / 160));
+  const glowX = origin + (cells / 2) * cellPx;
+  const glowY = origin + (cells / 2) * cellPx;
+  const glowR = cells * cellPx * 0.4;
+  const lineWidth = Math.max(1, Math.round(size / 160));
   for (let y = 0; y < size; y++) {
     const t = Math.min(1, Math.max(0, (y + 0.5 - top) / span));
     const base = [0, 1, 2].map((c) => lerp(BG_TOP[c], BG_BOTTOM[c], t));
@@ -313,10 +379,11 @@ export function renderIcon(size, { fullBleed = false } = {}) {
       const d = Math.hypot(x + 0.5 - glowX, y + 0.5 - glowY) / glowR;
       const glow = d < 1 ? (1 - d) ** 2 * 0.45 : 0;
       let rgb = [0, 1, 2].map((c) => lerp(base[c], GLOW[c], glow));
-      if (size >= 64 && !fullBleed) {
-        const above = y - edgeShift >= 0 ? body[(y - edgeShift) * size + x] : 0;
-        const rim = Math.max(0, body[p] - above);
-        rgb = rgb.map((c) => lerp(c, 255, rim * 0.18));
+      if (!fullBleed) {
+        const light =
+          edgeBand(body, size, p, lineWidth, false) * INNER_STROKE_ALPHA +
+          (size >= 64 ? edgeBand(body, size, p, lineWidth, true) * TOP_RIM_ALPHA : 0);
+        rgb = rgb.map((c) => lerp(c, 255, Math.min(1, light)));
       }
       over(data, p * 4, rgb, body[p]);
     }

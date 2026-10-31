@@ -22,7 +22,7 @@ First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](http
 - Conductor is on by default (`--no-conductor` turns it off). Claude Code tracking is opt-in with `--claude`.
 - New flags: `--open`/`--app`, `--browser`, `--claude`, `--no-conductor`, `--conductor-budget`, `--no-sprites`.
 - Turning the Pokémon theme off in Settings restores the Pixel Agents look and stops sprite downloads.
-- A new app icon, a pixel capsule with a terminal prompt on its button, drawn in code by `scripts/generate-icons.mjs`.
+- A new app icon, a pill-shaped pixel capsule with a small terminal (a `>` prompt and a block cursor) set into its band, drawn in code by `scripts/generate-icons.mjs`.
 - No Pokémon artwork is in the repository: sprites are downloaded at runtime from the PMD Sprite Repository to `~/.pixel-agents/cache/pmd/`.
 
 ## Pixel Agents (upstream)
