@@ -17,12 +17,14 @@ import {
   AREA_DEFAULT_COLORS,
   BED_BOARD_PX,
   BED_PILLOW_INSET_PX,
-  POKEMON_SLEEP_AFTER_SEC,
+  SLEEP_AFTER_MS,
+  SLEEP_DROWSY_MS,
   TOWN_MEADOW_DELAY_SEC,
   TOWN_SPAWN_GRACE_SEC,
   TOWN_SPREAD_TILES,
   TOWN_USER_WALK_HOLD_SEC,
 } from '../src/constants.js';
+import type { SleepFacts } from '../src/office/asleep.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { choosePokemonAnim } from '../src/office/engine/pokemonAnim.js';
 import {
@@ -275,6 +277,22 @@ test('an agent without a seat appears in the Meadow', () => {
   for (const ch of extra) assert.ok(os.town!.roles.meadow.has(at(ch)), `at ${at(ch)}`);
 });
 
+/** The office's sleep facts for agent 1 on a test clock that `run` advances. */
+function sleepClock(os: OfficeState) {
+  const clock = { now: 5_000_000, facts: null as SleepFacts | null };
+  os.wallClock = () => clock.now;
+  os.setSleepFacts((id) => (id === 1 ? clock.facts : null));
+  return clock;
+}
+
+function runClocked(os: OfficeState, clock: { now: number }, seconds: number, each?: () => void) {
+  for (let t = 0; t < seconds; t += DT) {
+    clock.now += DT * 1000;
+    os.update(DT);
+    each?.();
+  }
+}
+
 test('an asleep Pokémon naps where it lies in the Meadow', async () => {
   setPokemonThemeEnabled(true);
   const msg = speciesMessage(25);
@@ -282,16 +300,46 @@ test('an asleep Pokémon naps where it lies in the Meadow', async () => {
   setPokemonSpecies(msg);
   await flushDecodes();
   const os = new OfficeState(town);
+  const clock = sleepClock(os);
   const ch = seatedAgent(os, 1);
   os.setAgentIdentity(1, { species: 25 });
   os.setAgentActive(1, false);
-  run(os, 40);
+  clock.facts = { resting: true, lastActivityAt: clock.now };
+  runClocked(os, clock, 40);
   settle(os, ch);
   assert.ok(os.town!.roles.meadow.has(at(ch)), `in the Meadow (at ${at(ch)})`);
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
-  run(os, 2); // finish any stroll
-  const nap = at(ch);
-  run(os, 60, () => assert.equal(at(ch), nap, 'asleep: stays put'));
+  clock.now += SLEEP_AFTER_MS;
+  runClocked(os, clock, 0.2);
+  assert.equal(ch.asleep, true);
+  const nap = { tile: at(ch), x: ch.x, y: ch.y };
+  runClocked(os, clock, 120, () =>
+    assert.deepEqual({ tile: at(ch), x: ch.x, y: ch.y }, nap, 'asleep: never moves'),
+  );
+  assert.equal(choosePokemonAnim(ch, () => true)?.anim, 'Sleep');
+});
+
+test('about to fall asleep at its desk, a Pokémon walks to the Meadow first, then never moves', async () => {
+  setPokemonThemeEnabled(true);
+  const msg = speciesMessage(25);
+  installFakeLoader([msg]);
+  setPokemonSpecies(msg);
+  await flushDecodes();
+  const os = new OfficeState(town);
+  const clock = sleepClock(os);
+  const ch = seatedAgent(os, 1);
+  os.setAgentIdentity(1, { species: 25 });
+  os.setAgentActive(1, false);
+  // Done long ago but only now let go of its desk: drowsy at once.
+  clock.facts = { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS + SLEEP_DROWSY_MS };
+  let asleepAt: string | null = null;
+  runClocked(os, clock, SLEEP_DROWSY_MS / 1000 + 30, () => {
+    if (!ch.asleep) return;
+    asleepAt ??= at(ch);
+    assert.equal(at(ch), asleepAt, 'once asleep it never moves');
+    assert.notEqual(ch.state, CharacterState.WALK);
+  });
+  assert.equal(ch.asleep, true);
+  assert.ok(os.town!.roles.meadow.has(at(ch)), `asleep in the Meadow (at ${at(ch)})`);
 });
 
 test('a fainted Pokémon walks to the Center with its walk, then faints', () => {
@@ -616,7 +664,7 @@ test("an asleep Pokémon's bubble sits on its sleeping pose, not its standing he
   os.setAgentActive(1, false);
   run(os, 40);
   settle(os, ch);
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  ch.asleep = true;
   assert.equal(bodyTopY(ch), pokemonGroundY(ch) - 6);
 });
 

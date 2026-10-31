@@ -6,7 +6,8 @@
  *   Fainted (errored)           → walks to the Center and lies in a bed
  *   Needs you (awaiting input)  → stays where it is (seated at its desk)
  *   Idle                        → walks to the Meadow and wanders inside it
- *   Asleep                      → naps in the Meadow (walks there first)
+ *   About to sleep              → walks to the Meadow if it isn't there, then
+ *                                 stays put; asleep it never moves
  *
  * A layout without the matching role, sub-agents and active agents get `null`:
  * the caller runs the upstream FSM exactly as before.
@@ -371,7 +372,9 @@ function headTo(
 }
 
 export interface TownStepOptions {
-  /** Asleep (a Pokémon not active for a while): it naps once in the Meadow. */
+  /** About to fall asleep (office/asleep.ts): it walks to the Meadow if it
+   *  isn't there and then stays put, so it is still when it falls asleep.
+   *  (Once asleep, OfficeState holds it still and this step doesn't run.) */
   asleep: boolean;
   /** Tiles other characters stand on or are heading to (computed on demand). */
   occupied: () => Occupancy;
@@ -465,7 +468,7 @@ export function stepTownCharacter(
     return;
   }
   if (world.roles.meadow.has(tileKey(ch.tileCol, ch.tileRow))) {
-    if (opts.asleep) return; // napping
+    if (opts.asleep) return; // settling down for its nap
     wanderMeadow(ch, dt, world, opts.occupied, random);
     return;
   }

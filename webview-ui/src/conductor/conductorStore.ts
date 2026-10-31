@@ -518,8 +518,13 @@ export class ConductorStore {
         if (msg.kind === 'watched') return state;
         const from = agentBattleName(state, msg.fromId);
         const to = agentBattleName(state, msg.toId);
+        // A message received is activity: it wakes a sleeping receiver.
+        const next =
+          msg.toId in state.agents
+            ? this.withAgent(state, msg.toId, (a) => ({ ...a, lastActiveAt: now }))
+            : state;
         return this.log(
-          state,
+          next,
           msg.kind === 'spawned' ? `${from} sent out ${to}!` : `${from} sent ${to} a message!`,
         );
       }

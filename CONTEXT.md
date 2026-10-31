@@ -252,7 +252,7 @@ The `Lv` number on a Pokémon character, derived from its session's activity: th
 _Avoid_: XP, score
 
 **Status condition**:
-The badge on a Pokémon character that names its state in Pokémon terms: `SLP` asleep (not active for a while), `FNT` fainted (its session errored), `!` needs you (waiting for input or a permission request).
+The badge on a Pokémon character that names its state in Pokémon terms: `SLP` asleep (its session done or idle with no activity for two minutes; the party bar and the office always agree), `FNT` fainted (its session errored), `!` needs you (waiting for input or a permission request).
 _Avoid_: status (that's the agent's status), badge
 
 **Cry**:

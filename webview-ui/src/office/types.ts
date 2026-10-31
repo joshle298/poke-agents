@@ -292,8 +292,18 @@ export interface Character {
   pmdAnimTime?: number;
   /** Which animation `pmdAnimTime` belongs to (situation + anim name). */
   pmdAnimKey?: string;
-  /** Seconds since the agent was last active. */
-  idleSec?: number;
+  /** Asleep (office/asleep.ts), as OfficeState last worked it out: the Sleep
+   *  anim, the Zzz and the SLP label, and it holds still. */
+  asleep?: boolean;
+  /** Seconds before a tool start, message or turn end may play a one-shot. */
+  oneShotCooldown?: number;
+  /** Seconds it has been drawn as a closed capsule waiting for its Pokémon
+   *  (its sheets loading or failed); undefined once it opened. Drives the
+   *  capsule's bob. */
+  capsuleWaitSec?: number;
+  /** Seconds a capsule spawn has held at the landing, waiting for the sheets
+   *  (at most CAPSULE_WAIT_MAX_SEC). */
+  spawnHoldSec?: number;
   /** PMD row (0-7) to face instead of `dir` while a one-shot plays. */
   faceOverride?: number | null;
   /** World point the capsule is thrown from on spawn (the Lead or parent);
@@ -341,7 +351,7 @@ export interface BedRest {
 
 /** One-shot animations: a tool burst, sending a message, a finished turn,
  *  waking up, and the hurt flinch that leads into a faint. */
-export type PokemonOneShot = 'toolBurst' | 'message' | 'turnEnd' | 'wake' | 'hurt';
+export type PokemonOneShot = 'toolRead' | 'toolWrite' | 'message' | 'turnEnd' | 'wake' | 'hurt';
 
 /** A message capsule in flight from one agent to another (agentMessage). */
 export interface Projectile {

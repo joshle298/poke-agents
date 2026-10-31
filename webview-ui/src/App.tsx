@@ -32,7 +32,7 @@ import { openInConductor, setPokemonTheme } from './conductor/actions.js';
 import type { ConductorAgent } from './conductor/conductorStore.js';
 import { conductorStore, isStreamProvider, useConductor } from './conductor/conductorStore.js';
 import { useWindowWidth } from './conductor/hooks.js';
-import { buildPartySlot, partyOrder } from './conductor/party.js';
+import { buildPartySlot, partyOrder, sleepFactsOf } from './conductor/party.js';
 import { useBoolPref } from './conductor/preferences.js';
 import { useConductorFeed } from './conductor/useConductorFeed.js';
 import {
@@ -90,6 +90,10 @@ if (isE2E) installTestHooks(officeStateRef);
 function getOfficeState(): OfficeState {
   if (!officeStateRef.current) {
     officeStateRef.current = new OfficeState();
+    // Asleep comes from the party's own facts (one rule, one source).
+    officeStateRef.current.setSleepFacts((id) =>
+      sleepFactsOf(conductorStore.getState().agents[id]),
+    );
   }
   return officeStateRef.current;
 }

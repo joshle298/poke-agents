@@ -16,7 +16,8 @@ import {
   POKEMON_EVOLVE_FLICKER_LOW,
   POKEMON_EVOLVE_SEC,
   POKEMON_EVOLVE_SOLID_ENVELOPE,
-  POKEMON_SLEEP_AFTER_SEC,
+  POKEMON_LOOP_MIN_AVG_TICKS,
+  POKEMON_ONE_SHOT_GAP_SEC,
 } from '../../constants.js';
 import type { Character, PokemonOneShot } from '../types.js';
 import { CharacterState, Direction } from '../types.js';
@@ -41,7 +42,7 @@ export interface PokemonAnimSource {
 }
 
 export interface PokemonAnimChoice {
-  /** The situation that picked it (walk, work, toolBurst, faint, ...). */
+  /** The situation that picked it (walk, work, toolWrite, faint, ...). */
   situation: PokemonAnimSituation;
   /** The PMD animation name (Walk, Charge, ...). */
   anim: string;
@@ -54,6 +55,17 @@ export function pmdRow(ch: Pick<Character, 'dir' | 'faceOverride'>, directions: 
   if (directions < PMD_DIRECTION_ROWS) return 0;
   if (ch.faceOverride !== undefined && ch.faceOverride !== null) return ch.faceOverride;
   return ROW_BY_DIRECTION[ch.dir] ?? PMD_ROW.DOWN;
+}
+
+/** Sheet row for a chosen animation: Sleep always lies in row 0 (most Sleep
+ *  sheets have one row; 8-row ones curl up facing down), the rest pmdRow. */
+export function pmdRowFor(
+  ch: Pick<Character, 'dir' | 'faceOverride'>,
+  chosen: Pick<PokemonAnimChoice, 'situation'>,
+  directions: number,
+): number {
+  if (chosen.situation === 'sleep') return 0;
+  return pmdRow(ch, directions);
 }
 
 /** The 8-way PMD row facing along (dx, dy), world axes (y grows down). */
@@ -87,6 +99,20 @@ export function pmdDurationSec(durations: readonly number[]): number {
 }
 
 /**
+ * The durations a frame is timed by. A one-shot plays as authored. A loop
+ * whose frames hold for fewer than POKEMON_LOOP_MIN_AVG_TICKS game frames on
+ * average (a Charge-style shiver, a quick Idle) is slowed to that average,
+ * every frame scaled alike, so nothing on screen loops into a shake.
+ */
+export function pmdPlayDurations(durations: readonly number[], loop: boolean): readonly number[] {
+  if (!loop || durations.length === 0) return durations;
+  const avg = totalTicks(durations) / durations.length;
+  if (avg <= 0 || avg >= POKEMON_LOOP_MIN_AVG_TICKS) return durations;
+  const scale = POKEMON_LOOP_MIN_AVG_TICKS / avg;
+  return durations.map((d) => Math.max(0, d) * scale);
+}
+
+/**
  * Frame index `t` seconds into an animation whose frames hold for
  * `durations` game frames (60 fps). A looping animation wraps; a one-shot
  * holds its last frame once it has run its course.
@@ -116,15 +142,13 @@ export function pickPokemonAnim(
   return null;
 }
 
-/** Seated resting after a stroll (the 2-4 min rest), not the one-frame
- *  hand-off when a turn ends (seatTimer -1 sentinel, then 0). */
-function isSeatedResting(ch: Character): boolean {
-  return ch.state === CharacterState.TYPE && !ch.isActive && ch.seatTimer > 0;
-}
-
+/**
+ * Asleep as OfficeState last worked it out (`ch.asleep`, from the shared rule
+ * in office/asleep.ts: done or idle with no activity for SLEEP_AFTER_MS), the
+ * same answer the party bar and Pokédex give. Never while working or fainted.
+ */
 export function isPokemonAsleep(ch: Character): boolean {
-  if (ch.isActive) return false;
-  return (ch.idleSec ?? 0) >= POKEMON_SLEEP_AFTER_SEC || isSeatedResting(ch);
+  return ch.asleep === true && !ch.isActive && !ch.isErrored;
 }
 
 /** Status condition for the overlay badges: FNT, then "!", then SLP. */
@@ -149,8 +173,8 @@ function choice(
 /**
  * The animation for a character right now (DESIGN §D table). Precedence:
  * fainted (walking while it heads to the Pokémon Center), a one-shot,
- * walking, needs-you, asleep, working, idle. Null when
- * the species has none of the chain (the caller draws the upstream character).
+ * walking, needs-you, asleep, working, idle. Null when the species has none
+ * of the chain decoded (the renderer draws its closed capsule).
  */
 export function choosePokemonAnim(
   ch: Character,
@@ -176,9 +200,8 @@ export function choosePokemonAnim(
   if (ch.state === CharacterState.WALK) return choice('walk', true, has);
   if (ch.bubbleType === 'permission' || ch.awaitingInput) return choice('alert', true, has);
   if (isPokemonAsleep(ch)) return choice('sleep', true, has);
-  if (ch.state === CharacterState.TYPE && ch.isActive) {
-    return choice(isReadingTool(ch.currentTool) ? 'read' : 'work', true, has);
-  }
+  // At the desk it breathes; a tool start may add one short one-shot.
+  if (ch.state === CharacterState.TYPE && ch.isActive) return choice('work', true, has);
   return choice('idle', true, has);
 }
 
@@ -192,10 +215,26 @@ export function canPlayOneShot(kind: PokemonOneShot, has: (anim: string) => bool
   return pickPokemonAnim(POKEMON_ANIM_FALLBACKS[kind], has) !== null;
 }
 
+/** One-shots that are flavour, not state: at most one per
+ *  POKEMON_ONE_SHOT_GAP_SEC per Pokémon, never back to back. */
+const RATE_LIMITED: ReadonlySet<PokemonOneShot> = new Set<PokemonOneShot>([
+  'toolRead',
+  'toolWrite',
+  'message',
+  'turnEnd',
+]);
+
+/** The one-shot a tool start plays: Nod for a reading tool, else Shoot or Attack. */
+export function toolOneShot(tool: string | null): PokemonOneShot {
+  return isReadingTool(tool) ? 'toolRead' : 'toolWrite';
+}
+
 /**
- * Start a one-shot. `force` restarts one already playing (a second message);
- * otherwise a running one-shot is left alone. A fainted character only takes
- * the hurt flinch. Returns whether it started.
+ * Start a one-shot. Tool starts, messages and turn ends are rate-limited: one
+ * plays only when none is playing and POKEMON_ONE_SHOT_GAP_SEC have passed
+ * since the last one ended. Wake and Hurt always start (`force` restarts one
+ * already playing). A fainted character only takes the hurt flinch. Returns
+ * whether it started.
  */
 export function startPokemonOneShot(
   ch: Character,
@@ -203,7 +242,11 @@ export function startPokemonOneShot(
   opts: { force?: boolean; faceRow?: number } = {},
 ): boolean {
   if (ch.isErrored && kind !== 'hurt') return false;
-  if (ch.pmdAnim && !opts.force) return false;
+  if (RATE_LIMITED.has(kind)) {
+    if (ch.pmdAnim || (ch.oneShotCooldown ?? 0) > 0) return false;
+  } else if (ch.pmdAnim && !opts.force) {
+    return false;
+  }
   ch.pmdAnim = kind;
   ch.pmdAnimKey = undefined; // restart the clock on the next tick
   ch.pmdAnimTime = 0;
@@ -211,9 +254,11 @@ export function startPokemonOneShot(
   return true;
 }
 
-function endOneShot(ch: Character): void {
+/** Retire the one-shot; one that played starts the gap before the next. */
+function endOneShot(ch: Character, played: boolean): void {
   ch.pmdAnim = null;
   ch.faceOverride = null;
+  if (played) ch.oneShotCooldown = POKEMON_ONE_SHOT_GAP_SEC;
 }
 
 /** A one-shot is on screen right now (the FSM holds still while it plays). */
@@ -224,15 +269,17 @@ export function isOneShotPlaying(ch: Character, has: (anim: string) => boolean):
 }
 
 /**
- * Advance the PMD clock by `dt`: count time since the agent was last active,
+ * Advance the PMD clock by `dt`: run down the gap before the next one-shot,
  * restart the clock when the chosen animation changes, and retire a one-shot
  * once it has played through (or when the species can't play it).
  */
 export function advancePokemonAnim(ch: Character, dt: number, src: PokemonAnimSource): void {
-  ch.idleSec = ch.isActive ? 0 : (ch.idleSec ?? 0) + dt;
+  if (!ch.pmdAnim && (ch.oneShotCooldown ?? 0) > 0) {
+    ch.oneShotCooldown = Math.max(0, (ch.oneShotCooldown ?? 0) - dt);
+  }
 
-  if (ch.pmdAnim === 'hurt' && !ch.isErrored) endOneShot(ch);
-  if (ch.pmdAnim && !isOneShotPlaying(ch, src.has)) endOneShot(ch);
+  if (ch.pmdAnim === 'hurt' && !ch.isErrored) endOneShot(ch, false);
+  if (ch.pmdAnim && !isOneShotPlaying(ch, src.has)) endOneShot(ch, false);
 
   const chosen = choosePokemonAnim(ch, src.has);
   const key = pokemonAnimKey(chosen);
@@ -245,7 +292,8 @@ export function advancePokemonAnim(ch: Character, dt: number, src: PokemonAnimSo
 
   if (chosen && !chosen.loop && ch.pmdAnim === chosen.situation) {
     const durations = src.durations(chosen.anim);
-    if (!durations || (ch.pmdAnimTime ?? 0) >= pmdDurationSec(durations)) endOneShot(ch);
+    if (!durations) endOneShot(ch, false);
+    else if ((ch.pmdAnimTime ?? 0) >= pmdDurationSec(durations)) endOneShot(ch, true);
   }
 }
 

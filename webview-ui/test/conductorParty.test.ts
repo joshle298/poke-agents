@@ -13,8 +13,9 @@ import {
   pcBoxSpecies,
   pickPortrait,
   portraitEmotion,
+  sleepFactsOf,
 } from '../src/conductor/party.js';
-import { PARTY_MAX_NEST_DEPTH, PARTY_SLEEP_AFTER_MS } from '../src/constants.js';
+import { PARTY_MAX_NEST_DEPTH, SLEEP_AFTER_MS } from '../src/constants.js';
 
 function agent(patch: Partial<ConductorAgent> = {}): ConductorAgent {
   return { id: 1, awaitingInput: false, permission: false, tools: [], ...patch };
@@ -78,20 +79,28 @@ describe('agentCondition', () => {
     ).toBe('working');
   });
 
-  it('falls asleep once done for PARTY_SLEEP_AFTER_MS', () => {
+  it('falls asleep once done for SLEEP_AFTER_MS', () => {
     const justDone = agent({ status: 'waiting', lastActiveAt: now - 1_000 });
     expect(agentCondition(justDone, now)).toBe('done');
-    const longDone = agent({ status: 'waiting', lastActiveAt: now - PARTY_SLEEP_AFTER_MS });
+    const longDone = agent({ status: 'waiting', lastActiveAt: now - SLEEP_AFTER_MS });
     expect(agentCondition(longDone, now)).toBe('asleep');
     // The provider's newer activity keeps it awake.
     const providerActive = agent({
       status: 'waiting',
-      lastActiveAt: now - PARTY_SLEEP_AFTER_MS * 2,
+      lastActiveAt: now - SLEEP_AFTER_MS * 2,
       lastActivityAt: now - 1_000,
     });
     expect(agentCondition(providerActive, now)).toBe('done');
     // No timing known: done, not asleep.
     expect(agentCondition(agent({ status: 'waiting' }), now)).toBe('done');
+    // A background tool still open: working, never asleep.
+    const openTool = agent({
+      status: 'waiting',
+      lastActiveAt: now - SLEEP_AFTER_MS,
+      tools: [{ toolId: 'bg', status: 'Subtask: watch', done: false }],
+    });
+    expect(agentCondition(openTool, now)).toBe('working');
+    expect(sleepFactsOf(openTool)?.resting).toBe(false);
   });
 
   it('blinks only for needs-you', () => {

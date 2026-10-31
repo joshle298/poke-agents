@@ -117,6 +117,7 @@ components:
         - $ref: '#/components/schemas/CharacterSpritesLoaded'
         - $ref: '#/components/schemas/PetSpritesLoaded'
         - $ref: '#/components/schemas/PokemonSpeciesLoaded'
+        - $ref: '#/components/schemas/PokemonSpeciesFailed'
         - $ref: '#/components/schemas/FloorTilesLoaded'
         - $ref: '#/components/schemas/WallTilesLoaded'
         - $ref: '#/components/schemas/CarpetTilesLoaded'
@@ -776,6 +777,15 @@ components:
           description: >-
             Whether the office uses the Pokémon theme (Pokémon characters, themed
             panels). Absent means on.
+        pokemonSprites:
+          type: boolean
+          description: >-
+            This connection is sent Pokémon species (`pokemonSpeciesLoaded`, or
+            `pokemonSpeciesFailed`) for every agent: the standalone server with
+            sprites on. With the theme on, the office then draws every agent as a
+            Pokémon, a closed capsule until its sheets decode, and never an
+            upstream character. Absent means no (VS Code, `--no-sprites`): the
+            office draws upstream characters.
 
     BypassPermissionsUpdated:
       description: |
@@ -1304,6 +1314,26 @@ components:
             project on first request.
             Absent while sounds are off on the server (--no-sounds,
             POKE_AGENTS_SOUNDS=off).
+
+    PokemonSpeciesFailed:
+      description: |
+        A species an agent on this connection shows could not be loaded (the
+        sprite hosts unreachable, a bad download). The office keeps that
+        agent's closed capsule ("Sprite unavailable"); the server tries again
+        after a backoff and sends pokemonSpeciesLoaded once it succeeds. Sent
+        once per species and connection until it loads; standalone only.
+      type: object
+      additionalProperties: false
+      required: [type, dex, shiny]
+      properties:
+        type:
+          const: pokemonSpeciesFailed
+        dex:
+          type: integer
+          minimum: 1
+          maximum: 1025
+        shiny:
+          type: boolean
 
     PokemonThemeUpdated:
       description: The Pokémon theme was switched on or off. Broadcast to every office.

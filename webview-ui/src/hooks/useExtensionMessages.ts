@@ -13,6 +13,7 @@ import { statusChimeFor } from '../office/chimePolicy.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
 import { applyPendingIdentity, reconcileExistingAgents } from '../office/engine/existingAgents.js';
 import type { AgentIdentity, OfficeState } from '../office/engine/officeState.js';
+import { setPokemonSpritesDelivered } from '../office/engine/pokemonTheme.js';
 import {
   setGhostHeadlessAgents as setRendererGhostHeadlessAgents,
   setPokemonThemeEnabled,
@@ -24,7 +25,7 @@ import { migrateLayoutColors } from '../office/layout/layoutSerializer.js';
 import { setCarpetSprites } from '../office/sprites/carpetTiles.js';
 import { setPetTemplates } from '../office/sprites/petSpriteData.js';
 import { installBrowserSheetLoader } from '../office/sprites/pokemonSheetLoader.js';
-import { setPokemonSpecies } from '../office/sprites/pokemonSprites.js';
+import { markPokemonSpeciesFailed, setPokemonSpecies } from '../office/sprites/pokemonSprites.js';
 import { setCharacterTemplates } from '../office/sprites/spriteData.js';
 import {
   extractToolName,
@@ -855,6 +856,9 @@ export function useExtensionMessages(
         setPokemonSpecies(msg as PokemonSpeciesLoaded);
         // New species are when sheet memory grows; drop the long-unused ones.
         os.sweepPokemonSheets();
+      } else if (msg.type === 'pokemonSpeciesFailed') {
+        // Its capsules stay closed ("Sprite unavailable") until a retry lands.
+        markPokemonSpeciesFailed(msg.dex as number, msg.shiny === true);
       } else if (msg.type === 'petSpritesLoaded') {
         const pets = msg.pets;
         if (!Array.isArray(pets)) {
@@ -931,6 +935,9 @@ export function useExtensionMessages(
         }
         // Absent means on (hosts that predate the theme, VS Code).
         applyPokemonTheme(msg.pokemonTheme !== false);
+        // A host that delivers sprites makes every agent a Pokémon (a capsule
+        // until its sheets decode); absent = VS Code, --no-sprites: upstream.
+        setPokemonSpritesDelivered(msg.pokemonSprites === true);
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[]);
         }

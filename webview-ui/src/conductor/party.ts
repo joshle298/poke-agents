@@ -7,10 +7,11 @@
 import type { ConductorSessionSummary } from '../../../core/src/messages.js';
 import {
   PARTY_MAX_NEST_DEPTH,
-  PARTY_SLEEP_AFTER_MS,
   POKEMON_MAX_DEX,
   POKEMON_PORTRAIT_ROUTE_PREFIX,
 } from '../constants.js';
+import type { SleepFacts } from '../office/asleep.js';
+import { isAsleep } from '../office/asleep.js';
 import type { ConductorAgent, ConductorState, SpeciesRef } from './conductorStore.js';
 import { agentNickname, currentActivity, findSpecies, isStreamProvider } from './conductorStore.js';
 
@@ -64,6 +65,25 @@ export function partyOrder(
 /** What a party slot shows for an agent. */
 export type PartyCondition = 'working' | 'needsYou' | 'done' | 'asleep' | 'error';
 
+/**
+ * What the asleep rule (office/asleep.ts) reads about an agent: resting when
+ * its turn is over (status waiting) with no question, permission or open tool;
+ * its last activity the newer of what the provider observed and what this
+ * client saw live. The office reads these same facts for its characters, so
+ * the party's SLP and the office's sleeping Pokémon always agree.
+ */
+export function sleepFactsOf(agent: ConductorAgent | undefined): SleepFacts | null {
+  if (!agent) return null;
+  return {
+    resting:
+      agent.status === 'waiting' &&
+      !agent.awaitingInput &&
+      !agent.permission &&
+      currentActivity(agent) === null,
+    lastActivityAt: Math.max(agent.lastActiveAt ?? 0, agent.lastActivityAt ?? 0),
+  };
+}
+
 /** The agent's condition, or null before it has shown any activity. */
 export function agentCondition(
   agent: ConductorAgent | undefined,
@@ -74,8 +94,7 @@ export function agentCondition(
   if (agent.permission || (agent.status === 'waiting' && agent.awaitingInput)) return 'needsYou';
   if (agent.status === 'active' || currentActivity(agent) !== null) return 'working';
   if (agent.status !== 'waiting') return null;
-  const lastActive = Math.max(agent.lastActiveAt ?? 0, agent.lastActivityAt ?? 0);
-  return lastActive > 0 && now - lastActive >= PARTY_SLEEP_AFTER_MS ? 'asleep' : 'done';
+  return isAsleep(sleepFactsOf(agent), now) ? 'asleep' : 'done';
 }
 
 /** True when the agent needs the user (its slot blinks). */

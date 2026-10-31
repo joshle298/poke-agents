@@ -1,4 +1,4 @@
-import { useNow } from '../conductor/hooks.js';
+import { useSleepClock } from '../conductor/hooks.js';
 import type { PartySlot } from '../conductor/party.js';
 import {
   CONDUCTOR_UI_TICK_MS,
@@ -68,7 +68,7 @@ export function AgentCardBar({
   titleFor,
   closeTitleFor,
 }: AgentCardBarProps) {
-  const now = useNow(CONDUCTOR_UI_TICK_MS, layout !== 'overlay' && slotFor !== undefined);
+  const now = useSleepClock(CONDUCTOR_UI_TICK_MS, layout !== 'overlay' && slotFor !== undefined);
   if (agentIds.length === 0) return null;
 
   if (layout === 'overlay') {

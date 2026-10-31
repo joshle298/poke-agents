@@ -13,6 +13,8 @@ export const WAITING_INPUT_ACTIVITY_TEXT = 'Waiting for input';
 /** An active agent with no tool running yet (thinking, writing a reply). */
 export const WORKING_ACTIVITY_TEXT = 'Working';
 export const IDLE_ACTIVITY_TEXT = 'Idle';
+/** A Pokémon asleep (office/asleep.ts): the party and Pokédex say the same. */
+export const ASLEEP_ACTIVITY_TEXT = 'Asleep';
 
 /** Derive a short human-readable activity string from tools/status */
 export function getActivityText(

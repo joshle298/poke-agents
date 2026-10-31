@@ -18,7 +18,6 @@ import {
   BUTTON_RADIUS_ZOOM_FACTOR,
   CARPET_DEFAULT_ACCENT_COLOR,
   CARPET_DEFAULT_COLOR,
-  CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
@@ -67,6 +66,7 @@ import {
   hasCarpetSprites,
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
+import { CAPSULE_CLOSED_SPRITE, PROMPTLING_SPRITE } from '../sprites/pokemonUiSprites.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE, getCharacterSprites } from '../sprites/spriteData.js';
 import type {
@@ -87,17 +87,28 @@ import {
   wallColorToHex,
 } from '../wallTiles.js';
 import type { BedLie } from './bedLie.js';
-import { renderCapsuleEffect } from './capsuleEffect.js';
+import {
+  renderCapsuleEffect,
+  renderRestingCapsule,
+  restingCapsuleCenter,
+} from './capsuleEffect.js';
 import { getCharacterSprite } from './characters.js';
 import type { ConnectionsRenderState } from './connectionsRender.js';
 import { renderLinks, renderProjectiles } from './connectionsRender.js';
 import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
-import { spawnEffectStyle } from './matrixEffectState.js';
+import { CAPSULE_LANDED_SEC } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
-import { bedLieOf, pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
+import {
+  bedLieOf,
+  hasPokemonIdentity,
+  isPokemonPlaceholder,
+  pokemonGeometryOf,
+  pokemonGroundY,
+} from './pokemonCharacter.js';
 import type { ZDrawable } from './pokemonRender.js';
 import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
+import { isPokemonOffice } from './pokemonTheme.js';
 
 export type { ConnectionsRenderState } from './connectionsRender.js';
 /** The Pokémon theme switch: set from settingsLoaded.pokemonTheme (absent =
@@ -123,6 +134,25 @@ export function setGhostHeadlessAgents(enabled: boolean): void {
 
 export function isGhostHeadlessAgentsEnabled(): boolean {
   return ghostHeadlessAgents;
+}
+
+// ── Draw counters (e2e) ─────────────────────────────────────────
+
+/** How many characters each frame drew as an upstream human (any sprite of
+ *  the character sheets: standing, seated, walking, lying, in its spawn
+ *  effect). A Pokémon office must keep this at zero; e2e reads it through
+ *  testHooks.getCharacterDrawStats. */
+const drawStats = { frames: 0, humanDraws: 0, framesWithHumans: 0, maxHumansInFrame: 0 };
+
+export function getCharacterDrawStats(): Readonly<typeof drawStats> {
+  return { ...drawStats };
+}
+
+export function resetCharacterDrawStats(): void {
+  drawStats.frames = 0;
+  drawStats.humanDraws = 0;
+  drawStats.framesWithHumans = 0;
+  drawStats.maxHumansInFrame = 0;
 }
 
 // ── Render functions ────────────────────────────────────────────
@@ -519,6 +549,17 @@ export function floorForegroundDrawables(
 /** What tall grass may cover of a character: a Pokémon keeps the top
  *  (1 − FLOOR_FOREGROUND_MAX_COVER) of its body in view; others, no limit. */
 function foregroundEntityOf(ch: Character): ForegroundEntity {
+  if (isPokemonPlaceholder(ch)) {
+    // The closed capsule: grass covers at most part of it.
+    const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
+    const height = CAPSULE_CLOSED_SPRITE.length + POKEMON_FEET_BELOW_GROUND_PX;
+    return {
+      tileCol: ch.tileCol,
+      tileRow: ch.tileRow,
+      path: ch.path,
+      coverTopY: feetY - height * FLOOR_FOREGROUND_MAX_COVER,
+    };
+  }
   const g = pokemonGeometryOf(ch);
   if (!g) return ch;
   const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
@@ -665,6 +706,7 @@ export function renderScene(
   }
 
   // Characters
+  let humans = 0;
   for (const ch of characters) {
     // Headless agents (adopted, no terminal to focus) render translucent while
     // the "Display headless as ghosts" setting is on.
@@ -693,6 +735,20 @@ export function renderScene(
       continue;
     }
 
+    // With the theme on a Pokémon is never drawn as an upstream character:
+    // one with no frame to show (its sprites loading, failed, or the anim
+    // not decoded yet) is its closed capsule; in a Pokémon office the
+    // greeter is Promptling.
+    if (hasPokemonIdentity(ch)) {
+      pushRestingCapsule(drawables, ch, offsetX, offsetY, zoom, isSelected, isHovered, alpha);
+      continue;
+    }
+    if (ch.isGreeter && isPokemonOffice()) {
+      pushPromptling(drawables, ch, offsetX, offsetY, zoom, alpha);
+      continue;
+    }
+
+    humans++;
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
     const lie = bedLieOf(ch);
     if (lie) {
@@ -715,31 +771,8 @@ export function renderScene(
     // at lower rows (e.g. desks, bookshelves that occlude from below).
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
 
-    // A Pokémon still decoding opens out of its capsule as the upstream
-    // character; everyone else gets the matrix rain.
-    if (ch.matrixEffect && spawnEffectStyle(ch) === 'capsule') {
-      const frame = spriteFrame(spriteData);
-      const ground = { x: ch.x, y: ch.y + sittingOffset };
-      const pCh = ch;
-      drawables.push({
-        zY: charZY,
-        draw: (c) =>
-          renderCapsuleEffect(
-            c,
-            pCh,
-            frame,
-            ground,
-            CHARACTER_HIT_HEIGHT,
-            offsetX,
-            offsetY,
-            zoom,
-            alpha,
-          ),
-      });
-      continue;
-    }
-
-    // Matrix spawn/despawn effect — skip outline, use per-pixel rendering
+    // Matrix spawn/despawn effect — skip outline, use per-pixel rendering. A
+    // Pokémon (its capsule) and Promptling never reach here.
     if (ch.matrixEffect) {
       const mDrawX = drawX;
       const mDrawY = drawY;
@@ -819,6 +852,95 @@ export function renderScene(
   for (const d of drawables) {
     d.draw(ctx);
   }
+
+  drawStats.frames++;
+  drawStats.humanDraws += humans;
+  if (humans > 0) drawStats.framesWithHumans++;
+  drawStats.maxHumansInFrame = Math.max(drawStats.maxHumansInFrame, humans);
+}
+
+/**
+ * A Pokémon whose sprites aren't ready: its closed capsule. Thrown in on
+ * spawn (the capsule effect's throw), then resting on its ground point with
+ * a gentle bob until the sheets arrive and OfficeState opens it; a recall
+ * before that flies the closed capsule off.
+ */
+function pushRestingCapsule(
+  drawables: ZDrawable[],
+  ch: Character,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  isSelected: boolean,
+  isHovered: boolean,
+  alpha: number,
+): void {
+  const ground = { x: ch.x, y: pokemonGroundY(ch) };
+  const zY = characterZ(ch);
+  if (ch.matrixEffect === 'spawn' && ch.matrixEffectTimer < CAPSULE_LANDED_SEC) {
+    // Still in the air: the throw (or drop) of the spawn effect.
+    const frame = spriteFrame(CAPSULE_CLOSED_SPRITE);
+    drawables.push({
+      zY,
+      draw: (c) => renderCapsuleEffect(c, ch, frame, ground, 0, offsetX, offsetY, zoom, alpha),
+    });
+    return;
+  }
+  if ((isSelected || isHovered) && ch.matrixEffect !== 'despawn') {
+    const outline = getCachedSprite(getOutlineSprite(CAPSULE_CLOSED_SPRITE), zoom);
+    const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
+    const center = restingCapsuleCenter(ch, ground);
+    const x = Math.round(offsetX + center.x * zoom - outline.width / 2);
+    const y = Math.round(offsetY + center.y * zoom - outline.height / 2);
+    drawables.push({
+      zY: zY - OUTLINE_Z_SORT_OFFSET,
+      draw: (c) => {
+        c.save();
+        c.globalAlpha = outlineAlpha;
+        c.drawImage(outline, x, y);
+        c.restore();
+      },
+    });
+  }
+  drawables.push({
+    zY,
+    draw: (c) => renderRestingCapsule(c, ch, ground, offsetX, offsetY, zoom, alpha),
+  });
+}
+
+/** The greeter in a Pokémon office: Promptling, stepping out of a capsule
+ *  on spawn and recalled into one, instead of an upstream character. */
+function pushPromptling(
+  drawables: ZDrawable[],
+  ch: Character,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  alpha: number,
+): void {
+  const frame = spriteFrame(PROMPTLING_SPRITE);
+  const ground = { x: ch.x, y: ch.y };
+  const zY = characterZ(ch);
+  if (ch.matrixEffect) {
+    drawables.push({
+      zY,
+      draw: (c) =>
+        renderCapsuleEffect(c, ch, frame, ground, frame.sh, offsetX, offsetY, zoom, alpha),
+    });
+    return;
+  }
+  const cached = getCachedSprite(PROMPTLING_SPRITE, zoom);
+  const x = Math.round(offsetX + ground.x * zoom - cached.width / 2);
+  const y = Math.round(offsetY + ground.y * zoom - cached.height);
+  drawables.push({
+    zY,
+    draw: (c) => {
+      c.save();
+      c.globalAlpha = alpha;
+      c.drawImage(cached, x, y);
+      c.restore();
+    },
+  });
 }
 
 // ── Seat indicators ─────────────────────────────────────────────

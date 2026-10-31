@@ -8,21 +8,44 @@
  *
  * Starts on: `settingsLoaded.pokemonTheme` absent means on. Hosts that never
  * send Pokémon species (VS Code, `--no-sprites`) still draw upstream
- * characters, because a character only becomes a Pokémon once its sheets are
- * decoded.
+ * characters: only a host that delivers sprites (`settingsLoaded.pokemonSprites`)
+ * makes the office a Pokémon office, where every agent is a Pokémon (a closed
+ * capsule until its sheets decode) and no upstream character is ever drawn.
  */
 
 let enabled = true;
+let spritesDelivered = false;
 const listeners = new Set<() => void>();
+
+function notify(): void {
+  for (const listener of listeners) listener();
+}
 
 export function setPokemonThemeEnabled(next: boolean): void {
   if (enabled === next) return;
   enabled = next;
-  for (const listener of listeners) listener();
+  notify();
 }
 
 export function isPokemonThemeEnabled(): boolean {
   return enabled;
+}
+
+/** The host announces Pokémon species for every agent (standalone with sprites on). */
+export function setPokemonSpritesDelivered(next: boolean): void {
+  if (spritesDelivered === next) return;
+  spritesDelivered = next;
+  notify();
+}
+
+export function arePokemonSpritesDelivered(): boolean {
+  return spritesDelivered;
+}
+
+/** Theme on in a host that delivers sprites: every agent is a Pokémon, drawn
+ *  as a closed capsule while its sheets load, never as an upstream character. */
+export function isPokemonOffice(): boolean {
+  return enabled && spritesDelivered;
 }
 
 /** For useSyncExternalStore. Returns the unsubscribe. */

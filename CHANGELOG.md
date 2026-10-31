@@ -31,6 +31,9 @@ With this release, Poke Agents has:
 - A party slot whose name doesn't fit keeps the end of it in view ("recorder-pl…review-1"), so sessions that share a prefix stay apart.
 - A Lead's links start at the Lead, not at the chair under it.
 - **A Lead's children stay put.** A Lead with more than 12 children no longer swaps them in and out of the office as their activity re-ranks: a shown child stays until it falls 4 places past the cap.
+- **Calm desks.** A Pokémon at work breathes at its desk instead of shaking: no looping power-up shiver, and a tool start, a message or a turn end plays at most one short gesture every 6 seconds.
+- **Asleep means asleep.** The office and the party bar decide `SLP` with one rule (done or idle, no activity for two minutes), so they always agree; an asleep Pokémon lies still with a Zzz until something wakes it.
+- **Only Pokémon.** With the Pokémon theme on, no Pixel Agents person appears any more: a session whose sprites are still loading waits as a closed capsule that opens when they arrive, one whose sprites can't load stays a capsule ("Sprite unavailable"), sub-agents are their parent's Pokémon, and the first-run greeter is Promptling.
 
 ### Changes
 

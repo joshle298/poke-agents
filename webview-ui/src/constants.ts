@@ -634,8 +634,14 @@ export const PMD_DIRECTION_ROWS = 8;
 export const POKEMON_ALPHA_THRESHOLD = 2;
 /** Anims a species needs decoded (either one) before it replaces the upstream character. */
 export const POKEMON_GEOMETRY_ANIMS = ['Idle', 'Walk'] as const;
-/** Not active for this long = asleep (Sleep anim, SLP badge). */
-export const POKEMON_SLEEP_AFTER_SEC = 120;
+/** A done or idle session with no activity for this long is asleep: the one
+ *  threshold the office (Sleep anim, Zzz, SLP label, no wandering) and the
+ *  party bar and Pokédex (SLP, "Asleep") share (office/asleep.ts). */
+export const SLEEP_AFTER_MS = 120_000;
+/** This long before it falls asleep a Pokémon starts no new strolls, so it
+ *  is standing still when it does (in the town it may still walk to the
+ *  Meadow to nap). */
+export const SLEEP_DROWSY_MS = 15_000;
 /** A seated Pokémon shifts down this many world px (humans: CHARACTER_SITTING_OFFSET_PX). */
 export const POKEMON_SITTING_OFFSET_PX = 2;
 /** World px from the tile centre to where the ground point is drawn. */
@@ -646,21 +652,31 @@ export const POKEMON_FEET_BELOW_GROUND_PX = 2;
 export const POKEMON_LABEL_GAP_PX = 8;
 /** World px between the top of a Pokémon's body and its speech bubble. */
 export const POKEMON_BUBBLE_GAP_PX = 1;
-/** Fallback chains per situation: the first anim the species has wins. */
+/** Fallback chains per situation: the first anim the species has wins.
+ *  Working at a desk breathes (Idle) whatever the tool; a tool start may add
+ *  one short one-shot (Nod reading, Shoot or Attack writing or running). No
+ *  loop ever plays Charge, Shoot or Attack: they shake. */
 export const POKEMON_ANIM_FALLBACKS = {
-  walk: ['Walk'],
+  // Idle while Walk is still decoding (sheets arrive one by one).
+  walk: ['Walk', 'Idle'],
   idle: ['Idle', 'Walk'],
-  work: ['Charge', 'Shoot', 'Attack', 'Idle', 'Walk'],
-  read: ['Nod', 'Idle', 'Walk'],
+  work: ['Idle', 'Walk'],
   sleep: ['Sleep', 'Idle', 'Walk'],
   alert: ['Pose', 'Idle', 'Walk'],
   hurt: ['Hurt'],
   faint: ['Faint', 'Sleep', 'Hurt', 'Idle', 'Walk'],
-  toolBurst: ['Shoot', 'Charge'],
+  toolRead: ['Nod'],
+  toolWrite: ['Shoot', 'Attack'],
   message: ['Attack', 'Shoot'],
   turnEnd: ['Hop'],
   wake: ['Wake', 'Hop'],
 } as const satisfies Record<string, readonly string[]>;
+/** Seconds a Pokémon waits after a one-shot ends before a tool start, a
+ *  message or a turn end may play another (Wake and Hurt always play). */
+export const POKEMON_ONE_SHOT_GAP_SEC = 6;
+/** A looping anim whose frames hold for fewer game frames than this on
+ *  average is slowed to it (its durations scaled), so no loop shivers. */
+export const POKEMON_LOOP_MIN_AVG_TICKS = 4;
 /** Decode order: what the office needs first. Anything else follows. */
 /** A species no character has used this long has its decoded sheets closed
  *  (it decodes again when one does). */
@@ -671,7 +687,6 @@ export const POKEMON_DECODE_ORDER = [
   'Idle',
   'Walk',
   'Sleep',
-  'Charge',
   'Hurt',
   'Faint',
   'Hop',
@@ -724,6 +739,22 @@ export const CAPSULE_RECALL_BEAM_COLOR = 'rgba(126, 232, 214, 0.9)';
 /** During recall the capsule hovers this far above the head, then leaves this far up. */
 export const CAPSULE_RECALL_HOVER_PX = 6;
 export const CAPSULE_RECALL_EXIT_PX = 40;
+/** A capsule whose Pokémon's sheets are still decoding lands closed and waits
+ *  at most this long before its spawn ends (it then stays a closed capsule,
+ *  holding still, and opens once the sheets are ready). */
+export const CAPSULE_WAIT_MAX_SEC = 10;
+/** The waiting capsule's gentle bob: one cycle every this many seconds, this
+ *  many world px up at the top of it. */
+export const CAPSULE_BOB_PERIOD_SEC = 1.6;
+export const CAPSULE_BOB_PX = 1;
+/** Each agent id shifts its capsule's bob by this much, so neighbours differ. */
+export const CAPSULE_BOB_STAGGER_SEC = 0.37;
+/** Hit box of a closed capsule standing in for a Pokémon, from its ground
+ *  point (world px): half its width and how far it rises. */
+export const CAPSULE_HIT_HALF_WIDTH_PX = 9;
+export const CAPSULE_HIT_RISE_PX = 10;
+/** The capsule's hover card line when its Pokémon's sprites can't load. */
+export const SPRITE_UNAVAILABLE_TEXT = 'Sprite unavailable';
 
 // Links between agents (agentLinks), drawn on the floor under everyone.
 export const LINK_MARCH_PX_PER_SEC = 12;
@@ -843,8 +874,6 @@ export const PARTY_NAME_TAIL_MAX_CHARS = 10;
 export const PARTY_NAME_TAIL_CHARS = 6;
 /** Deepest nesting the party bar indents (children of children stop here). */
 export const PARTY_MAX_NEST_DEPTH = 2;
-/** A done agent whose last activity is older than this shows as asleep. */
-export const PARTY_SLEEP_AFTER_MS = 120_000;
 /** Levels at which a Pokémon evolves (when its line has a later stage). A
  *  species change that crosses one is an evolution; any other is not (a Lead
  *  promoted to a legendary, for one). */
