@@ -5,7 +5,11 @@ import type { Frame, Locator } from '@playwright/test';
 
 import { expect, test } from '../../../fixtures/pixel-agents';
 import { ourHookEvents } from '../../../helpers/hooks';
-import { advanceIntroToConsentStep, finishIntro } from '../../../helpers/intro';
+import {
+  advanceIntroToConsentStep,
+  finishIntro,
+  INTRO_WELCOME_TITLE,
+} from '../../../helpers/intro';
 import { getSettingChecked, setSettings } from '../../../helpers/webview';
 
 /**
@@ -129,7 +133,7 @@ test.describe('Hooks consent gate', () => {
 
     narrator.step('waiting for the first-run Intro');
     const dialog = await openConsentDialog(frame);
-    await expect(dialog).toContainText('Welcome to Pixel Agents!');
+    await expect(dialog).toContainText(INTRO_WELCOME_TITLE);
 
     // Diegetic: the tour is a greeter character's speech bubble, and the camera
     // shifts so character + bubble are centered — the bubble ends up FULLY on

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { DISCORD_INVITE_URL } from '../changelogData.js';
+import { CHANGELOG_REPO_URL } from '../changelogData.js';
 import {
   CLAUDE_CODE_INSTALL_COMMAND,
   CLAUDE_CODE_URL,
@@ -10,7 +10,6 @@ import {
 } from '../constants.js';
 import type { ConsentChoice } from '../hooks/introTourState.js';
 import type { OfficeState } from '../office/engine/officeState.js';
-import { DiscordIcon } from './ChangelogModal.js';
 import { computeIntroBubbleGeometry } from './introBubbleGeometry.js';
 import { Button } from './ui/Button.js';
 
@@ -217,7 +216,7 @@ export function IntroBubble({
   };
 
   const titles = [
-    'Welcome to Pixel Agents!',
+    'Welcome to Poke Agents!',
     'Powered by Claude Code',
     headline,
     installFailed ? "Hooks couldn't be installed" : "You're all set!",
@@ -327,19 +326,15 @@ export function IntroBubble({
                 retry activating them any time from Settings.
               </p>
             ) : null}
-            <p className="text-sm m-0 mb-8">
-              Enjoy your new office! Questions, ideas, or pixel art to show off? Come hang out in
-              our Discord.
-            </p>
+            <p className="text-sm m-0 mb-8">Enjoy your new office!</p>
             <p className="text-base text-center m-0 mt-12 mb-12">
               <a
-                href={DISCORD_INVITE_URL}
+                href={CHANGELOG_REPO_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-8 text-accent-bright hover:text-accent no-underline"
+                className="text-accent-bright hover:text-accent no-underline"
               >
-                <DiscordIcon />
-                Join our Discord!
+                Poke Agents on GitHub
               </a>
             </p>
           </>

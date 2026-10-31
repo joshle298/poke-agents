@@ -1,11 +1,12 @@
 {
-  "name": "Pixel Agents",
-  "short_name": "Pixel Agents",
-  "description": "Pixel art office where your Claude Code agents come to life as animated characters",
+  "id": "./",
+  "name": "Poke Agents",
+  "short_name": "Poke Agents",
+  "description": "Your Conductor cloud sessions as Pokémon in a pixel-art office",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#1e1e2e",
-  "theme_color": "#1e1e2e",
+  "background_color": "#1a1c2c",
+  "theme_color": "#dc0a2d",
   "icons": [
     {
       "src": "icons/icon-256.png?v=2",
