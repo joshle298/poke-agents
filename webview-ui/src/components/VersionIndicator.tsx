@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { toMajorMinor } from '../changelogData.ts';
+import { toMajorMinor, updateNoticeFor } from '../changelogData.ts';
 import { WHATS_NEW_AUTO_CLOSE_MS, WHATS_NEW_FADE_MS } from '../constants.ts';
 import { Button } from './ui/Button.js';
 
@@ -26,8 +26,13 @@ export function VersionIndicator({
   const [labelHovered, setLabelHovered] = useState(false);
 
   const currentMajorMinor = toMajorMinor(currentVersion);
-  const isUnseen = currentMajorMinor !== lastSeenVersion;
-  const showUpdateNotice = isUnseen && !dismissed && !hideUpdateNotice;
+  const notice = updateNoticeFor(currentVersion, lastSeenVersion);
+  const showUpdateNotice = notice === 'show' && !dismissed && !hideUpdateNotice;
+
+  // A fresh install has nothing to announce: record the version silently.
+  useEffect(() => {
+    if (notice === 'record' && !hideUpdateNotice) onDismiss();
+  }, [notice, hideUpdateNotice, onDismiss]);
 
   // Start fade-out after auto-close delay, then fully dismiss after the transition
   useEffect(() => {
@@ -63,7 +68,7 @@ export function VersionIndicator({
 
   return (
     <>
-      {/* Update notice — shown once per version until dismissed or auto-closed */}
+      {/* Update notice — shown once per upgrade until dismissed or auto-closed */}
       {showUpdateNotice && (
         <div
           onClick={handleOpenChangelog}

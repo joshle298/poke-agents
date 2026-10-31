@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ConductorSessionSummary, ConductorStatus } from '../../core/src/messages.js';
+import { updateNoticeFor } from '../src/changelogData.js';
 import {
   agoText,
   conductorStatusLine,
@@ -15,7 +16,7 @@ import {
 } from '../src/conductor/format.js';
 import { readBoolPref, writeBoolPref } from '../src/conductor/preferences.js';
 import { archivedSessions, groupSessions, leadSessionIds } from '../src/conductor/sessionsView.js';
-import { isDesktopAppUserAgent } from '../src/desktopApp.js';
+import { isDesktopAppUserAgent, parseDesktopCommand } from '../src/desktopApp.js';
 
 const scope = { creator: 'me' as const, activeWithinHours: 6, showIdle: true, maxSessions: 24 };
 
@@ -199,8 +200,10 @@ describe('per-device preferences', () => {
 });
 
 describe('signInSteps', () => {
-  const text = (desktopApp: boolean) =>
-    signInSteps(desktopApp).map((step) => `${step.lead}${step.accent ?? ''}${step.tail ?? ''}`);
+  const text = (desktopApp: boolean, canReconnect = false) =>
+    signInSteps(desktopApp, canReconnect).map(
+      (step) => `${step.lead}${step.accent ?? ''}${step.tail ?? ''}`,
+    );
 
   it('tells a terminal-started office to log in or set the key, then restart', () => {
     expect(text(false)).toEqual([
@@ -209,14 +212,100 @@ describe('signInSteps', () => {
     ]);
   });
 
-  it('tells the desktop app to log in from Terminal and reconnect from the menu', () => {
-    const steps = text(true);
-    expect(steps).toEqual([
+  it('tells the desktop app to log in from Terminal, reconnect, and allow the Keychain', () => {
+    expect(text(true, true)).toEqual([
       'Run conductor auth login in Terminal.',
-      'Choose Poke Agents > Reconnect to Conductor.',
+      'Click Reconnect. If macOS asks to use the Keychain, choose Allow.',
     ]);
+    // Without the app's button (no preload), the menu item does the same.
+    expect(text(true, false)[1]).toBe(
+      'Choose Poke Agents > Reconnect to Conductor. If macOS asks to use the Keychain, choose Allow.',
+    );
     // An app opened from Finder never sees the shell's environment.
-    expect(steps.join(' ')).not.toContain('CONDUCTOR_API_KEY');
+    expect([...text(true, true), ...text(true, false)].join(' ')).not.toContain(
+      'CONDUCTOR_API_KEY',
+    );
+  });
+
+  it('marks the login command as copyable and nothing else', () => {
+    for (const desktopApp of [false, true]) {
+      const copyable = signInSteps(desktopApp, true).filter((step) => step.copy);
+      expect(copyable.map((step) => step.accent)).toEqual(['conductor auth login']);
+    }
+  });
+});
+
+describe('conductorStatusLine in the desktop app', () => {
+  const now = 1_000_000;
+  const serverMessage =
+    'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.';
+
+  it('words both sign-in states for the app, whatever the server says', () => {
+    const missing = conductorStatusLine(
+      status({ state: 'authRequired', message: serverMessage }),
+      now,
+      true,
+    );
+    const rejected = conductorStatusLine(
+      status({ state: 'unauthorized', message: 'Conductor rejected the API key. Restart.' }),
+      now,
+      true,
+    );
+    expect(missing).toBe(
+      'No Conductor sign-in found. Run `conductor auth login` in Terminal, then choose Poke Agents > Reconnect to Conductor.',
+    );
+    expect(rejected).toBe(
+      'Conductor rejected the sign-in. Run `conductor auth login` in Terminal, then choose Poke Agents > Reconnect to Conductor.',
+    );
+    for (const line of [missing, rejected]) {
+      expect(line).not.toContain('CONDUCTOR_API_KEY');
+      expect(line).not.toMatch(/restart/i);
+    }
+  });
+
+  it('leaves the browser wording and the other states alone', () => {
+    expect(
+      conductorStatusLine(status({ state: 'authRequired', message: serverMessage }), now, false),
+    ).toBe(serverMessage);
+    expect(conductorStatusLine(status({ state: 'unreachable' }), now, true)).toContain(
+      "Can't reach",
+    );
+    expect(conductorStatusLine(status({ lastSyncAt: now - 42_000 }), now, true)).toBe(
+      'Conductor · synced 42s ago',
+    );
+  });
+});
+
+describe('parseDesktopCommand', () => {
+  it('accepts the app’s two commands', () => {
+    expect(parseDesktopCommand({ type: 'openSession', agentId: 7 })).toEqual({
+      type: 'openSession',
+      agentId: 7,
+    });
+    expect(parseDesktopCommand({ type: 'openSettings' })).toEqual({ type: 'openSettings' });
+  });
+
+  it('rejects anything else', () => {
+    for (const raw of [
+      null,
+      'openSettings',
+      { type: 'openSession' },
+      { type: 'openSession', agentId: '7' },
+      { type: 'openSession', agentId: 0 },
+      { type: 'openSession', agentId: 1.5 },
+      { type: 'reload' },
+    ]) {
+      expect(parseDesktopCommand(raw)).toBeNull();
+    }
+  });
+});
+
+describe('updateNoticeFor', () => {
+  it('announces an upgrade, records a fresh install silently, and waits for settings', () => {
+    expect(updateNoticeFor('0.2.0', '0.1')).toBe('show');
+    expect(updateNoticeFor('0.1.3', '0.1')).toBe('none');
+    expect(updateNoticeFor('0.1.0', '')).toBe('record');
+    expect(updateNoticeFor('', '')).toBe('none');
   });
 });
 

@@ -28,7 +28,8 @@ import {
   CONDUCTOR_SCOPE_WINDOW_HOURS,
   CONDUCTOR_UI_TICK_MS,
 } from '../constants.js';
-import { ConductorSignInSteps } from './ConductorSignInSteps.js';
+import { isDesktopApp } from '../desktopApp.js';
+import { ConductorReconnectButton, ConductorSignInSteps } from './ConductorSignInSteps.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -195,7 +196,10 @@ function EmptyState({
     return (
       <div className="px-10 py-8 text-sm flex flex-col gap-6">
         <span>Poke Agents needs your Conductor sign-in.</span>
-        <ConductorSignInSteps className="m-0 pl-20 flex flex-col gap-4 text-xs" />
+        <ConductorSignInSteps className="m-0 pl-24 flex flex-col gap-4 text-xs" />
+        <div>
+          <ConductorReconnectButton />
+        </div>
       </div>
     );
   }
@@ -257,7 +261,9 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Sessions" className="w-[min(640px,100%)]">
       <div className="flex flex-col gap-8 px-10 pb-8">
-        <div className="text-xs text-text-muted">{conductorStatusLine(status, now)}</div>
+        <div className="text-xs text-text-muted">
+          {conductorStatusLine(status, now, isDesktopApp)}
+        </div>
 
         {scope && (
           <div className="flex flex-col gap-6">
@@ -337,7 +343,7 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
           </div>
         )}
 
-        <div className="text-2xs text-text-muted">{CLOUD_ONLY_NOTE}</div>
+        <div className="text-xs leading-tight text-text-muted">{CLOUD_ONLY_NOTE}</div>
       </div>
     </Modal>
   );

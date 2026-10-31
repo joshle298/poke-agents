@@ -39,30 +39,44 @@ export function modelLabel(model?: string, harness?: string): string {
 const CONDUCTOR_SIGN_IN_TEXT =
   'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.';
 
-/** One sign-in step: text around at most one highlighted command or menu item. */
+/** The Conductor CLI command that saves a sign-in to the Keychain. */
+export const CONDUCTOR_LOGIN_COMMAND = 'conductor auth login';
+
+/** Where the desktop app's menu item lives. */
+const APP_RECONNECT_MENU_ITEM = 'Poke Agents > Reconnect to Conductor';
+
+/** The desktop app's next step after signing in, for one-line statuses. */
+const APP_SIGN_IN_TEXT = `Run \`${CONDUCTOR_LOGIN_COMMAND}\` in Terminal, then choose ${APP_RECONNECT_MENU_ITEM}.`;
+
+/** One sign-in step: text around at most one highlighted command or label.
+ *  `copy` marks a command the reader can click to copy. */
 export interface SignInStep {
   lead: string;
   accent?: string;
+  copy?: boolean;
   tail?: string;
 }
 
 /**
  * The steps to sign in to Conductor, worded for where the office runs. The
  * desktop app starts from Finder without the shell's environment, so it can't
- * see CONDUCTOR_API_KEY; it reads the Keychain login and can reconnect from
- * its menu. A terminal-started server reads both, and restarts to pick them up.
+ * see CONDUCTOR_API_KEY; it reads the Keychain login (macOS asks whether
+ * `security` may read it) and reconnects from its own Reconnect button
+ * (`canReconnect`) or menu. A terminal-started server reads both, and
+ * restarts to pick them up.
  */
-export function signInSteps(desktopApp: boolean): SignInStep[] {
+export function signInSteps(desktopApp: boolean, canReconnect = false): SignInStep[] {
+  const login: SignInStep = { lead: 'Run ', accent: CONDUCTOR_LOGIN_COMMAND, copy: true };
   if (desktopApp) {
+    const keychain = '. If macOS asks to use the Keychain, choose Allow.';
     return [
-      { lead: 'Run ', accent: 'conductor auth login', tail: ' in Terminal.' },
-      { lead: 'Choose ', accent: 'Poke Agents > Reconnect to Conductor', tail: '.' },
+      { ...login, tail: ' in Terminal.' },
+      canReconnect
+        ? { lead: 'Click ', accent: 'Reconnect', tail: keychain }
+        : { lead: 'Choose ', accent: APP_RECONNECT_MENU_ITEM, tail: keychain },
     ];
   }
-  return [
-    { lead: 'Run ', accent: 'conductor auth login', tail: ', or set CONDUCTOR_API_KEY.' },
-    { lead: 'Restart Poke Agents.' },
-  ];
+  return [{ ...login, tail: ', or set CONDUCTOR_API_KEY.' }, { lead: 'Restart Poke Agents.' }];
 }
 
 /** Why a session the user expects may be missing from the office. */
@@ -70,8 +84,15 @@ export const CLOUD_ONLY_NOTE =
   'Only cloud workspaces appear: local (Mac) workspaces have no API. The Conductor API needs Conductor Pro.';
 
 /** One line describing the Conductor connection, for Settings, the Sessions
- *  modal and the empty office. Never includes the token (it never has it). */
-export function conductorStatusLine(status: ConductorStatus | null, now: number): string {
+ *  modal and the empty office. Never includes the token (it never has it).
+ *  In the desktop app the sign-in states name the app's own next step: the
+ *  server's message speaks of environment variables and restarts, which an
+ *  app opened from Finder can't use. */
+export function conductorStatusLine(
+  status: ConductorStatus | null,
+  now: number,
+  desktopApp = false,
+): string {
   if (!status) return 'Connecting to Conductor…';
   switch (status.state) {
     case 'connected': {
@@ -88,8 +109,10 @@ export function conductorStatusLine(status: ConductorStatus | null, now: number)
     case 'connecting':
       return 'Connecting to Conductor…';
     case 'authRequired':
+      if (desktopApp) return `No Conductor sign-in found. ${APP_SIGN_IN_TEXT}`;
       return status.message ?? `No Conductor sign-in found. ${CONDUCTOR_SIGN_IN_TEXT}`;
     case 'unauthorized':
+      if (desktopApp) return `Conductor rejected the sign-in. ${APP_SIGN_IN_TEXT}`;
       return 'Conductor rejected the sign-in. Run `conductor auth login` again, then restart.';
     case 'unreachable':
       return "Can't reach Conductor. Retrying…";

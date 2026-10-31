@@ -4,6 +4,7 @@ import { useConductor } from '../conductor/conductorStore.js';
 import { conductorStatusLine } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
+import { isDesktopApp } from '../desktopApp.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
@@ -67,7 +68,7 @@ function ConductorStatusText({ active }: { active: boolean }) {
   const now = useNow(CONDUCTOR_UI_TICK_MS, active);
   return (
     <div className="py-4 px-10 text-xs text-text-muted break-words">
-      {conductorStatusLine(status, now)}
+      {conductorStatusLine(status, now, isDesktopApp)}
     </div>
   );
 }

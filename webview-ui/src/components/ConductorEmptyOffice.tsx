@@ -4,7 +4,8 @@ import { useConductor } from '../conductor/conductorStore.js';
 import { CLOUD_ONLY_NOTE, conductorStatusLine, needsSignIn } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
-import { ConductorSignInSteps } from './ConductorSignInSteps.js';
+import { isDesktopApp } from '../desktopApp.js';
+import { ConductorReconnectButton, ConductorSignInSteps } from './ConductorSignInSteps.js';
 import { PokeBallIcon } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 
@@ -28,7 +29,12 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
   let body: ReactNode;
   if (needsSignIn(status)) {
     title = state === 'unauthorized' ? 'Conductor sign-in rejected' : 'Sign in to Conductor';
-    body = <ConductorSignInSteps className="m-0 pl-20 flex flex-col gap-4 text-xs text-left" />;
+    body = (
+      <>
+        <ConductorSignInSteps className="m-0 pl-24 flex flex-col gap-4 text-xs text-left" />
+        <ConductorReconnectButton />
+      </>
+    );
   } else if (state === 'connected') {
     title = 'No sessions in scope';
     body = (
@@ -38,7 +44,11 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
     );
   } else {
     title = state === 'connecting' ? 'Connecting to Conductor…' : 'Waiting for Conductor';
-    body = <span className="text-xs text-text-muted">{conductorStatusLine(status, now)}</span>;
+    body = (
+      <span className="text-xs text-text-muted">
+        {conductorStatusLine(status, now, isDesktopApp)}
+      </span>
+    );
   }
 
   return (
@@ -52,7 +62,7 @@ export function ConductorEmptyOffice({ onOpenSessions }: ConductorEmptyOfficePro
             Open Sessions
           </Button>
         )}
-        <span className="text-2xs text-text-muted">{CLOUD_ONLY_NOTE}</span>
+        <span className="text-xs leading-tight text-text-muted pt-4">{CLOUD_ONLY_NOTE}</span>
       </div>
     </div>
   );

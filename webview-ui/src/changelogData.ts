@@ -21,6 +21,22 @@ export function toMajorMinor(version: string): string {
   return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : version;
 }
 
+/**
+ * What the "Updated to vX" notice does for this office:
+ * - `show`: the version changed since it was last seen.
+ * - `record`: nothing was ever seen (a fresh install). There is nothing to
+ *   announce, so quietly remember this version; the next upgrade shows.
+ * - `none`: already seen, or the settings haven't arrived yet.
+ */
+export function updateNoticeFor(
+  currentVersion: string,
+  lastSeenVersion: string,
+): 'show' | 'record' | 'none' {
+  if (!currentVersion) return 'none';
+  if (!lastSeenVersion) return 'record';
+  return toMajorMinor(currentVersion) === lastSeenVersion ? 'none' : 'show';
+}
+
 export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
 
 /** Newest first. Entries before 0.1 are the upstream Pixel Agents releases this
@@ -38,6 +54,7 @@ export const changelogEntries: ChangelogEntry[] = [
           'Pokédex panel: task, recent replies and messages, with Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin',
           'PC Box for archived sessions, and a Sessions modal for scope, search, hide and pin',
           'Party bar, an optional battle log, and npm start to open the office in its own window',
+          'A Mac app (npm run app:mac) with notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you',
         ],
       },
       {
@@ -53,7 +70,8 @@ export const changelogEntries: ChangelogEntry[] = [
       {
         name: '@joshle298',
         url: 'https://github.com/joshle298',
-        description: 'Poke Agents: Conductor sessions, the Pokémon theme and the desktop window',
+        description:
+          'Poke Agents: Conductor sessions, the Pokémon theme, the desktop window and the Mac app',
       },
     ],
   },
