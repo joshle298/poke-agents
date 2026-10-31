@@ -47,6 +47,7 @@ import {
   isBrowserId,
   openAppWindow,
   openWithSystem,
+  requestLaunchUrl,
 } from './openAppWindow.js';
 import { setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
@@ -582,13 +583,16 @@ async function main(): Promise<void> {
     // address; only the consent-bearing toggle needs the token.
     const displayHost =
       args.host === '0.0.0.0' || args.host === '::' || args.host === '' ? '127.0.0.1' : args.host;
-    const officeUrl = `http://${displayHost}:${config.port}/?token=${config.token}`;
+    const officeBase = `http://${displayHost}:${config.port}`;
+    const officeUrl = `${officeBase}/?token=${config.token}`;
     console.log(`\n  Poke Agents running at ${officeUrl}\n`);
 
     // --open also runs against a reused server: it just opens another window
-    // onto the running office.
+    // onto the running office. The window gets a one-time launch URL, never
+    // the token itself (a browser's argv is readable by other local users).
     if (args.open) {
-      openAppWindow(officeUrl, { browser: args.browser })
+      requestLaunchUrl(officeBase, config.token)
+        .then((launchUrl) => openAppWindow(launchUrl, { browser: args.browser }))
         .then((via) => console.log(`[Pixel Agents] Opened the office in ${via}`))
         .catch((err: unknown) =>
           console.warn(

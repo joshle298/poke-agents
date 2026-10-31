@@ -31,6 +31,13 @@ describe('request log serializer', () => {
     }
   });
 
+  it('never writes an --open launch code', () => {
+    const code = 'Zm9vYmFyLWxhdW5jaC1jb2RlLTEyMzQ1Njc4';
+    const line = JSON.stringify(serializeRequestForLog(fakeRequest(`/launch/${code}`)));
+    expect(line).not.toContain(code);
+    expect(line).toContain('/launch/[redacted]');
+  });
+
   it('keeps the fields Fastify logs by default', () => {
     expect(serializeRequestForLog(fakeRequest('/api/health'))).toEqual({
       method: 'GET',

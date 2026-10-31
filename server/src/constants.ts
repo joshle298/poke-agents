@@ -176,6 +176,17 @@ export const CONDUCTOR_BUDGET_MIN = 1;
 export const CONDUCTOR_BUDGET_MAX = 6_000;
 /** How long `open` / `xdg-open` may take before the attempt counts as failed. */
 export const OPEN_COMMAND_TIMEOUT_MS = 10_000;
+/** `--open` launch codes (launchCodes.ts): random bytes per code, how long an
+ *  unused one stays valid (a cold browser start included), and how many may
+ *  wait at once. */
+export const LAUNCH_CODE_BYTES = 24;
+export const LAUNCH_CODE_TTL_MS = 120_000;
+export const LAUNCH_CODE_MAX = 8;
+/** Routes: the CLI mints a code (Bearer token), the window redeems it. */
+export const LAUNCH_CODE_API_PATH = '/api/launch-code';
+export const LAUNCH_PATH_PREFIX = '/launch';
+/** How long the CLI waits for the server to mint a launch code. */
+export const LAUNCH_CODE_REQUEST_TIMEOUT_MS = 5_000;
 
 // ── Stream providers (Conductor) ────────────────────────────
 /** The agentLinks snapshot is broadcast at most this often (debounced). */
