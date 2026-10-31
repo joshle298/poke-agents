@@ -1185,6 +1185,7 @@ function App() {
         onImportLayout={handleImportLayout}
         claudeActive={claudeActive}
         conductorActive={conductorActive}
+        readOnly={officeReadOnly}
         onManageSessions={() => setIsSessionsOpen(true)}
         onOpenPcBox={() => setIsPcBoxOpen(true)}
         pokemonTheme={pokemonTheme}

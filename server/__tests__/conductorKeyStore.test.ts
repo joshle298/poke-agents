@@ -6,6 +6,10 @@ import {
   resolveConductorAuth,
 } from '../src/providers/stream/conductor/auth.js';
 import {
+  KEYCHAIN_READ_BACK_TIMEOUT_MS,
+  KEYCHAIN_WRITE_TIMEOUT_MS,
+} from '../src/providers/stream/conductor/constants.js';
+import {
   createConductorKeyStore,
   keychainAddLine,
   normalizeApiKey,
@@ -34,11 +38,14 @@ function fakeSecurity(opts: { items?: Record<string, string>; refuseWrites?: boo
   const items = new Map(Object.entries(opts.items ?? {}));
   const execCalls: ExecCall[] = [];
   const inputCalls: Array<{ file: string; args: string[]; input: string }> = [];
+  /** Each call's timeout, in order (execFile, runWithInput). */
+  const timeouts = { exec: [] as number[], input: [] as number[] };
   const at = (service: string, account: string) => `${service}|${account}`;
   const arg = (args: readonly string[], flag: string) => args[args.indexOf(flag) + 1];
 
-  const execFile = vi.fn(async (file: string, args: readonly string[]) => {
+  const execFile = vi.fn(async (file: string, args: readonly string[], o: { timeout: number }) => {
     execCalls.push({ file, args: [...args] });
+    timeouts.exec.push(o.timeout);
     const key = at(arg(args, '-s'), arg(args, '-a'));
     if (args[0] === 'find-generic-password') {
       const value = items.get(key);
@@ -52,15 +59,16 @@ function fakeSecurity(opts: { items?: Record<string, string>; refuseWrites?: boo
     throw new Error(`unexpected ${args[0]}`);
   }) as unknown as ExecFileFn;
 
-  const runWithInput: RunWithInputFn = vi.fn(async (file, args, input) => {
+  const runWithInput: RunWithInputFn = vi.fn(async (file, args, input, o) => {
     inputCalls.push({ file, args: [...args], input });
+    timeouts.input.push(o.timeout);
     const match =
       /^add-generic-password -U -s "([^"]+)" -a "([^"]+)" -l "([^"]+)" -w "([^"]+)"\n$/.exec(input);
     if (match && !opts.refuseWrites) items.set(at(match[1], match[2]), match[4]);
     return { code: 0 };
   });
 
-  return { items, execFile, runWithInput, execCalls, inputCalls, at };
+  return { items, execFile, runWithInput, execCalls, inputCalls, timeouts, at };
 }
 
 describe('normalizeApiKey', () => {
@@ -130,6 +138,12 @@ describe('Conductor key store on macOS', () => {
       expect(call.args.join(' ')).not.toContain(KEY);
     }
     expect(security.items.get(security.at(OUR_SERVICE, ACCOUNT))).toBe(KEY);
+    // A locked Keychain's unlock prompt may hold the write; the read-back
+    // finds it unlocked. Both stay inside the Connect card's wait.
+    expect(security.timeouts).toEqual({
+      input: [KEYCHAIN_WRITE_TIMEOUT_MS],
+      exec: [KEYCHAIN_READ_BACK_TIMEOUT_MS],
+    });
     expect(await store.read(BASE)).toEqual({ key: KEY, source: 'app' });
   });
 

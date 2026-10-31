@@ -13,6 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 
 import type {
+  ConductorAuthEnv,
   ConductorAuthSource,
   ConductorConnectionState,
   ConductorScope,
@@ -49,7 +50,7 @@ import {
   DEFAULT_BUDGET_PER_MINUTE,
   DISCOVERY_INTERVAL_MS,
   ENV_BUDGET,
-  ENV_UNAUTHORIZED_MESSAGE,
+  envUnauthorizedMessage,
   GPT_CONTEXT_WINDOW,
   GPT_MODEL_PREFIX,
   LOG_PREFIX,
@@ -140,7 +141,7 @@ function describeSource(auth: ConductorAuth): string {
     case 'app':
       return 'the key Poke Agents saved in the Keychain';
     case 'session':
-      return 'the key connected in the office (this session only)';
+      return 'the key connected in the office (kept in memory until the office stops)';
     case 'cli':
       return "the Conductor CLI's Keychain sign-in";
     default:
@@ -173,6 +174,8 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
   let sink: AgentEventSink | undefined;
   let authSource: ConductorAuthSource | undefined;
+  /** The variable an `env` key came from. */
+  let authEnv: ConductorAuthEnv | undefined;
   let settle: ((source: ConductorAuthSource | undefined) => void) | undefined;
   let client: ConductorClient | undefined;
   let poller: ConductorPoller | undefined;
@@ -180,12 +183,14 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let connectFailures = 0;
 
-  /** Where the key came from, and in the sign-in states where to get one and
-   *  where a pasted one would be kept: the office's Connect card reads them. */
+  /** Where the key came from, where a pasted one is kept, and in the sign-in
+   *  states where to get one: the Connect card and Settings read them. */
   const signInFields = (connection: ConductorConnectionState): Partial<StreamProviderStatus> => ({
     ...(authSource ? { authSource } : {}),
+    ...(authEnv ? { authEnv } : {}),
+    keyStorage: keyStore.storage,
     ...(connection === 'authRequired' || connection === 'unauthorized'
-      ? { keyPageUrl: API_KEYS_PAGE_URL, keyStorage: keyStore.storage }
+      ? { keyPageUrl: API_KEYS_PAGE_URL }
       : {}),
   });
 
@@ -198,7 +203,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   };
 
   const unauthorizedMessage = (): string =>
-    authSource === 'env' ? ENV_UNAUTHORIZED_MESSAGE : UNAUTHORIZED_MESSAGE;
+    authSource === 'env' ? envUnauthorizedMessage(authEnv) : UNAUTHORIZED_MESSAGE;
 
   /** /me, then the poller's first discovery. Network failures retry with backoff. */
   const connect = async (): Promise<void> => {
@@ -280,6 +285,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       sink = s;
       stopped = false;
       authSource = undefined;
+      authEnv = undefined;
       settle = opts.onSignInSettled;
       const settled = (source: ConductorAuthSource | undefined): void => {
         const notify = settle;
@@ -294,6 +300,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
           return;
         }
         authSource = auth.source;
+        authEnv = auth.envName;
         settled(auth.source);
         if (!auth.token) {
           // The office shows the Connect card; say it in the terminal too,

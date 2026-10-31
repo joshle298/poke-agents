@@ -32,7 +32,7 @@ import { MusicService } from '../../../server/src/music/musicService.js';
 import { type StandaloneOffice, startStandalone } from '../../../server/src/standalone.js';
 import { parseDesktopArgs } from '../args.js';
 import { AttentionTracker } from '../attention.js';
-import { clipboardKey } from '../clipboardKey.js';
+import { ClipboardKeyGate, isApiKeysPage } from '../clipboardKey.js';
 import {
   APP_NAME,
   APP_STATE_FILE,
@@ -89,6 +89,8 @@ let reconnectWaiter: ((answer: ReconnectOutcome | 'attached') => void) | null = 
 /** What the app sends the office (the webview's DesktopCommand). */
 type OfficeCommand = { type: 'openSession'; agentId: number } | { type: 'openSettings' };
 
+/** Which clipboard reads the office window may ask for (the Connect card). */
+const clipboardKeys = new ClipboardKeyGate();
 const tracker = new AttentionTracker({ speciesName });
 const notifier = new Notifier(tracker, {
   windowFocused: () => officeWindow?.isFocused() ?? false,
@@ -459,6 +461,8 @@ function guardNavigation(window: BrowserWindow): void {
         return true;
       case 'browser':
       case 'conductor':
+        // "Get an API key": the next focus may offer a key from the clipboard.
+        if (isApiKeysPage(target)) clipboardKeys.arm();
         void shell.openExternal(target);
         return false;
       default:
@@ -563,13 +567,18 @@ async function main(): Promise<void> {
   ipcMain.on(IPC_RECONNECT_CONDUCTOR, (event) => {
     if (isOfficeSender(event)) reconnectConductor();
   });
-  // The Connect card's clipboard: read only when the focused office window
-  // asks (a Paste click, or focus regained after "Get an API key"), and only
+  // The Connect card's clipboard (clipboardKey.ts): read only for the focused
+  // office window, on a Paste click or once after "Get an API key", and only
   // a key-shaped answer leaves this process. It is never logged.
-  ipcMain.handle(IPC_READ_CLIPBOARD_KEY, async (event) =>
-    isOfficeSender(event) && officeWindow?.isFocused()
-      ? clipboardKey(await clipboard.readText())
-      : null,
+  ipcMain.handle(IPC_READ_CLIPBOARD_KEY, (event, purpose: unknown) =>
+    clipboardKeys.answer(
+      {
+        purpose,
+        fromOffice: isOfficeSender(event),
+        focused: officeWindow?.isFocused() === true,
+      },
+      () => clipboard.readText(),
+    ),
   );
 
   try {

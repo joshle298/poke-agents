@@ -11,10 +11,14 @@ import {
   envKeyRejected,
   isConductorDeepLink,
   keyStorageNote,
+  maskedKeyHint,
   modelLabel,
   needsSignIn,
+  pasteBlockedMessage,
   safeHttpsUrl,
   shortAge,
+  signOutConfirmText,
+  splitConnectedMessage,
   splitNameTail,
   windowLabel,
   windowOptions,
@@ -250,6 +254,15 @@ describe('the Connect to Conductor card', () => {
     expect(conductorStatusLine(rejected, now)).toBe(
       'Conductor rejected the key in CONDUCTOR_API_KEY. Update it, then restart Poke Agents.',
     );
+    // Named after the variable the key came from.
+    expect(
+      conductorStatusLine(
+        status({ state: 'unauthorized', authSource: 'env', authEnv: 'CONDUCTOR_API_TOKEN' }),
+        now,
+      ),
+    ).toBe(
+      'Conductor rejected the key in CONDUCTOR_API_TOKEN. Update it, then restart Poke Agents.',
+    );
     for (const authSource of ['app', 'cli', 'session'] as const) {
       expect(envKeyRejected(status({ state: 'unauthorized', authSource }))).toBe(false);
     }
@@ -257,14 +270,76 @@ describe('the Connect to Conductor card', () => {
   });
 
   it('says where the key in use came from, and where a pasted one is kept', () => {
-    expect(authSourceText('env')).toContain('environment variable');
-    expect(authSourceText('app')).toContain('macOS Keychain');
-    expect(authSourceText('cli')).toBe('Signed in through the Conductor CLI.');
-    expect(authSourceText('session')).toContain('this session only');
-    expect(authSourceText(undefined)).toBeNull();
-    expect(keyStorageNote('keychain')).toContain('macOS Keychain');
-    expect(keyStorageNote('session')).toContain('this session only');
-    expect(keyStorageNote('session')).toContain('CONDUCTOR_API_KEY');
+    expect(authSourceText(status({ authSource: 'env' }))).toBe(
+      'Signed in with CONDUCTOR_API_KEY from the environment.',
+    );
+    expect(authSourceText(status({ authSource: 'env', authEnv: 'CONDUCTOR_API_TOKEN' }))).toBe(
+      'Signed in with CONDUCTOR_API_TOKEN from the environment.',
+    );
+    expect(authSourceText(status({ authSource: 'cli' }))).toBe(
+      'Signed in through the Conductor CLI.',
+    );
+    expect(authSourceText(status({}))).toBeNull();
+    expect(authSourceText(null)).toBeNull();
+    // "Session" means a Conductor session in this product: say how long.
+    for (const text of [
+      authSourceText(status({ authSource: 'session', keyStorage: 'session' })),
+      authSourceText(status({ authSource: 'session', keyStorage: 'keychain' })),
+      keyStorageNote('session'),
+    ]) {
+      expect(text).toMatch(/until (Poke Agents|it) quits/);
+      expect(text).not.toMatch(/session/i);
+    }
+    // Off a Mac the variable keeps it; a Mac app opened from Finder can't take one.
+    expect(authSourceText(status({ authSource: 'session', keyStorage: 'session' }))).toContain(
+      'Set CONDUCTOR_API_KEY',
+    );
+    expect(keyStorageNote('session')).toContain('Set CONDUCTOR_API_KEY');
+    const refusedOnMac = authSourceText(status({ authSource: 'session', keyStorage: 'keychain' }));
+    expect(refusedOnMac).toContain('Connect again next time.');
+    expect(refusedOnMac).not.toContain('CONDUCTOR_API_KEY');
+  });
+
+  it('says plainly that apps you run can read the Keychain item', () => {
+    for (const text of [
+      authSourceText(status({ authSource: 'app' })),
+      keyStorageNote('keychain'),
+    ]) {
+      expect(text).toContain('macOS Keychain');
+      expect(text).toContain('apps you run can read it without asking');
+    }
+  });
+
+  it('confirms Sign out honestly about the Conductor CLI on a Mac', () => {
+    const mac = signOutConfirmText(status({ authSource: 'app', keyStorage: 'keychain' }));
+    expect(mac).toContain('If the Conductor CLI is signed in, the office switches to that sign-in');
+    expect(mac).toContain('macOS may ask to allow Keychain access');
+    expect(mac).not.toContain('you need an API key');
+    const elsewhere = signOutConfirmText(status({ authSource: 'session', keyStorage: 'session' }));
+    expect(elsewhere).toBe(
+      'Poke Agents forgets the API key, and its sessions leave the office. To connect again you need an API key.',
+    );
+  });
+
+  it('masks a clipboard key to its prefix and last four characters', () => {
+    expect(maskedKeyHint(`pakey_${'x'.repeat(39)}wxyz`)).toBe('pakey_…wxyz');
+    expect(maskedKeyHint(`${'X'.repeat(30)}abcd`)).toBe('…abcd');
+  });
+
+  it('titles the empty office with the reply’s first line', () => {
+    expect(splitConnectedMessage('Connected as a@b.c')).toEqual({ headline: 'Connected as a@b.c' });
+    expect(splitConnectedMessage('Connected as Dr. Lee\nCouldn’t save it.')).toEqual({
+      headline: 'Connected as Dr. Lee',
+      note: 'Couldn’t save it.',
+    });
+    expect(splitConnectedMessage(undefined)).toEqual({ headline: 'Connected to Conductor' });
+  });
+
+  it('says how to paste when the browser blocks the clipboard', () => {
+    expect(pasteBlockedMessage('MacIntel')).toBe('Clipboard access was blocked. Paste with Cmd+V.');
+    expect(pasteBlockedMessage('Linux x86_64')).toBe(
+      'Clipboard access was blocked. Paste with Ctrl+V.',
+    );
   });
 
   it('offers Sign out only for a key Poke Agents keeps', () => {

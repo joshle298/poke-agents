@@ -53,7 +53,11 @@ import {
   type ConductorKeyStore,
   createConductorKeyStore,
 } from './providers/stream/conductor/keyStore.js';
-import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
+import {
+  acquirePollerLock,
+  type PollerLock,
+  pollerLockHolder,
+} from './providers/stream/conductor/pollerLock.js';
 import { ConductorSignIn, SignInError } from './providers/stream/conductor/signIn.js';
 import {
   DEMO_OPEN_EXTERNAL_REFUSAL,
@@ -267,6 +271,16 @@ function acquireConductorLock(port: number): PollerLock {
   }
 }
 
+/** The port of the live office holding the Conductor lock, or null when it is
+ *  free (or ours). Takes nothing. */
+function conductorLockHolder(): { port?: number } | null {
+  return pollerLockHolder({ dir: path.join(os.homedir(), SERVER_JSON_DIR) });
+}
+
+function lockRefusal(port: number | undefined): string {
+  return `Another Poke Agents office${port ? ` (port ${port})` : ''} tracks Conductor. Connect there.`;
+}
+
 /** The host to put in the office URL: a wildcard bind address is a bind
  *  target, not an address you can browse to (`--host 0.0.0.0` used to print a
  *  dead `http://0.0.0.0:PORT`). Under a wildcard the office stays readable from
@@ -470,27 +484,34 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   };
 
   /** Why this office can't (re)start Conductor polling now, or undefined. A
-   *  lock another office held may have been released since: try again. */
+   *  lock another office held may have been released since, so it is looked
+   *  at again, but only restartConductor takes it: a connect whose key
+   *  Conductor then rejects must not leave this office holding the lock with
+   *  nothing polling. */
   const conductorRefusal = (): string | undefined => {
     if (!conductorOn || !ownsServer) return 'Conductor is not enabled in this office.';
     if (stopping) return 'This office is stopping.';
     if (conductorLock && !conductorLock.acquired) {
-      const again = acquireConductorLock(officePort);
-      conductorLock = again;
-      if (!again.acquired) {
-        const { port } = again.holder;
-        return `Another Poke Agents office${port ? ` (port ${port})` : ''} tracks Conductor. Connect there.`;
-      }
+      const holder = conductorLockHolder();
+      if (holder) return lockRefusal(holder.port);
     }
     return undefined;
   };
 
   /** Stop the Conductor provider, take its sessions out of the office, and
-   *  start a new one that resolves the sign-in again. One at a time. */
-  const restartConductor = (): Promise<ConductorAuthSource | undefined> => {
+   *  start a new one that resolves the sign-in again (taking the lock first
+   *  when another office has released it). One at a time. */
+  const restartConductor = (
+    settleTimeoutMs = SIGN_IN_SETTLE_TIMEOUT_MS,
+  ): Promise<ConductorAuthSource | undefined> => {
     const run = async (): Promise<ConductorAuthSource | undefined> => {
       const refusal = conductorRefusal();
       if (refusal) throw new SignInError(refusal);
+      if (conductorLock && !conductorLock.acquired) {
+        const again = acquireConductorLock(officePort);
+        conductorLock = again;
+        if (!again.acquired) throw new SignInError(lockRefusal(again.holder.port));
+      }
       const previous = conductor;
       conductor = null;
       if (previous) {
@@ -501,7 +522,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
       }
       if (stopping) return undefined;
       return await new Promise<ConductorAuthSource | undefined>((resolve) => {
-        const timer = setTimeout(() => resolve(undefined), SIGN_IN_SETTLE_TIMEOUT_MS);
+        const timer = setTimeout(() => resolve(undefined), settleTimeoutMs);
         timer.unref?.();
         startConductorProvider((source) => {
           clearTimeout(timer);
@@ -702,7 +723,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
         .streamDrivers()
         .find((driver) => driver.provider.id === conductor?.id)
         ?.statusMessage() ?? null,
-    reconnectConductor: restartConductor,
+    reconnectConductor: () => restartConductor(),
     stop,
   };
 }

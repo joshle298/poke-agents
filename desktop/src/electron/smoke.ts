@@ -33,7 +33,8 @@ const PROBE_SCRIPT = `(() => {
     empty: text.includes('No sessions in scope'),
     bridge:
       typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.reconnectConductor === 'function' &&
-      typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.readClipboardKey === 'function',
+      typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.readClipboardKey === 'function' &&
+      typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.clipboardKeySuggestion === 'function',
     viewOnly: text.includes('View only'),
   };
 })()`;

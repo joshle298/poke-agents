@@ -9,7 +9,7 @@
 
 import { execFile as nodeExecFile } from 'child_process';
 
-import type { ConductorAuthSource } from '../../../../../core/src/messages.js';
+import type { ConductorAuthEnv, ConductorAuthSource } from '../../../../../core/src/messages.js';
 import {
   CONDUCTOR_DEFAULT_BASE_URL,
   ENV_API_KEY,
@@ -33,8 +33,8 @@ export interface ConductorAuth {
   baseUrl: string;
   token?: string;
   source?: ConductorAuthSource;
-  /** The variable the key came from, when `source` is `env` (for the log). */
-  envName?: string;
+  /** The variable the key came from, when `source` is `env`. */
+  envName?: ConductorAuthEnv;
 }
 
 export const defaultExecFile: ExecFileFn = (file, args, opts) =>
@@ -76,8 +76,8 @@ export function keychainAccount(baseUrl: string): string {
 }
 
 /** The environment variable holding a key, if one does (CONDUCTOR_API_KEY first). */
-export function envKeyName(env: NodeJS.ProcessEnv): string | undefined {
-  return [ENV_API_KEY, ENV_API_TOKEN].find((name) => !!env[name]?.trim());
+export function envKeyName(env: NodeJS.ProcessEnv): ConductorAuthEnv | undefined {
+  return ([ENV_API_KEY, ENV_API_TOKEN] as const).find((name) => !!env[name]?.trim());
 }
 
 /** A generic password from the Keychain, or undefined when there is none (or
@@ -86,12 +86,13 @@ export async function readKeychainPassword(
   execFile: ExecFileFn,
   service: string,
   account: string,
+  timeoutMs = KEYCHAIN_TIMEOUT_MS,
 ): Promise<string | undefined> {
   try {
     const { stdout } = await execFile(
       SECURITY_BIN,
       ['find-generic-password', '-s', service, '-a', account, '-w'],
-      { timeout: KEYCHAIN_TIMEOUT_MS },
+      { timeout: timeoutMs },
     );
     const value = stdout.replace(/\r?\n$/, '').trim();
     return value || undefined;

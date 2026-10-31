@@ -4,15 +4,15 @@
 
 ### Features
 
-- **Connect to Conductor in the office.** Without a Conductor key, the office (and the Mac app) shows a **Connect to Conductor** card instead of telling you to run `conductor auth login` in Terminal, which usually isn't on your `PATH`. **Get an API key** opens Conductor's API keys page in your browser; paste the key (or click **Paste**) and click **Connect**. Poke Agents checks it with Conductor and your sessions walk in without restarting the office or reloading the page. On macOS the key is kept in Poke Agents' own Keychain item (`com.joshle298.pokeagents.conductor`), never in the Conductor CLI's; on Linux and Windows it lasts until the office stops. In the Mac app, coming back from the browser with a key copied offers **Use key from clipboard**.
-- **Settings → Conductor** shows the account, where the key came from (an environment variable, Poke Agents' Keychain item, the Conductor CLI or this session) and **Sign Out of Conductor…** for a key Poke Agents saved. Signing out never touches the Conductor CLI's sign-in, and says when that sign-in is still in use.
+- **Connect to Conductor in the office.** Without a Conductor key, the office (and the Mac app) shows a **Connect to Conductor** card instead of telling you to run `conductor auth login` in Terminal, which usually isn't on your `PATH`. **Get an API key** opens Conductor's API keys page in your browser; paste the key (or click **Paste**) and click **Connect**. Poke Agents checks it with Conductor and your sessions walk in without restarting the office or reloading the page. On macOS the key is kept in Poke Agents' own Keychain item (`com.joshle298.pokeagents.conductor`), never in the Conductor CLI's. Apps you run can read that item without a prompt, as they could read an environment variable. On Linux and Windows the key lasts until the office stops. In the Mac app, coming back from the browser with a Conductor key copied offers **Use key from clipboard**, which shows the key's prefix and last four characters and fills the field; nothing is sent until you click **Connect**.
+- **Settings → Conductor** shows the account, where the key came from (`CONDUCTOR_API_KEY` or `CONDUCTOR_API_TOKEN`, Poke Agents' Keychain item, the Conductor CLI, or memory until Poke Agents quits) and **Sign Out of Conductor…** for a key Poke Agents saved. Signing out never touches the Conductor CLI's sign-in; if the CLI is signed in, the office switches to it and says so.
 
 ### Changes
 
 - Keys are looked up in this order: `CONDUCTOR_API_KEY`, `CONDUCTOR_API_TOKEN`, the key connected in the office, then the Conductor CLI's Keychain sign-in.
 - **Reconnect to Conductor** in the Mac app restarts Conductor polling inside the office instead of restarting the whole office, so the window keeps its page.
 - The card's **Prefer the CLI?** gives the full path of the Conductor CLI inside the Conductor app.
-- Status lines no longer tell you to set `CONDUCTOR_API_KEY` and restart, except when the rejected key comes from that variable.
+- Status lines no longer tell you to set `CONDUCTOR_API_KEY` and restart, except when the rejected key comes from an environment variable, which they name.
 
 ## Poke Agents v0.3.0
 

@@ -362,8 +362,8 @@ describe('ConductorStore', () => {
           message: "Couldn't remove the key from the Keychain.",
         },
       );
+      // A connect's answer shows on the card (and titles the empty office): no toast.
       expect(store.getState().toasts.map((t) => [t.text, t.tone])).toEqual([
-        ['Connected as dev@example.com', 'success'],
         ['Signed out.', 'success'],
         ["Couldn't sign out: Couldn't remove the key from the Keychain.", 'error'],
       ]);

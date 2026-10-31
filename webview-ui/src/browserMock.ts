@@ -682,6 +682,7 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
               state: 'connected',
               account: 'dev@example.com',
               authSource: 'app',
+              keyStorage: 'keychain',
               sessionCount: 0,
               visibleCount: 0,
               lastSyncAt: Date.now(),

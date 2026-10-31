@@ -32,6 +32,13 @@ export const APP_KEYCHAIN_LABEL = 'Poke Agents Conductor API key';
 export const SECURITY_BIN = '/usr/bin/security';
 /** The Keychain may show an "allow access" prompt; give the user time to answer. */
 export const KEYCHAIN_TIMEOUT_MS = 120_000;
+/** Saving a connected key: the write may wait on a locked login Keychain's
+ *  unlock prompt. The read-back right after it finds the Keychain unlocked
+ *  (and Poke Agents' own item never prompts /usr/bin/security). Both are
+ *  shorter than KEYCHAIN_TIMEOUT_MS so the Connect card's wait covers a
+ *  whole connect (CONNECT_WORST_CASE_MS). */
+export const KEYCHAIN_WRITE_TIMEOUT_MS = 60_000;
+export const KEYCHAIN_READ_BACK_TIMEOUT_MS = 15_000;
 /** `security delete-generic-password` exits with this when there is no such item. */
 export const SECURITY_ITEM_NOT_FOUND_EXIT = 44;
 /** Conductor's API keys page (`conductor auth login` opens the same page). */
@@ -43,12 +50,18 @@ export const API_KEY_WIRE_MAX_LENGTH = CONDUCTOR_KEY_WIRE_MAX_LENGTH;
 /** A restart waits this long for the new provider to settle its sign-in (the
  *  Keychain may ask the user first). */
 export const SIGN_IN_SETTLE_TIMEOUT_MS = KEYCHAIN_TIMEOUT_MS + 10_000;
+/** After a connect the reply waits at most this long for the new poller to
+ *  find the key (it is in memory, or in the Keychain the write just
+ *  unlocked); sessions keep arriving after the reply either way. */
+export const CONNECT_SETTLE_TIMEOUT_MS = 15_000;
 export const AUTH_REQUIRED_MESSAGE =
   'Open the office and connect with a Conductor API key, or set CONDUCTOR_API_KEY.';
 export const UNAUTHORIZED_MESSAGE =
   'Conductor rejected the API key. Connect with a new key in the office.';
-export const ENV_UNAUTHORIZED_MESSAGE =
-  'Conductor rejected the key in CONDUCTOR_API_KEY. Update it, then restart Poke Agents.';
+/** A rejected key from the environment: the office can't replace it. */
+export function envUnauthorizedMessage(envName: string | undefined): string {
+  return `Conductor rejected the key in ${envName ?? ENV_API_KEY}. Update it, then restart Poke Agents.`;
+}
 
 // ── Connecting from the office (connectConductor) ───────────
 
@@ -57,7 +70,7 @@ export const KEY_REJECTED_MESSAGE = 'That key was rejected by Conductor.';
 export const KEY_UNREACHABLE_MESSAGE = "Couldn't reach Conductor.";
 export const KEY_CHECK_FAILED_MESSAGE = "Conductor couldn't check the key. Try again.";
 export const KEYCHAIN_SAVE_FAILED_NOTE =
-  "Couldn't save it in the Keychain, so it is kept for this session only.";
+  "Couldn't save it in the Keychain, so Poke Agents keeps it until it quits.";
 export const KEYCHAIN_REMOVE_FAILED_MESSAGE = "Couldn't remove the key from the Keychain.";
 
 // ── Client budget (token bucket) ────────────────────────────
@@ -78,6 +91,14 @@ export const DEFAULT_RETRY_AFTER_MS = 10_000;
 export const BACKOFF_BASE_MS = 1_000;
 export const BACKOFF_MAX_MS = 30_000;
 export const REQUEST_TIMEOUT_MS = 15_000;
+/** The longest a connect can take before its reply: GET /me, the Keychain
+ *  write and read-back, and the restart's wait. The Connect card waits
+ *  longer (CONDUCTOR_CONNECT_ANSWER_TIMEOUT_MS in core/src/constants.ts). */
+export const CONNECT_WORST_CASE_MS =
+  REQUEST_TIMEOUT_MS +
+  KEYCHAIN_WRITE_TIMEOUT_MS +
+  KEYCHAIN_READ_BACK_TIMEOUT_MS +
+  CONNECT_SETTLE_TIMEOUT_MS;
 
 /** Request priorities: lower runs first when the bucket is short. */
 export const PRIORITY_USER = 0;

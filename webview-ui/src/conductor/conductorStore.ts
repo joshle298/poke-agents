@@ -274,10 +274,11 @@ function actionToastText(
   message: string | undefined,
 ): string | null {
   const who = actionWho(state, id);
+  // A connect's answer shows on the Connect card itself, next to the key
+  // ("Connected as …" also titles the empty office): never a toast.
+  if (action === 'connect') return null;
   if (ok) {
     switch (action) {
-      case 'connect':
-        return message ?? 'Connected to Conductor';
       case 'disconnect':
         return message ?? 'Signed out of Conductor';
       case 'sendSessionMessage':
@@ -292,8 +293,6 @@ function actionToastText(
         return null;
     }
   }
-  // A failed connect shows on the Connect card itself, next to the key.
-  if (action === 'connect') return null;
   const failure: Record<Exclude<ConductorAction, 'connect'>, string> = {
     sendSessionMessage: "Couldn't send the message",
     stopSession: "Couldn't stop the session",

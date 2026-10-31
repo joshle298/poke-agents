@@ -1,7 +1,12 @@
 import type { ReactNode } from 'react';
 
 import { useConductor } from '../conductor/conductorStore.js';
-import { CLOUD_ONLY_NOTE, conductorStatusLine, needsSignIn } from '../conductor/format.js';
+import {
+  CLOUD_ONLY_NOTE,
+  conductorStatusLine,
+  needsSignIn,
+  splitConnectedMessage,
+} from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_CONNECTED_NOTICE_MS, CONDUCTOR_UI_TICK_MS } from '../constants.js';
 import { ConductorConnectCard } from './ConductorConnectCard.js';
@@ -39,13 +44,17 @@ export function ConductorEmptyOffice({ onOpenSessions, readOnly }: ConductorEmpt
     title = 'Connect to Conductor';
     body = <ConductorConnectCard readOnly={readOnly} />;
   } else if (justConnected) {
-    title = signIn.message ?? 'Connected to Conductor';
+    const { headline, note } = splitConnectedMessage(signIn.message);
+    title = headline;
     body = (
-      <span className="text-xs text-text-muted">
-        {state === 'connected'
-          ? 'Sessions active in your cloud workspaces walk in here.'
-          : conductorStatusLine(status, now)}
-      </span>
+      <>
+        {note && <span className="text-xs">{note}</span>}
+        <span className="text-xs text-text-muted">
+          {state === 'connected'
+            ? 'Sessions active in your cloud workspaces walk in here.'
+            : conductorStatusLine(status, now)}
+        </span>
+      </>
     );
   } else if (state === 'connected') {
     title = 'No sessions in scope';

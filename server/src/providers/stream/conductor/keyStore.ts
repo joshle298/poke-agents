@@ -14,6 +14,14 @@
  * every value in that line passed a strict pattern, then reads the item back.
  * The service is always APP_KEYCHAIN_SERVICE, never the CLI's KEYCHAIN_SERVICE.
  * Nothing here logs the key, a command line carrying it, or the child's output.
+ *
+ * Who can read the item: it is written without `-T`, so macOS's default
+ * access list trusts the program that created it, /usr/bin/security. Any
+ * program running as this user can therefore read it with `security
+ * find-generic-password` without a prompt, as it could read an environment
+ * variable. The Keychain keeps the key encrypted at rest and from other users,
+ * not from the user's own programs (README: Sign In, Privacy). An access list
+ * trusting nothing (`-T ""`) would instead prompt on every office start.
  */
 
 import { spawn } from 'child_process';
@@ -25,7 +33,9 @@ import {
   API_KEY_WIRE_MAX_LENGTH,
   APP_KEYCHAIN_LABEL,
   APP_KEYCHAIN_SERVICE,
+  KEYCHAIN_READ_BACK_TIMEOUT_MS,
   KEYCHAIN_TIMEOUT_MS,
+  KEYCHAIN_WRITE_TIMEOUT_MS,
   SECURITY_BIN,
   SECURITY_ITEM_NOT_FOUND_EXIT,
 } from './constants.js';
@@ -125,8 +135,8 @@ export function createConductorKeyStore(opts: KeyStoreOptions): ConductorKeyStor
   /** This run's keys by account: off macOS, or when the Keychain refused one. */
   const memory = new Map<string, string>();
 
-  const readItem = (account: string) =>
-    readKeychainPassword(execFile, APP_KEYCHAIN_SERVICE, account);
+  const readItem = (account: string, timeoutMs?: number) =>
+    readKeychainPassword(execFile, APP_KEYCHAIN_SERVICE, account, timeoutMs);
 
   const writeItem = async (account: string, key: string): Promise<boolean> => {
     let line: string;
@@ -136,13 +146,13 @@ export function createConductorKeyStore(opts: KeyStoreOptions): ConductorKeyStor
       return false;
     }
     try {
-      await runWithInput(SECURITY_BIN, ['-i'], line, { timeout: KEYCHAIN_TIMEOUT_MS });
+      await runWithInput(SECURITY_BIN, ['-i'], line, { timeout: KEYCHAIN_WRITE_TIMEOUT_MS });
     } catch {
       return false;
     }
     // Interactive mode's exit status says little about the command it ran:
     // only reading the item back proves the save.
-    return (await readItem(account)) === key;
+    return (await readItem(account, KEYCHAIN_READ_BACK_TIMEOUT_MS)) === key;
   };
 
   return {

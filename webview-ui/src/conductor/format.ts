@@ -6,11 +6,7 @@ import {
   CONDUCTOR_KEY_PATTERN,
   CONDUCTOR_KEY_WIRE_MAX_LENGTH,
 } from '../../../core/src/constants.js';
-import type {
-  ConductorAuthSource,
-  ConductorKeyStorage,
-  ConductorStatus,
-} from '../../../core/src/messages.js';
+import type { ConductorKeyStorage, ConductorStatus } from '../../../core/src/messages.js';
 import {
   CONDUCTOR_DEEP_LINK_HOST,
   CONDUCTOR_DEEP_LINK_PROTOCOL,
@@ -86,15 +82,52 @@ export function apiKeyFromText(text: string): string | null {
     : null;
 }
 
+/** A key's prefix and last four characters, to show which key the Mac app
+ *  found on the clipboard without showing the key: "abcde_…wxyz". */
+export function maskedKeyHint(key: string): string {
+  const prefix = /^[a-z]{2,12}_/.exec(key)?.[0] ?? '';
+  return `${prefix}…${key.slice(-4)}`;
+}
+
+/** A connect's reply split for the empty office: its first line ("Connected
+ *  as <account>") as the title, and the rest (the Keychain refused the key)
+ *  as a note. */
+export function splitConnectedMessage(message: string | undefined): {
+  headline: string;
+  note?: string;
+} {
+  const [headline, ...rest] = (message?.trim() || 'Connected to Conductor').split('\n');
+  const note = rest.join(' ').trim();
+  return note ? { headline: headline.trim(), note } : { headline: headline.trim() };
+}
+
+/** What the card says when the browser refused to read the clipboard. */
+export function pasteBlockedMessage(platform: string): string {
+  return `Clipboard access was blocked. Paste with ${/mac|iphone|ipad/i.test(platform) ? 'Cmd' : 'Ctrl'}+V.`;
+}
+
+/** The variable an `env` key came from (CONDUCTOR_API_KEY when unknown). */
+function envName(status: ConductorStatus | null): string {
+  return status?.authEnv ?? 'CONDUCTOR_API_KEY';
+}
+
+/** Said wherever the office keeps a key in the Keychain: the item trusts
+ *  /usr/bin/security, so programs running as the user read it unprompted. */
+const KEYCHAIN_READABLE_NOTE = 'apps you run can read it without asking';
+
 /** Where the key in use came from, for Settings. Never the key. */
-export function authSourceText(source: ConductorAuthSource | undefined): string | null {
-  switch (source) {
+export function authSourceText(status: ConductorStatus | null): string | null {
+  switch (status?.authSource) {
     case 'env':
-      return 'Signed in with an environment variable (CONDUCTOR_API_KEY).';
+      return `Signed in with ${envName(status)} from the environment.`;
     case 'app':
-      return 'API key saved in the macOS Keychain by Poke Agents.';
+      return `API key saved by Poke Agents in the macOS Keychain (${KEYCHAIN_READABLE_NOTE}).`;
     case 'session':
-      return 'API key kept for this session only. Set CONDUCTOR_API_KEY to stay signed in.';
+      // On a Mac this means the Keychain refused the key: an app opened from
+      // Finder can't take an environment variable.
+      return status.keyStorage === 'keychain'
+        ? "API key kept until Poke Agents quits: the Keychain didn't save it. Connect again next time."
+        : 'API key kept until Poke Agents quits. Set CONDUCTOR_API_KEY to stay signed in.';
     case 'cli':
       return 'Signed in through the Conductor CLI.';
     default:
@@ -105,8 +138,16 @@ export function authSourceText(source: ConductorAuthSource | undefined): string 
 /** Where a key pasted on the Connect card is kept, said once on the card. */
 export function keyStorageNote(storage: ConductorKeyStorage | undefined): string {
   return storage === 'keychain'
-    ? 'Poke Agents keeps the key in your macOS Keychain.'
-    : 'Poke Agents keeps the key for this session only. Set CONDUCTOR_API_KEY to stay signed in.';
+    ? `Poke Agents saves the key in your macOS Keychain, where ${KEYCHAIN_READABLE_NOTE}.`
+    : 'Poke Agents keeps the key until it quits. Set CONDUCTOR_API_KEY to stay signed in.';
+}
+
+/** The Sign out confirmation. On a Mac the Conductor CLI's own sign-in, when
+ *  there is one, takes over (and macOS may ask before Poke Agents reads it). */
+export function signOutConfirmText(status: ConductorStatus | null): string {
+  return status?.keyStorage === 'keychain'
+    ? "Poke Agents forgets the API key it saved. If the Conductor CLI is signed in, the office switches to that sign-in (macOS may ask to allow Keychain access); otherwise its sessions leave the office. Conductor's own sign-in is not touched."
+    : 'Poke Agents forgets the API key, and its sessions leave the office. To connect again you need an API key.';
 }
 
 /** Sign out is offered only for a key Poke Agents itself keeps: never for
@@ -119,6 +160,12 @@ export function canSignOut(status: ConductorStatus | null): boolean {
  *  fix that (the environment wins), so the card says what to change instead. */
 export function envKeyRejected(status: ConductorStatus | null): boolean {
   return status?.state === 'unauthorized' && status.authSource === 'env';
+}
+
+/** What to change when Conductor rejects a key from the environment, naming
+ *  the variable it came from. */
+export function envKeyRejectedText(status: ConductorStatus | null): string {
+  return `Conductor rejected the key in ${envName(status)}. Update it, then restart Poke Agents.`;
 }
 
 /** Why a session the user expects may be missing from the office. */
@@ -150,7 +197,7 @@ export function conductorStatusLine(status: ConductorStatus | null, now: number)
       return 'Not connected to Conductor. Connect with an API key.';
     case 'unauthorized':
       return envKeyRejected(status)
-        ? 'Conductor rejected the key in CONDUCTOR_API_KEY. Update it, then restart Poke Agents.'
+        ? envKeyRejectedText(status)
         : 'Conductor rejected the API key. Connect with a new one.';
     case 'unreachable':
       return "Can't reach Conductor. Retrying…";

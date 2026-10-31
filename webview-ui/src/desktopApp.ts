@@ -21,11 +21,16 @@ export type DesktopCommand = { type: 'openSession'; agentId: number } | { type: 
 export interface DesktopBridge {
   /** Re-read the Conductor sign-in and restart polling. */
   reconnectConductor(): void;
-  /** A Conductor API key on the clipboard, or null. The app reads the
-   *  clipboard only for the focused office window and answers only
-   *  key-shaped text. Call it on a user click, or when the window regains
-   *  focus after "Get an API key"; never otherwise. */
+  /** Paste: a Conductor API key on the clipboard, or null. Answers only
+   *  during a user's click (the preload checks user activation), only for the
+   *  focused office window, and only key-shaped text. */
   readClipboardKey(): Promise<string | null>;
+  /** The clipboard suggestion: on the first focus after "Get an API key",
+   *  text shaped like a Conductor key (CONDUCTOR_KEY_SUGGEST_PATTERN in
+   *  desktop/src/constants.ts), or
+   *  null. The app answers once per opening of the API keys page and reads
+   *  nothing otherwise. Absent in an app older than the office it shows. */
+  clipboardKeySuggestion?(): Promise<string | null>;
   /** Receive app commands; returns the unsubscribe. */
   onCommand(listener: (command: unknown) => void): () => void;
 }

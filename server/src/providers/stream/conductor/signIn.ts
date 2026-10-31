@@ -17,6 +17,7 @@
 import type { ConductorAuthSource } from '../../../../../core/src/messages.js';
 import { envKeyName, resolveBaseUrl } from './auth.js';
 import {
+  CONNECT_SETTLE_TIMEOUT_MS,
   KEY_CHECK_FAILED_MESSAGE,
   KEY_INVALID_MESSAGE,
   KEY_REJECTED_MESSAGE,
@@ -52,8 +53,9 @@ export interface ConductorSignInOptions {
    *  another office polls it), or undefined. */
   refusal(): string | undefined;
   /** Restart Conductor polling so it resolves the sign-in again. Resolves with
-   *  the source the new poller found (undefined: none, or not in time). */
-  restart(): Promise<ConductorAuthSource | undefined>;
+   *  the source the new poller found (undefined: none, or not within
+   *  `settleTimeoutMs`, default SIGN_IN_SETTLE_TIMEOUT_MS). */
+  restart(settleTimeoutMs?: number): Promise<ConductorAuthSource | undefined>;
   log?: (message: string) => void;
   /** GET /me timeout. */
   timeoutMs?: number;
@@ -104,9 +106,10 @@ export async function verifyConductorKey(
   }
 }
 
-/** The account to name: the email, else the name. */
+/** The account to name: the email, else the name, on one line. */
 export function accountName(me: ConductorMe): string | undefined {
-  return me.email?.trim() || me.name?.trim() || undefined;
+  const name = me.email?.trim() || me.name?.trim();
+  return name ? name.replace(/\s+/g, ' ') : undefined;
 }
 
 export class ConductorSignIn implements ConductorSignInControl {
@@ -158,13 +161,15 @@ export class ConductorSignIn implements ConductorSignInControl {
     this.log(
       stored === 'app'
         ? 'connected with a key from the office, saved in the Keychain'
-        : `connected with a key from the office, kept for this session only${fellBack ? ' (the Keychain refused it)' : ''}`,
+        : `connected with a key from the office, kept in memory until the office stops${fellBack ? ' (the Keychain refused it)' : ''}`,
     );
-    await this.opts.restart();
+    // The key is known good: the reply need not wait long for the poller.
+    await this.opts.restart(CONNECT_SETTLE_TIMEOUT_MS);
     const account = accountName(me);
     const connected = account ? `Connected as ${account}` : 'Connected to Conductor';
+    // The note goes on its own line: the office titles itself with the first.
     return {
-      message: fellBack ? `${connected}. ${KEYCHAIN_SAVE_FAILED_NOTE}` : connected,
+      message: fellBack ? `${connected}\n${KEYCHAIN_SAVE_FAILED_NOTE}` : connected,
       account,
     };
   }

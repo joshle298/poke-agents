@@ -351,6 +351,7 @@ export interface ConductorStatus {
   visibleCount?: number;
   lastSyncAt?: number;
   authSource?: ConductorAuthSource;
+  authEnv?: ConductorAuthEnv;
   keyPageUrl?: string;
   keyStorage?: ConductorKeyStorage;
   scope: ConductorScope;
@@ -366,6 +367,8 @@ export type ConductorConnectionState =
   | 'rateLimited';
 
 export type ConductorAuthSource = 'env' | 'app' | 'cli' | 'session';
+
+export type ConductorAuthEnv = 'CONDUCTOR_API_KEY' | 'CONDUCTOR_API_TOKEN';
 
 export type ConductorKeyStorage = 'keychain' | 'session';
 

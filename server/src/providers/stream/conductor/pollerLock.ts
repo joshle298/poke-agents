@@ -81,3 +81,17 @@ export function acquirePollerLock(opts: PollerLockOptions): PollerLock {
   }
   return { acquired: false, holder: readHolder(file) ?? { pid: 0 } };
 }
+
+/**
+ * Who holds the lock, when a live process other than this one does; null when
+ * it is free, ours, a dead process's or unreadable (acquirePollerLock would
+ * take it). Takes nothing: a check that must not leave the lock held.
+ */
+export function pollerLockHolder(
+  opts: Pick<PollerLockOptions, 'dir' | 'pid' | 'isAlive'>,
+): PollerLockHolder | null {
+  const pid = opts.pid ?? process.pid;
+  const isAlive = opts.isAlive ?? processAlive;
+  const holder = readHolder(path.join(opts.dir, POLLER_LOCK_FILE_NAME));
+  return holder && holder.pid !== pid && isAlive(holder.pid) ? holder : null;
+}

@@ -1,11 +1,20 @@
 import { describe, expect, it, type Mock, vi } from 'vitest';
 
+import { CONDUCTOR_CONNECT_ANSWER_TIMEOUT_MS } from '../../core/src/constants.js';
 import type { ConductorAuthSource } from '../../core/src/messages.js';
+import {
+  CONNECT_SETTLE_TIMEOUT_MS,
+  CONNECT_WORST_CASE_MS,
+  KEYCHAIN_READ_BACK_TIMEOUT_MS,
+  KEYCHAIN_WRITE_TIMEOUT_MS,
+  REQUEST_TIMEOUT_MS,
+} from '../src/providers/stream/conductor/constants.js';
 import {
   type ConductorKeyStore,
   createConductorKeyStore,
 } from '../src/providers/stream/conductor/keyStore.js';
 import {
+  accountName,
   ConductorSignIn,
   signOutMessage,
   verifyConductorKey,
@@ -69,7 +78,7 @@ describe('verifyConductorKey', () => {
 interface Harness {
   signIn: ConductorSignIn;
   keyStore: ConductorKeyStore;
-  restart: Mock<() => Promise<ConductorAuthSource | undefined>>;
+  restart: Mock<(settleTimeoutMs?: number) => Promise<ConductorAuthSource | undefined>>;
   logs: string[];
   calls: Array<{ url: string; auth: string | null }>;
 }
@@ -84,7 +93,9 @@ function harness(
   } = {},
 ): Harness {
   const keyStore = opts.keyStore ?? createConductorKeyStore({ platform: 'linux' });
-  const restart = vi.fn(async (): Promise<ConductorAuthSource | undefined> => opts.next);
+  const restart = vi.fn(
+    async (_settleTimeoutMs?: number): Promise<ConductorAuthSource | undefined> => opts.next,
+  );
   const logs: string[] = [];
   const { fetchImpl, calls } = fakeFetch(
     opts.respond ?? ((auth) => (auth === `Bearer ${KEY}` ? json(200, ME) : json(401, {}))),
@@ -109,8 +120,25 @@ describe('ConductorSignIn.connect', () => {
     });
     expect(h.calls).toHaveLength(1);
     expect(await h.keyStore.read(BASE)).toEqual({ key: KEY, source: 'session' });
-    expect(h.restart).toHaveBeenCalledTimes(1);
+    // The key is known good: the reply waits only briefly for the poller.
+    expect(h.restart).toHaveBeenCalledExactlyOnceWith(CONNECT_SETTLE_TIMEOUT_MS);
     expect(h.logs.join('\n')).not.toContain(KEY);
+  });
+
+  it('answers within the Connect card’s wait, Keychain prompt included', () => {
+    expect(CONNECT_WORST_CASE_MS).toBe(
+      REQUEST_TIMEOUT_MS +
+        KEYCHAIN_WRITE_TIMEOUT_MS +
+        KEYCHAIN_READ_BACK_TIMEOUT_MS +
+        CONNECT_SETTLE_TIMEOUT_MS,
+    );
+    expect(CONNECT_WORST_CASE_MS).toBeLessThan(CONDUCTOR_CONNECT_ANSWER_TIMEOUT_MS);
+  });
+
+  it('names the account on one line', () => {
+    expect(accountName({ userId: 'u', email: ' a@b.c ' })).toBe('a@b.c');
+    expect(accountName({ userId: 'u', name: 'Dr. Ann\nLee' })).toBe('Dr. Ann Lee');
+    expect(accountName({ userId: 'u' })).toBeUndefined();
   });
 
   it('keeps and restarts nothing when Conductor rejects the key or can’t be reached', async () => {
@@ -169,7 +197,7 @@ describe('ConductorSignIn.connect', () => {
     expect(await h.keyStore.read('https://api.example.test')).toMatchObject({ key: KEY });
   });
 
-  it('says so when the Keychain refused the key and it is kept for this session', async () => {
+  it('says so, on its own line, when the Keychain refused the key and it is kept in memory', async () => {
     const keyStore: ConductorKeyStore = {
       storage: 'keychain',
       read: async () => undefined,
@@ -179,7 +207,7 @@ describe('ConductorSignIn.connect', () => {
     const h = harness({ keyStore });
     const result = await h.signIn.connect(KEY);
     expect(result.message).toBe(
-      "Connected as user@example.com. Couldn't save it in the Keychain, so it is kept for this session only.",
+      "Connected as user@example.com\nCouldn't save it in the Keychain, so Poke Agents keeps it until it quits.",
     );
   });
 
@@ -217,7 +245,8 @@ describe('ConductorSignIn.disconnect', () => {
     h.restart.mockClear();
     await expect(h.signIn.disconnect()).resolves.toEqual({ message: 'Signed out.' });
     expect(await h.keyStore.read(BASE)).toBeUndefined();
-    expect(h.restart).toHaveBeenCalledTimes(1);
+    // Sign out waits for the next sign-in (a CLI Keychain prompt included).
+    expect(h.restart).toHaveBeenCalledExactlyOnceWith();
   });
 
   it('is honest about a CLI or environment sign-in that remains', () => {

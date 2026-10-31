@@ -687,6 +687,36 @@ describe('startStandalone: connecting to Conductor from the office', () => {
     expect(api.calls).toEqual([]);
     expect(office.conductorStatus()).toBeNull();
   });
+
+  it('takes a lock another office released only for a key Conductor accepts', async () => {
+    const lock = path.join(tmpBase, '.pixel-agents', 'conductor.lock');
+    fs.mkdirSync(path.dirname(lock), { recursive: true });
+    fs.writeFileSync(lock, JSON.stringify({ pid: process.ppid, port: 41999 }));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { fetchImpl } = conductorApi();
+    const office = await startConductorOffice(fetchImpl);
+    const client = await openSocket(office);
+    // The other office stops and releases the lock.
+    fs.rmSync(lock);
+
+    // A rejected key leaves the lock free: nothing would poll behind it.
+    client.send({ type: 'connectConductor', apiKey: WRONG_KEY });
+    expect(await client.next(actionResult('connect'))).toMatchObject({
+      ok: false,
+      message: 'That key was rejected by Conductor.',
+    });
+    expect(fs.existsSync(lock)).toBe(false);
+
+    // An accepted key takes it, and this office polls.
+    const from = client.received.length;
+    client.send({ type: 'connectConductor', apiKey: KEY });
+    expect(await client.next(actionResult('connect'), from)).toMatchObject({ ok: true });
+    expect(JSON.parse(fs.readFileSync(lock, 'utf-8'))).toEqual({
+      pid: process.pid,
+      port: office.port,
+    });
+    await vi.waitFor(() => expect(office.conductorStatus()).toMatchObject({ state: 'connected' }));
+  });
 });
 
 describe('displayHostFor', () => {

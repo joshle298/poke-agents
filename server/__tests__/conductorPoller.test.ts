@@ -140,6 +140,9 @@ describe('Conductor provider startup', () => {
       state: 'connected',
       account: 'user@example.com',
       authSource: 'env',
+      authEnv: 'CONDUCTOR_API_KEY',
+      // Always said, so Settings knows whether the server is a Mac.
+      keyStorage: 'session',
       workspaceCount: 2,
       visibleCount: 2,
       scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 24 },
@@ -353,6 +356,32 @@ describe('Conductor provider startup', () => {
     expect(logs.join('\n')).not.toContain(KEY);
     expect(logs).toContain('using the key from CONDUCTOR_API_KEY; budget 60000/min');
     expect(api.calls.map((c) => c.path)).toEqual(['/me']);
+  });
+
+  it('names CONDUCTOR_API_TOKEN when the rejected key came from it', async () => {
+    const api = new FakeConductorApi(() => NOW);
+    api.override(
+      (c) => c.path === '/me',
+      () => new Response('{"userMessage":"bad key"}', { status: 401 }),
+    );
+    const sink = new RecordingSink();
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_TOKEN: KEY },
+      platform: 'linux',
+      stateDir: tmpStateDir(),
+      autoTick: false,
+      log: () => undefined,
+    });
+    await provider.start(sink);
+    expect(sink.lastStatus()).toMatchObject({
+      state: 'unauthorized',
+      authSource: 'env',
+      authEnv: 'CONDUCTOR_API_TOKEN',
+      message:
+        'Conductor rejected the key in CONDUCTOR_API_TOKEN. Update it, then restart Poke Agents.',
+    });
+    await provider.stop();
   });
 });
 

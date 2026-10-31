@@ -1232,9 +1232,11 @@ components:
           type: number
         authSource:
           $ref: '#/components/schemas/ConductorAuthSource'
+        authEnv:
+          $ref: '#/components/schemas/ConductorAuthEnv'
         keyPageUrl:
           type: string
-          description: Conductor's API keys page, where the user creates a key to connect with.
+          description: Conductor's API keys page, where the user creates a key to connect with. Sent while signed out or rejected.
         keyStorage:
           $ref: '#/components/schemas/ConductorKeyStorage'
         scope:
@@ -2209,8 +2211,16 @@ components:
       type: string
       enum: [env, app, cli, session]
 
+    ConductorAuthEnv:
+      description: The environment variable the key in use came from, when authSource is `env`.
+      type: string
+      enum: [CONDUCTOR_API_KEY, CONDUCTOR_API_TOKEN]
+
     ConductorKeyStorage:
-      description: Where a key pasted into the office is kept, `keychain` (macOS) or `session` (memory, this run only).
+      description: |
+        Where a key pasted into the office is kept: `keychain` (macOS, Poke Agents' own
+        Keychain item) or `session` (memory, until the office stops). Tells the office
+        whether its server runs on macOS.
       type: string
       enum: [keychain, session]
 

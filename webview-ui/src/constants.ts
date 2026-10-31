@@ -904,9 +904,6 @@ export const DESKTOP_BRIDGE_GLOBAL = 'pokeAgentsDesktop';
 export const DESKTOP_OPEN_SESSION_WAIT_MS = 10_000;
 /** How long "Copied" shows after copying a sign-in command. */
 export const COPY_FEEDBACK_MS = 1_500;
-/** A connect with no answer after this long says so (the server's own wait
- *  covers GET /me and a Keychain prompt). */
-export const CONDUCTOR_CONNECT_TIMEOUT_MS = 150_000;
 /** After connecting, the empty office says "Connected as …" this long (or
  *  until sessions walk in). */
 export const CONDUCTOR_CONNECTED_NOTICE_MS = 12_000;

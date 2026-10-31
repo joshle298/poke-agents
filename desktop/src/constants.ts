@@ -11,10 +11,21 @@ export const USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
 export const DESKTOP_BRIDGE_GLOBAL = 'pokeAgentsDesktop';
 /** IPC: the office's Reconnect button (renderer → main). */
 export const IPC_RECONNECT_CONDUCTOR = 'poke-agents:reconnect-conductor';
-/** IPC: the Connect card asks for a Conductor API key on the clipboard, on a
- *  Paste click or when the window regains focus after "Get an API key"
- *  (renderer → main, answered with key-shaped text or null). */
+/** IPC: the Connect card asks for a Conductor API key on the clipboard, with
+ *  `paste` (a Paste click) or `suggest` (the first focus after "Get an API
+ *  key"); renderer → main, answered with key-shaped text or null
+ *  (clipboardKey.ts). */
 export const IPC_READ_CLIPBOARD_KEY = 'poke-agents:read-clipboard-key';
+/** After "Get an API key" opens the browser, the office may ask once for a
+ *  key on the clipboard within this long. */
+export const CLIPBOARD_SUGGESTION_WINDOW_MS = 10 * 60_000;
+/** The narrower shape the app offers from the clipboard without being asked
+ *  ("Use key from clipboard"): a short lowercase prefix, `_`, then 40-50
+ *  URL-safe characters. Still no fixed prefix, but tokens shaped like GitHub's
+ *  (`ghp_` + 36), OpenAI's or Anthropic's (`sk-…`), Slack's (`xoxb-`) or
+ *  Stripe's (`sk_live_` + 24 or 99) are not offered. Paste accepts
+ *  CONDUCTOR_KEY_PATTERN (core/src/constants.ts). */
+export const CONDUCTOR_KEY_SUGGEST_PATTERN = /^[a-z]{2,12}_[A-Za-z0-9_-]{40,50}$/;
 /** IPC: app commands for the office (main → renderer): open a session's
  *  Pokédex, open Settings. */
 export const IPC_OFFICE_COMMAND = 'poke-agents:office-command';
