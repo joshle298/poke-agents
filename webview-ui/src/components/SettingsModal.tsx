@@ -1,5 +1,9 @@
 import { useRef, useState } from 'react';
 
+import { useConductor } from '../conductor/conductorStore.js';
+import { conductorStatusLine } from '../conductor/format.js';
+import { useNow } from '../conductor/hooks.js';
+import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
@@ -42,6 +46,30 @@ interface SettingsModalProps {
   onExportLayout: () => void;
   /** Browser-native layout import from a chosen file (standalone only). */
   onImportLayout: (file: File) => void;
+  /** Claude Code feeds this office: show the hooks, watch-all and launch rows. */
+  claudeActive: boolean;
+  /** Conductor feeds this office: show its section (status, Sessions, PC Box). */
+  conductorActive: boolean;
+  onManageSessions: () => void;
+  onOpenPcBox: () => void;
+  pokemonTheme: boolean;
+  onTogglePokemonTheme: () => void;
+  showConnections: boolean;
+  onToggleShowConnections: () => void;
+  battleLog: boolean;
+  onToggleBattleLog: () => void;
+  onOpenCredits: () => void;
+}
+
+/** The Conductor connection line, ticking so "synced Xs ago" stays true. */
+function ConductorStatusText({ active }: { active: boolean }) {
+  const status = useConductor((s) => s.status);
+  const now = useNow(CONDUCTOR_UI_TICK_MS, active);
+  return (
+    <div className="py-4 px-10 text-xs text-text-muted break-words">
+      {conductorStatusLine(status, now)}
+    </div>
+  );
 }
 
 export function SettingsModal({
@@ -67,6 +95,17 @@ export function SettingsModal({
   onToggleShowHostDirectories,
   onExportLayout,
   onImportLayout,
+  claudeActive,
+  conductorActive,
+  onManageSessions,
+  onOpenPcBox,
+  pokemonTheme,
+  onTogglePokemonTheme,
+  showConnections,
+  onToggleShowConnections,
+  battleLog,
+  onToggleBattleLog,
+  onOpenCredits,
 }: SettingsModalProps) {
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,8 +113,32 @@ export function SettingsModal({
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Settings">
-      {/* Open Sessions Folder opens an OS file manager — impossible in the browser. */}
-      {!isBrowserRuntime && (
+      {conductorActive && (
+        <>
+          <div className="pt-2 px-10 text-xs text-accent">Conductor</div>
+          <ConductorStatusText active={isOpen} />
+          <MenuItem
+            onClick={() => {
+              onClose();
+              onManageSessions();
+            }}
+          >
+            Manage Sessions…
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              onClose();
+              onOpenPcBox();
+            }}
+          >
+            PC Box…
+          </MenuItem>
+          <div className="mx-10 my-4 border-b border-border" />
+        </>
+      )}
+      {/* Open Sessions Folder opens an OS file manager — impossible in the browser.
+          Sessions here means Claude Code transcripts. */}
+      {!isBrowserRuntime && claudeActive && (
         <MenuItem
           onClick={() => {
             transport.send({ type: 'openSessionsFolder' });
@@ -189,16 +252,28 @@ export function SettingsModal({
           transport.send({ type: 'setSoundEnabled', enabled: newVal });
         }}
       />
+      <Checkbox label="Pokémon Theme" checked={pokemonTheme} onChange={onTogglePokemonTheme} />
       <Checkbox
-        label="Watch All Sessions"
-        checked={watchAllSessions}
-        onChange={onToggleWatchAllSessions}
+        label="Show Connections"
+        checked={showConnections}
+        onChange={onToggleShowConnections}
       />
-      <Checkbox
-        label="Instant Detection (Hooks)"
-        checked={hooksInstalled}
-        onChange={onToggleHooksEnabled}
-      />
+      <Checkbox label="Battle Log" checked={battleLog} onChange={onToggleBattleLog} />
+      {/* Claude Code only: the external-session scanner and its hooks. */}
+      {claudeActive && (
+        <>
+          <Checkbox
+            label="Watch All Sessions"
+            checked={watchAllSessions}
+            onChange={onToggleWatchAllSessions}
+          />
+          <Checkbox
+            label="Instant Detection (Hooks)"
+            checked={hooksInstalled}
+            onChange={onToggleHooksEnabled}
+          />
+        </>
+      )}
       <Checkbox
         label="Always Show Labels"
         checked={alwaysShowOverlay}
@@ -217,30 +292,43 @@ export function SettingsModal({
         <Checkbox label="Show Areas" checked={showAreas} onChange={onToggleShowAreas} />
       )}
       {/* Permission posture, set once instead of per launch: while on, the host
-          adds the CLI's skip-permissions flag to every agent it launches. */}
-      <Checkbox
-        label={
-          <span className="flex items-center gap-4">
-            Skip Permissions
-            {/* Nudged down: the pixel font's glyphs sit low in their line box,
+          adds the CLI's skip-permissions flag to every agent it launches. Both
+          launch rows only matter where Claude Code agents can be launched. */}
+      {claudeActive && (
+        <Checkbox
+          label={
+            <span className="flex items-center gap-4">
+              Skip Permissions
+              {/* Nudged down: the pixel font's glyphs sit low in their line box,
                 so a centered icon reads as floating high. */}
-            <span className="material-symbols-sharp text-[12px] translate-y-2" aria-hidden="true">
-              warning
+              <span className="material-symbols-sharp text-[12px] translate-y-2" aria-hidden="true">
+                warning
+              </span>
             </span>
-          </span>
-        }
-        checked={bypassPermissions}
-        onChange={onToggleBypassPermissions}
-      />
+          }
+          checked={bypassPermissions}
+          onChange={onToggleBypassPermissions}
+        />
+      )}
       {/* The host's own Directories in the launch drawer, named for what each
           host contributes: VS Code its workspace folders, standalone the
           directory the server was started from. */}
-      <Checkbox
-        label={isBrowserRuntime ? 'Show Start Directory' : 'Show Workspace Folders'}
-        checked={showHostDirectories}
-        onChange={onToggleShowHostDirectories}
-      />
+      {claudeActive && (
+        <Checkbox
+          label={isBrowserRuntime ? 'Show Start Directory' : 'Show Workspace Folders'}
+          checked={showHostDirectories}
+          onChange={onToggleShowHostDirectories}
+        />
+      )}
       <Checkbox label="Debug View" checked={isDebugMode} onChange={onToggleDebugMode} />
+      <MenuItem
+        onClick={() => {
+          onClose();
+          onOpenCredits();
+        }}
+      >
+        Credits
+      </MenuItem>
     </Modal>
   );
 }
