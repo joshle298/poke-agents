@@ -2,23 +2,36 @@
 
 Poke Agents shows your [Conductor](https://conductor.build) cloud sessions as Pokémon in a pixel-art office, live. Each session walks to a desk while it works, falls asleep when it goes idle, faints when it errors, and calls for you when it needs an answer. When one session delegates to others, the office draws the links between them and shows the messages they send. It runs in a small window next to Conductor.
 
-Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, under the [MIT License](LICENSE).
+Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, under the [MIT License](LICENSE).
 
 ## Features
 
 - **A Pokémon per session.** Every visible cloud session is a Pokémon whose species stays with that session. It works at a desk while the session runs tools, reads on read tools, and wanders when the turn is done.
-- **Levels and evolution.** `Lv` grows with session activity. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
+- **Levels and evolution.** `Lv` comes from the session's message count, so a session walks in at its level and climbs as it works. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it needs your answer or a permission.
 - **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon. Its new sessions are thrown out of a Poké Ball from where it stands.
 - **Links and messages.** Dashed lines connect a Lead to the sessions it created or messaged. When one session messages another, a Poké Ball flies between them with a short preview.
-- **Pokédex panel.** Click a Pokémon to see its session: workspace, repository, model and harness, status, an HP bar for the context left, the task prompt, recent replies, and messages exchanged with other sessions. Actions: Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
-- **PC Box.** Archived sessions are deposited in the PC. Withdraw one and it walks back into the office.
+- **Pokédex panel.** Click a Pokémon to see its session: workspace, repository, model and harness, status, an HP bar for the context left, the task prompt, recent activity, and messages exchanged with other sessions. Actions: Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
+- **Chat tab.** The Pokédex's Chat tab shows the session's conversation: your messages, the agent's replies, tool steps and messages from other sessions. **Load earlier** pages back through older messages, and the reply box at the bottom sends a message to the session.
+- **Pending questions.** When a session asks you something, the Pokédex shows the question and its options, and an option button sends that option as your reply.
+- **PC Box.** Archived sessions are deposited in the PC, listed with their Pokémon portraits. Withdraw one and it walks back into the office.
 - **Sessions modal.** Choose which sessions are visible: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search across every session in scope.
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
 - **Desktop window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
+
+## Poke Agents Is a Visualizer
+
+Poke Agents shows what your Conductor sessions are doing. All coding happens in Conductor, with your Conductor settings: models, environment, repositories and agents stay configured there.
+
+- **What it reads:** your account, your cloud workspaces and their sessions, and each session's status and messages, through Conductor's public API with GET requests.
+- **What it can ask Conductor to do:** send a message to a session (**Send**, **Revive** and a pending question's options), stop a session's turn, archive a session (**Deposit in PC**) and unarchive one (**Withdraw**). Each happens only when you click it in an office opened with its token, and Conductor does the work.
+- **What it never does:** start sessions or agents, run code, edit repositories, or store or change your Conductor settings or API key. **Hide** and **Pin** only change what this office shows; Conductor isn't told.
+- **What it stores:** its own view of your sessions under `~/.pixel-agents/` (see [Configuration](#configuration)): the scope, hidden and pinned sessions, seats and each session's Pokémon.
+
+The exception is `--claude`, upstream's local Claude Code mode. It is opt-in, and `npm start` never turns it on: it launches Claude Code in a terminal inside the office and, after you agree in the app, installs hooks in `~/.claude/settings.json`.
 
 ## Requirements
 
@@ -36,6 +49,8 @@ npm ci       # installs dependencies and builds dist/
 npm start    # opens the office in an app window
 ```
 
+The first `npm ci` downloads the build tools and builds the app, which takes about a minute. npm warns about deprecated packages, and npm 11.16 and later list dependency install scripts that no `allowScripts` entry covers (npm 12 skips them). The build doesn't need those scripts. When `npm ci` ends with `Built dist/ in … s`, run `npm start`. On a machine with no browser to open, `npm start` prints the URL instead.
+
 To update, run `git pull && npm ci && npm start`. `npm ci` rebuilds `dist/` when it was built from another commit.
 
 Or run it straight from GitHub without cloning:
@@ -44,32 +59,38 @@ Or run it straight from GitHub without cloning:
 npx github:joshle298/poke-agents --open
 ```
 
-npm 12 and later refuse git packages by default, so add `--allow-git=all`:
+npm 12 and later refuse git packages by default (`EALLOWGIT`), so add `--allow-git=all`:
 
 ```bash
 npx --allow-git=all github:joshle298/poke-agents --open
 ```
 
-The first run downloads about 150 MB of build tools and builds the app, which takes 20 seconds or more. Later runs of the same commit start in about a second. Don't run `npx poke-agents`: that npm name belongs to an unrelated package.
+The first run downloads about 125 MB of build tools and builds the app. It takes about 20 seconds and prints nothing until the office starts. Later runs of the same commit start in about a second. Don't run `npx poke-agents`: that npm name belongs to an unrelated package.
 
 The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
+
+Without a Conductor sign-in, the office opens with the steps to sign in. Run `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart Poke Agents.
 
 ## Using the Office
 
 - Click a Pokémon or its party slot to open its Pokédex. Cmd-click (Ctrl-click) or double-click opens the session in Conductor.
+- In the Pokédex's **Chat** tab, type a reply at the bottom: Enter sends it and Shift+Enter starts a new line. **Load earlier** fetches older messages from Conductor.
+- When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Pokédex shows the question and its options. **Reply with this option** sends the option's text as a normal message, the same as typing it.
 - **Sessions** in the toolbar opens the Sessions modal. **PC** opens the PC Box.
 - The × on a Pokémon or its party slot hides the session. Find it again in Sessions.
+- **Escape** closes the window on top: a confirmation, then a modal, then the Pokédex.
 - **Settings** has the Pokémon theme, Show connections and Battle log toggles, and Credits for the sprites in use.
 
 Actions that change a session are the only writes Poke Agents makes to Conductor, and each one happens only when you click it in a tokened office:
 
-| Action        | What it does in Conductor                                                                |
-| ------------- | ---------------------------------------------------------------------------------------- |
-| Send message  | Sends your text to the session.                                                          |
-| Revive        | Sends "continue" to a fainted (errored) session.                                         |
-| Stop          | Cancels the session's turn. Asks first, because Conductor drops messages still queued.   |
-| Deposit in PC | Archives the session. Asks first. The session leaves the office and is listed in the PC. |
-| Withdraw      | Unarchives a session from the PC Box. It walks back into the office.                     |
+| Action                     | What it does in Conductor                                                                                            |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Send message, Chat replies | Sends your text to the session.                                                                                      |
+| Reply with this option     | Sends the option's text to the session as a normal message.                                                          |
+| Revive                     | Sends "continue" to a fainted (errored) session.                                                                     |
+| Stop                       | Cancels the session's turn. Asks first, because Conductor drops messages still queued.                               |
+| Deposit in PC              | Archives the session. Asks first. The session leaves the office and is listed in the PC.                             |
+| Withdraw                   | Unarchives a session from the PC Box. It walks back into the office, even when it was last active before the window. |
 
 ### How Visibility Works
 
@@ -81,7 +102,7 @@ Poke Agents polls Conductor for sessions in scope and shows up to a cap of them.
 - **Cap:** 24 sessions by default. When more are in scope, they are ranked in this order: pinned, waiting for you, working, errored, Leads with visible active sessions, then most recent activity. A shown session stays until it falls 4 places past the cap, so the office doesn't flicker. At most 12 sessions per Lead are shown; the rest are listed in the Sessions modal.
 - **Hide** removes a session from the office until you show it again. **Pin** always shows it.
 
-Sessions that never started (no name, no model and no messages) are ignored.
+Sessions that never started (no name, no model and no messages) are ignored. The session whose Pokédex is open, and the sessions linked to it, update every few seconds; the others are polled less often the longer they are idle.
 
 ### Leads and Links
 
@@ -98,13 +119,14 @@ A session becomes a Lead when it creates another session with a first message, f
 | `--open`, `--app`        | off          | Open the office in a Chromium app window. macOS tries Chrome, Edge, Brave, Chromium, Vivaldi and Chrome Canary in that order, then the default browser. Linux uses `xdg-open`. |
 | `--browser <id>`         | first found  | Use this browser for `--open`. `poke-agents --help` lists the ids.                                                                                                             |
 | `--port`, `-p <number>`  | `41510`      | Port to listen on. When 41510 is busy and no `--port` was given, a free port is used instead.                                                                                  |
-| `--host <address>`       | `127.0.0.1`  | Address to bind to. `0.0.0.0` exposes the office to your network.                                                                                                              |
+| `--host <address>`       | `127.0.0.1`  | Address to bind to. `0.0.0.0` exposes the office to your network; other devices can watch it by IP address.                                                                    |
+| `--allowed-host <name>`  | none         | Also accept the tokened URL under this host name, such as a reverse proxy's (Tailscale Serve). Repeatable.                                                                     |
+| `--rotate-token`         | off          | Replace the office token. Every URL that carried the old one stops working.                                                                                                    |
 | `--no-conductor`         | Conductor on | Don't connect to Conductor.                                                                                                                                                    |
-| `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                             |
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                        |
 | `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                              |
-
-Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as described under [Upstream Pixel Agents](#upstream-pixel-agents). The embedded terminal only exists with `--claude`.
+| `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                             |
+| `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                             |
 
 | Environment variable           | Effect                                                                    |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -115,21 +137,34 @@ Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as descri
 | `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
 | `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
 
-Without either variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
+Without either token variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
 
-Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents: `conductor-state.json` holds the scope, hidden and pinned sessions and each session's Pokémon (never the token), and `cache/pmd/` holds downloaded sprites.
+Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents. None of it is a Conductor setting, and none of it holds the Conductor token:
+
+| File                    | Contents                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`).                      |
+| `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, and where Poke Agents last read each session. |
+| `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                  |
+| `config.json`           | Settings such as the Pokémon theme and sounds.                                                        |
+| `layout.json`           | The office layout.                                                                                    |
+| `cache/pmd/`            | Downloaded sprites and portraits.                                                                     |
 
 ## Privacy
 
 - Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`) and, for sprites, to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
+- The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions.
 - There is no telemetry or analytics.
 
 ## Troubleshooting
 
 - **My local (Mac) Conductor workspaces don't appear.** Conductor's public API only covers cloud workspaces, and local workspaces have no API. Only cloud sessions can appear.
 - **"Sign in with `conductor auth login`".** No token was found. Run `conductor auth login` on macOS or set `CONDUCTOR_API_KEY` (a Pro account is needed for API keys), then restart Poke Agents.
+- **`npm ci` stops with "Can't build dist/".** npm left out the build tools because of `--omit=dev` or `NODE_ENV=production`. Run `npm ci --include=dev`.
+- **`npx` stops with `EALLOWGIT`.** npm 12 refuses git packages unless you add `--allow-git=all`.
+- **`npm start` prints "Could not open a window".** No browser could be opened, for example over SSH. Open the printed URL yourself.
 - **Sessions update slowly, or the status line reports rate limiting.** Conductor limits API requests, and the limit may be shared with your sessions' own `conductor` CLI calls. Poke Agents halves its request rate after a rate-limit reply and recovers slowly. Lower the rate with `--conductor-budget`, or narrow the scope and cap in Sessions.
 - **macOS asks to allow access to a Keychain item.** That is the token `conductor auth login` saved. Choose Allow, or set `CONDUCTOR_API_KEY` to skip the Keychain.
 - **The office opens in a normal browser tab.** No supported Chromium browser was found. Install Chrome, or pick one with `--browser`.
@@ -185,7 +220,7 @@ The office, its characters and furniture come from Pixel Agents. Its characters 
 
 ## License
 
-Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca. Both are available under the [MIT License](LICENSE), which keeps the upstream copyright notice.
+Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca: it started from Pixel Agents' code and keeps much of it. Both are available under the [MIT License](LICENSE), which keeps the upstream copyright notice.
 
 ## Upstream Pixel Agents
 

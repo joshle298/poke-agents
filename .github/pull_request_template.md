@@ -25,7 +25,9 @@
 
 <!-- Add your own test steps -->
 
-- [ ] Tested in Extension Development Host (F5)
+- [ ] Ran the office with `node dist/cli.js` (add `--no-conductor` for UI-only changes)
+- [ ] Tested in the Extension Development Host (F5), for VS Code changes
+- [ ] Poke Agents stays a visualizer: no new Conductor write except on a user's click, and no changes to Conductor settings or repositories
 - [ ] ...
 
 ## E2E coverage
