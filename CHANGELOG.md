@@ -1,8 +1,32 @@
 # Changelog
 
+## Poke Agents v0.2.0
+
+A polish pass from running the office against real Conductor sessions. Poke Agents is still only a visualizer: every new action asks Conductor's API, on your click.
+
+### Features
+
+- **Chat tab in the Pokédex.** The session's conversation as a scrollable thread: your messages, the agent's replies, collapsed tool steps and messages to and from other sessions. **Load earlier** pages back through older messages, fetched from Conductor on demand within the request budget. Reply from the box at the bottom (Enter sends, Shift+Enter starts a new line); the box shows when a reply is sending and whether Conductor accepted it. Markdown links show as their text, and nothing is rendered as HTML.
+- **Pending questions.** When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Pokédex shows the question and its options. **Reply with this option** sends the option's text as a normal message.
+- **Real levels on arrival.** Every visible session's level is read from its message count soon after it walks in, so idle sessions no longer sit at Lv 1 until you open their Pokédex.
+- **PC Box portraits.** Archived sessions show their Pokémon's portrait after a reload or a restart, not only when this page saw them in the office.
+
+### Fixes
+
+- **Privacy: DNS rebinding.** The office's live connection is refused under host names other than `localhost`, IP addresses, `--host` and `--allowed-host`. Before, a web page that pointed its own domain at your computer could open a read-only connection on port 41510 and read your session list and message previews.
+- **Withdraw from the PC Box** brings the session back into the office even when its last activity is older than the activity window. Before, it vanished from both the office and the PC Box.
+- **Smoother polling.** Closing the Pokédex releases its session from the fastest polling tier, instead of keeping it and its linked sessions polled every few seconds for the rest of the run, so working sessions get the request budget.
+- **Escape** closes the window on top, one at a time: a confirmation, then an open modal such as Sessions or Settings, then the Pokédex. Before, Escape closed the Pokédex hidden under an open modal and left the modal up.
+- **First install.** `npm ci` says when it builds `dist/`, how long the build took and to run `npm start` next. Installing without devDependencies (`--omit=dev`, `NODE_ENV=production`) stops with the command that fixes it instead of a stack trace.
+
+### Changes
+
+- Poke Agents is its own project, inspired by and based on Pixel Agents by Pablo De Lucca. The license keeps the upstream copyright notice.
+- The README says what Poke Agents reads from Conductor, what it can ask Conductor to do, and what it never does.
+
 ## Poke Agents v0.1.0
 
-First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](https://conductor.build) cloud sessions as Pokémon.
+First release of Poke Agents, inspired by and based on Pixel Agents, showing [Conductor](https://conductor.build) cloud sessions as Pokémon.
 
 ### Features
 

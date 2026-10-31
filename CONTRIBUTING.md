@@ -1,6 +1,8 @@
 # Contributing to Poke Agents
 
-Thanks for your interest in contributing to Poke Agents! All contributions are welcome — features, bug fixes, documentation improvements, refactors, and more. Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents); changes that aren't specific to Conductor or the Pokémon theme may belong upstream.
+Thanks for your interest in contributing to Poke Agents! All contributions are welcome — features, bug fixes, documentation improvements, refactors, and more. Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca; fixes to code the two share may belong upstream too.
+
+Poke Agents is a visualizer for Conductor. A change must not make it run agents, start sessions, edit repositories, or store or change Conductor settings; actions only ask Conductor's API to act, on the user's click. The README's "Poke Agents Is a Visualizer" section is the contract. Upstream's `--claude` mode is the opt-in exception.
 
 This project is licensed under the [MIT License](LICENSE), so your contributions will be too. No CLA or DCO is required.
 
@@ -52,7 +54,7 @@ npm run verify:npm-package
 
 The verifier runs the production `prepack` build, creates a tarball outside the repository, installs that exact tarball into a temporary project, and checks the package identity (`@joshle298/poke-agents`, one `poke-agents` bin), CLI help, the `Poke Agents running at` URL line, the health endpoint, the standalone SPA, bundled assets, and Claude hook setup. It starts the CLI with `--no-conductor --claude`, sprites off and Conductor credentials removed from its environment. Temporary files and the child server are removed automatically; it never publishes to npm.
 
-`npm pack --dry-run` lists what would ship. `npx github:joshle298/poke-agents` installs from git, which runs `prepare` to build `dist/` first.
+`npm pack --dry-run` lists what would ship. `npx github:joshle298/poke-agents` installs from git, which runs `prepare` to build `dist/` first. `npm run test:package-contract` also runs `scripts/docs-contract.test.mjs`, which fails when the README's flag and environment tables, defaults or data files drift from the code, or when CLAUDE.md's protocol message counts drift from `core/asyncapi.yaml`.
 
 ### Releases
 

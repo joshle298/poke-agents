@@ -1,6 +1,6 @@
 # Poke Agents
 
-Poke Agents, a fork of Pixel Agents, turns AI coding sessions into animated characters in a pixel-art office: Conductor cloud sessions by default, drawn as Pokémon, and Claude Code sessions with `--claude`. Where the entries below say Pixel Agents, they hold for Poke Agents too. This glossary is the canonical language for contributors and integrators; end-user docs may simplify it but must never contradict it.
+Poke Agents, inspired by and based on Pixel Agents, turns AI coding sessions into animated characters in a pixel-art office: Conductor cloud sessions by default, drawn as Pokémon, and Claude Code sessions with `--claude`. Where the entries below say Pixel Agents, they hold for Poke Agents too. This glossary is the canonical language for contributors and integrators; end-user docs may simplify it but must never contradict it.
 
 ## Hosts & Adapters
 
@@ -218,6 +218,18 @@ _Avoid_: favorite, starred
 **PC Box**:
 The list of archived cloud sessions. Depositing a session in the PC archives it in Conductor and removes its character; withdrawing it unarchives it, and its character walks back in.
 _Avoid_: archive view, trash
+
+**Pokédex**:
+The panel that shows one cloud session in detail: its workspace, repository, model, status, task, recent activity and messages with other sessions, with the actions that ask Conductor to act on it. Opened by clicking a Pokémon or its party slot.
+_Avoid_: details panel, inspector, session panel (that's the component, not the concept)
+
+**Chat tab**:
+The Pokédex's view of a cloud session's conversation as one thread: user messages, the agent's replies, collapsed tool lines, and messages to and from other sessions, with older pages loaded on request and a reply box at the bottom. A reply is an ordinary Conductor message to the session.
+_Avoid_: transcript (that's the session's append-only record), log, console, terminal
+
+**Pending question**:
+A question a cloud session has put to the user and not yet had answered: an AskUserQuestion with its options, a plan to approve, or a Codex async question. The Pokédex shows it with its options, and choosing one sends that option's text as an ordinary message. An AskUserQuestion leaves its agent waiting for input and a plan is a permission request; a Codex async question doesn't stop the session.
+_Avoid_: prompt (that's the task text), permission request (a plan approval is one, but most are tool approvals, not questions), popup, dialog
 
 **Battle log**:
 The optional one-line ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), shown at the bottom of the office. It lives in the office UI only and keeps the last 30 events.

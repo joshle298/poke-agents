@@ -2,9 +2,12 @@
 
 ## Supported Versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+Poke Agents is installed from GitHub, so fixes land on `main`. Update with `git pull && npm ci`.
+
+| Version               | Supported          |
+| --------------------- | ------------------ |
+| Latest commit on main | :white_check_mark: |
+| Older commits         | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -24,4 +27,6 @@ Security issues relevant to this project include:
 - Sensitive data exposure (e.g., leaking terminal output or session content)
 - Leaking the Conductor API token (to disk, logs, a command line or the browser)
 - Conductor actions (send message, stop, archive, restore) reachable without the office token
+- Another web page reading the office's live feed (session names, messages, tool activity), for example through DNS rebinding
+- Any path by which Poke Agents could run agents, edit a repository or change Conductor settings without the user's click
 - Sprite downloads or the sprite route reading or writing outside the sprite cache
