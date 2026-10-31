@@ -9,6 +9,8 @@ import {
   hpTone,
   needsAttention,
   partyOrder,
+  pcBoxPortraitUrl,
+  pcBoxSpecies,
   pickPortrait,
   portraitEmotion,
 } from '../src/conductor/party.js';
@@ -189,5 +191,59 @@ describe('buildPartySlot', () => {
       condition: null,
       isStream: false,
     });
+  });
+});
+
+describe('PC Box portraits', () => {
+  const loaded = {
+    species: {
+      '25:0': {
+        type: 'pokemonSpeciesLoaded' as const,
+        dex: 25,
+        shiny: false,
+        name: 'Sparky',
+        shadowSize: 1,
+        anims: {},
+        portraits: { Normal: '/api/pokemon/0025/portrait/Normal.png?v=loaded' },
+        credits: { sprite: [], portrait: [], pageUrl: '' },
+      },
+    },
+  };
+
+  it("takes the summary's species first, so a reload still knows the Pokémon", () => {
+    const remembered = { 'sess-a': { species: 7, shiny: false } };
+    expect(pcBoxSpecies({ sessionId: 'sess-a', species: 4, shiny: true }, remembered)).toEqual({
+      species: 4,
+      shiny: true,
+    });
+    expect(pcBoxSpecies({ sessionId: 'sess-a' }, remembered)).toEqual({
+      species: 7,
+      shiny: false,
+    });
+    expect(pcBoxSpecies({ sessionId: 'sess-b' }, remembered)).toBeUndefined();
+  });
+
+  it("uses a loaded species' own portrait", () => {
+    expect(pcBoxPortraitUrl({ species: 25, shiny: false }, loaded, true)).toBe(
+      '/api/pokemon/0025/portrait/Normal.png?v=loaded',
+    );
+  });
+
+  it("asks the server's portrait route for a species nobody in the office uses", () => {
+    expect(pcBoxPortraitUrl({ species: 4, shiny: false }, loaded, true)).toBe(
+      '/api/pokemon/0004/portrait/Normal.png',
+    );
+    // A shiny shows the base form's portrait.
+    expect(pcBoxPortraitUrl({ species: 133, shiny: true }, loaded, true)).toBe(
+      '/api/pokemon/0133/portrait/Normal.png',
+    );
+  });
+
+  it('falls back to the Poké Ball without the route, a species or a valid dex', () => {
+    expect(pcBoxPortraitUrl({ species: 4, shiny: false }, loaded, false)).toBeUndefined();
+    expect(pcBoxPortraitUrl(undefined, loaded, true)).toBeUndefined();
+    expect(pcBoxPortraitUrl({ species: 0, shiny: false }, loaded, true)).toBeUndefined();
+    expect(pcBoxPortraitUrl({ species: 1026, shiny: false }, loaded, true)).toBeUndefined();
+    expect(pcBoxPortraitUrl({ species: 2.5, shiny: false }, loaded, true)).toBeUndefined();
   });
 });

@@ -21,6 +21,7 @@ import {
   hpFraction,
   isThemedOverlay,
   pokemonLabel,
+  themedRoleLabel,
 } from '../src/office/components/pokemonOverlay.js';
 import { createCharacter } from '../src/office/engine/characters.js';
 import { setPokemonThemeEnabled } from '../src/office/engine/pokemonTheme.js';
@@ -77,6 +78,24 @@ test('the label: nickname and Lv on line 1, the species in small text', () => {
     species: null,
     condition: null,
   });
+});
+
+test('a spawned session shows its name once; a Lead says LEAD', () => {
+  setPokemonSpecies({ ...speciesMessage(25, { name: 'Sparky' }), anims: {} });
+  const child = pokemon();
+  // The driver sets a child's agentName to its session label (= its nickname).
+  child.label = 'Fix login redirect';
+  child.agentName = 'Fix login redirect';
+  assert.equal(themedRoleLabel(child, pokemonLabel(child).nickname), null);
+
+  // A teammate name that differs from the nickname still shows.
+  child.agentName = 'researcher';
+  assert.equal(themedRoleLabel(child, pokemonLabel(child).nickname), 'researcher');
+
+  const lead = pokemon();
+  lead.label = 'Plan the auth refactor';
+  lead.isTeamLead = true;
+  assert.equal(themedRoleLabel(lead, pokemonLabel(lead).nickname), 'LEAD');
 });
 
 test('badges: SLP asleep, ! needs you, FNT fainted', () => {

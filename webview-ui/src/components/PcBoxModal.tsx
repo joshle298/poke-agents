@@ -4,9 +4,10 @@ import { requestConductorSessions, restoreSession } from '../conductor/actions.j
 import { findSpecies, useConductor } from '../conductor/conductorStore.js';
 import { agoText, workspaceLabel } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
-import { pickPortrait } from '../conductor/party.js';
+import { pcBoxPortraitUrl, pcBoxSpecies } from '../conductor/party.js';
 import { archivedSessions } from '../conductor/sessionsView.js';
 import { CONDUCTOR_UI_TICK_MS, PORTRAIT_SOURCE_PX } from '../constants.js';
+import { isBrowserRuntime } from '../runtime.js';
 import { PokeBallIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
@@ -25,6 +26,9 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
   const sessions = useConductor((s) => s.sessions);
   const sessionSpecies = useConductor((s) => s.sessionSpecies);
   const speciesMap = useConductor((s) => s.species);
+  const pokemonTheme = useConductor((s) => s.pokemonTheme);
+  // The standalone server serves portraits by dex while the theme is on.
+  const portraitRoute = isBrowserRuntime && pokemonTheme;
   const now = useNow(CONDUCTOR_UI_TICK_MS, isOpen);
   // Withdrawals in flight: the row stays but its button waits until the
   // session leaves the archived list (or the toast reports a failure).
@@ -51,7 +55,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
         ) : (
           <ul className="m-0 p-0 list-none flex flex-col gap-4">
             {archived.map((session) => {
-              const ref = sessionSpecies[session.sessionId];
+              const ref = pcBoxSpecies(session, sessionSpecies);
               const species = findSpecies({ species: speciesMap }, ref?.species, ref?.shiny);
               const waiting = pending.has(session.sessionId);
               return (
@@ -60,7 +64,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
                   className="flex items-center gap-8 p-4 border-2 border-border bg-btn-bg"
                 >
                   <PokemonPortrait
-                    url={pickPortrait(species?.portraits, 'Normal')}
+                    url={pcBoxPortraitUrl(ref, { species: speciesMap }, portraitRoute)}
                     size={PORTRAIT_SOURCE_PX}
                     alt={species?.name ?? ''}
                     fallback={<PokeBallIcon size={PORTRAIT_SOURCE_PX} />}

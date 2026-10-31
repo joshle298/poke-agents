@@ -21,9 +21,11 @@ import type {
   PokemonSpeciesLoaded,
   ServerMessage,
   SessionDetail,
+  SessionDetailEntry,
 } from '../../../core/src/messages.js';
 import { BATTLE_LOG_CAPACITY, EVOLUTION_LEVELS, TOAST_MAX_VISIBLE } from '../constants.js';
 import { extractToolName } from '../office/toolUtils.js';
+import { mergeEntries } from './chat.js';
 
 /** One tool the agent started this turn (agentToolStart → agentToolDone). */
 export interface OpenTool {
@@ -101,6 +103,23 @@ export interface SpeciesRef {
   shiny: boolean;
 }
 
+/** Older conversation pages the chat view loaded for one agent
+ *  (requestSessionHistory → sessionHistory). */
+export interface ChatHistory {
+  /** Every page so far, merged by entry key, oldest first. */
+  entries: readonly SessionDetailEntry[];
+  /** Cursor for the next older page. */
+  cursor?: string;
+  /** Older entries exist (and the cursor can fetch them). */
+  hasMore: boolean;
+  /** A reply has arrived. */
+  loaded: boolean;
+  /** When the request in flight was sent (store clock), if one is. */
+  pendingSince?: number;
+  /** The last reply's error, until the next request. */
+  error?: string;
+}
+
 export interface ConductorState {
   /** Provider ids feeding the office. Absent on the wire means ['claude']. */
   activeProviders: readonly string[];
@@ -109,6 +128,7 @@ export interface ConductorState {
   agents: Readonly<Record<number, ConductorAgent>>;
   links: readonly AgentLink[];
   sessionDetails: Readonly<Record<number, SessionDetail>>;
+  chatHistories: Readonly<Record<number, ChatHistory>>;
   /** null until the server reports (no Conductor provider, or not yet). */
   status: ConductorStatus | null;
   /** null until the first conductorSessions arrives. */
@@ -126,6 +146,8 @@ export interface ConductorState {
 
 const DEFAULT_PROVIDERS: readonly string[] = ['claude'];
 
+const EMPTY_HISTORY: ChatHistory = { entries: [], hasMore: false, loaded: false };
+
 function initialConductorState(): ConductorState {
   return {
     activeProviders: DEFAULT_PROVIDERS,
@@ -133,6 +155,7 @@ function initialConductorState(): ConductorState {
     agents: {},
     links: [],
     sessionDetails: {},
+    chatHistories: {},
     status: null,
     sessions: null,
     species: {},
@@ -371,6 +394,7 @@ export class ConductorStore {
           agents: omit(state.agents, msg.id),
           agentIds: state.agentIds.filter((id) => id !== msg.id),
           sessionDetails: omit(state.sessionDetails, msg.id),
+          chatHistories: omit(state.chatHistories, msg.id),
           actionOutcomes: omit(state.actionOutcomes, msg.id),
         };
       }
@@ -501,6 +525,24 @@ export class ConductorStore {
       }
       case 'sessionDetail':
         return { ...state, sessionDetails: { ...state.sessionDetails, [msg.id]: msg } };
+      case 'sessionHistory': {
+        const prev = state.chatHistories[msg.id] ?? EMPTY_HISTORY;
+        const next: ChatHistory = msg.error
+          ? { ...prev, pendingSince: undefined, error: msg.error }
+          : {
+              entries: mergeEntries(Array.isArray(msg.entries) ? msg.entries : [], prev.entries),
+              // A late duplicate reply never moves the cursor of a page
+              // already loaded.
+              ...(prev.loaded && prev.pendingSince === undefined
+                ? { cursor: prev.cursor, hasMore: prev.hasMore }
+                : {
+                    cursor: msg.before,
+                    hasMore: msg.hasMore === true && typeof msg.before === 'string',
+                  }),
+              loaded: true,
+            };
+        return { ...state, chatHistories: { ...state.chatHistories, [msg.id]: next } };
+      }
       case 'conductorStatus':
         return { ...state, status: msg };
       case 'conductorSessions':
@@ -568,6 +610,18 @@ export class ConductorStore {
     this.set({
       ...this.state,
       sessions: sessions.map((s) => (s.sessionId === sessionId ? { ...s, ...patch } : s)),
+    });
+  }
+
+  /** The chat view asked for a history page (the newest without a cursor). */
+  noteHistoryRequest(id: number): void {
+    const prev = this.state.chatHistories[id] ?? EMPTY_HISTORY;
+    this.set({
+      ...this.state,
+      chatHistories: {
+        ...this.state.chatHistories,
+        [id]: { ...prev, pendingSince: this.now(), error: undefined },
+      },
     });
   }
 

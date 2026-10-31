@@ -31,6 +31,8 @@ import type {
   ConductorSessionSummary,
   ServerMessage,
   SessionDetail,
+  SessionDetailEntry,
+  SessionQuestion,
 } from '../../core/src/messages.ts';
 import { transport } from './transport/index.js';
 
@@ -259,8 +261,13 @@ export async function initBrowserMock(): Promise<void> {
  * Only used in Vite dev mode (npm run dev). In standalone server mode and
  * VS Code mode, the server/extension sends all state over the transport.
  */
+let mockDispatched = false;
+
 export function dispatchMockMessages(): void {
-  if (!mockPayload) return;
+  // StrictMode runs App's mount effect twice in dev; a second pass would
+  // wrap transport.send again and answer every request twice.
+  if (!mockPayload || mockDispatched) return;
+  mockDispatched = true;
 
   const {
     characters,
@@ -298,10 +305,12 @@ export function dispatchMockMessages(): void {
 }
 
 // ── Conductor mock (Vite dev only) ─────────────────────────────────────────────
-// A few synthetic Conductor sessions so the party bar, Pokédex, Sessions and
-// PC Box can be developed and screenshotted without a server. Every name and
-// message below is made up. No sprites are fetched: species carry names only,
-// so portraits and characters fall back to the upstream art.
+// A few synthetic Conductor sessions so the party bar, Pokédex (Overview and
+// Chat, with history pages and a pending question), Sessions and PC Box can
+// be developed and screenshotted without a server. Every name and message
+// below is made up. No sprites ship or decode: species carry names and the
+// local server's portrait URLs, which 404 on the Vite server, so portraits
+// and characters fall back to the upstream art.
 //
 // ?conductor=off  no Conductor at all (the upstream Claude Code office)
 // ?conductor=empty  connected, nobody in scope (empty-office state)
@@ -498,6 +507,8 @@ function mockSessions(): ConductorSessionSummary[] {
       hidden: false,
       archived: true,
       archivedAt: mockMinutesAgo(180),
+      species: 133,
+      shiny: false,
     },
     {
       sessionId: 'mock-session-archived-2',
@@ -510,47 +521,126 @@ function mockSessions(): ConductorSessionSummary[] {
       hidden: false,
       archived: true,
       archivedAt: mockMinutesAgo(60 * 26),
+      species: 4,
+      shiny: false,
+    },
+    {
+      sessionId: 'mock-session-archived-3',
+      label: 'Try the new linter',
+      workspaceId: 'mock-ws-32',
+      workspaceName: 'lint-trial',
+      workspaceNumber: 32,
+      repo: 'acme/web',
+      status: 'idle',
+      hidden: false,
+      archived: true,
+      archivedAt: mockMinutesAgo(60 * 50),
     },
   ];
 }
 
-function mockDetail(agent: MockAgent): SessionDetail {
+/** Lines of a made-up working session, oldest first, with stable keys. */
+const MOCK_TURN_TOOLS: ReadonlyArray<[tool: string, text: string]> = [
+  ['Read', 'Reading src/auth/session.ts'],
+  ['Grep', 'Searching for redirectTo'],
+  ['Edit', 'Editing src/auth/redirect.ts'],
+  ['Bash', 'Running npm test'],
+];
+
+/** Messages sent from the Pokédex this page load, per agent: the mock
+ *  conversation grows by them (and a short made-up acknowledgement). */
+const mockSent = new Map<number, SessionDetailEntry[]>();
+
+function mockConversation(agent: MockAgent): SessionDetailEntry[] {
+  return [...mockScriptedConversation(agent), ...(mockSent.get(agent.id) ?? [])];
+}
+
+function mockScriptedConversation(agent: MockAgent): SessionDetailEntry[] {
   const peer = agent.leadAgentId ?? (agent.id === 1 ? 3 : undefined);
   const peerLabel = MOCK_AGENTS.find((a) => a.id === peer)?.label;
-  const entries: SessionDetail['entries'] = [
-    { role: 'user', text: `Please take on: ${agent.label.toLowerCase()}.`, at: mockMinutesAgo(30) },
+  const lines: Array<Omit<SessionDetailEntry, 'at' | 'key'>> = [
     {
-      role: 'assistant',
-      text: 'On it. I will read the relevant files first, then make the change and run the tests.',
-      at: mockMinutesAgo(29),
+      role: 'user',
+      text: `Please take on: ${agent.label.toLowerCase()}. Notes: @[Planning notes.md](.context%2Fattachments%2Fplanning-notes.md)`,
     },
-    { role: 'tool', text: 'Reading src/auth/session.ts', at: mockMinutesAgo(28) },
-    { role: 'tool', text: 'Running npm test', at: mockMinutesAgo(20) },
   ];
-  if (peer !== undefined) {
-    entries.push({
-      role: agent.leadAgentId ? 'peerIn' : 'peerOut',
-      text: 'Status check: how far along are the tests?',
-      at: mockMinutesAgo(12),
-      peerId: peer,
-      peerLabel,
+  for (let turn = 1; turn <= 6; turn++) {
+    lines.push({
+      role: 'assistant',
+      text:
+        turn === 1
+          ? 'On it. I will read the relevant files first, then make the change and run the tests.'
+          : `Step ${turn}: the change builds; checking the next file before running the suite again.`,
     });
+    for (const [toolName, text] of MOCK_TURN_TOOLS.slice(0, 1 + (turn % 4))) {
+      lines.push({ role: 'tool', toolName, text });
+    }
+    if (turn === 3) lines.push({ role: 'user', text: 'Keep the public API unchanged, please.' });
+    if (turn === 4 && peer !== undefined) {
+      lines.push({
+        role: agent.leadAgentId ? 'peerIn' : 'peerOut',
+        text: 'Status check: how far along are the tests?',
+        peerId: peer,
+        peerLabel,
+      });
+    }
   }
-  entries.push({
+  lines.push({
     role: 'assistant',
     text:
       agent.status === 'error'
         ? 'The run stopped with a provider error.'
         : agent.awaitingInput
-          ? 'Should the redirect keep the original query string?'
+          ? 'Before I change the redirect: should it keep the original query string?'
           : 'Tests are green so far; continuing with the next file.',
-    at: mockMinutesAgo(agent.lastActivityMinutesAgo),
   });
+  const start = mockMinutesAgo(agent.lastActivityMinutesAgo + lines.length);
+  return lines.map((line, i) => ({
+    ...line,
+    at: start + i * 60_000,
+    key: `${agent.sessionId}:${i}`,
+  }));
+}
+
+/** The pending question of the session waiting on its user. */
+function mockQuestion(agent: MockAgent): SessionQuestion | undefined {
+  // Any reply answers it.
+  if (!agent.awaitingInput || mockSent.has(agent.id)) return undefined;
+  return {
+    kind: 'askUser',
+    text: 'Should the login redirect keep the original query string?',
+    options: ['Keep the query string', 'Drop it and send people to /home', 'Ask the lead first'],
+  };
+}
+
+/** Lines the live detail carries (the server's ring keeps the newest). */
+const MOCK_DETAIL_ENTRIES = 10;
+/** Lines per history page. */
+const MOCK_HISTORY_PAGE = 12;
+
+function mockDetail(agent: MockAgent): SessionDetail {
+  const all = mockConversation(agent);
   return {
     type: 'sessionDetail',
     id: agent.id,
-    prompt: `${agent.label}. Keep the change small, add tests, and report back to the lead session when done.`,
-    entries,
+    prompt: `${agent.label}. Context: @[Transcript of Planning.md](.context%2Fattachments%2Fplanning-transcript.md). Keep the change small, add tests, and report back to the lead session when done.`,
+    entries: all.slice(-MOCK_DETAIL_ENTRIES),
+    truncated: all.length > MOCK_DETAIL_ENTRIES,
+    question: mockQuestion(agent),
+  };
+}
+
+/** One history page older than `before` (an index cursor), oldest first. */
+function mockHistory(agent: MockAgent, before: string | undefined): ServerMessage {
+  const all = mockConversation(agent);
+  const end = before === undefined ? all.length : Number(before);
+  const start = Math.max(0, end - MOCK_HISTORY_PAGE);
+  return {
+    type: 'sessionHistory',
+    id: agent.id,
+    entries: all.slice(start, end),
+    ...(start > 0 ? { before: String(start) } : {}),
+    hasMore: start > 0,
   };
 }
 
@@ -593,6 +683,7 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
   if (mode === 'empty') return;
 
   for (const [dex, name] of Object.entries(MOCK_SPECIES)) {
+    const dex4 = dex.padStart(4, '0');
     send({
       type: 'pokemonSpeciesLoaded',
       dex: Number(dex),
@@ -600,7 +691,7 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
       name,
       shadowSize: 1,
       anims: {},
-      portraits: {},
+      portraits: { Normal: `/api/pokemon/${dex4}/portrait/Normal.png` },
       credits: { sprite: ['CHUNSOFT'], portrait: ['CHUNSOFT'], pageUrl: '' },
     });
   }
@@ -707,6 +798,12 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
         if (agent) reply(mockDetail(agent));
         break;
       }
+      case 'requestSessionHistory': {
+        const agent = MOCK_AGENTS.find((a) => a.id === msg.id);
+        // Slower than the detail, so "Loading…" shows.
+        if (agent) setTimeout(() => send(mockHistory(agent, msg.before)), 600);
+        break;
+      }
       case 'requestConductorSessions':
         reply({ type: 'conductorSessions', sessions });
         break;
@@ -747,9 +844,25 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
         ok('restoreSession')();
         reply({ type: 'conductorSessions', sessions });
         break;
-      case 'sendSessionMessage':
+      case 'sendSessionMessage': {
         ok('sendSessionMessage')(msg.id);
+        const agent = MOCK_AGENTS.find((a) => a.id === msg.id);
+        if (!agent) break;
+        const sent = mockSent.get(agent.id) ?? [];
+        const at = Date.now();
+        sent.push(
+          { role: 'user', text: msg.text, at, key: `${agent.sessionId}:sent:${at}` },
+          {
+            role: 'assistant',
+            text: 'Got it, carrying on with that.',
+            at: at + 1,
+            key: `${agent.sessionId}:ack:${at}`,
+          },
+        );
+        mockSent.set(agent.id, sent);
+        reply(mockDetail(agent));
         break;
+      }
       case 'stopSession':
         ok('stopSession')(msg.id);
         reply({ type: 'agentStatus', id: msg.id, status: 'waiting' });

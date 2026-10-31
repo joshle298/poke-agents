@@ -279,10 +279,6 @@ export const CONTEXT_GAUGE_COLOR_DANGER = '#ff8800';
 export const CONTEXT_GAUGE_COLOR_CRITICAL = '#ff2222';
 export const CONTEXT_GAUGE_BG = '#222';
 
-// ── Agent Teams ─────────────────────────────────────────────
-export const TEAM_LEAD_COLOR = '#ffd700';
-export const TEAM_ROLE_COLOR = '#66aaff';
-
 // ── Pets ────────────────────────────────────────────────────────
 /** Walking speed in world pixels per second (matches character walk speed visually but slower). */
 export const PET_WALK_SPEED_PX_PER_SEC = 32;
@@ -603,6 +599,11 @@ export const POKEMON_ANIM_FALLBACKS = {
   wake: ['Wake', 'Hop'],
 } as const satisfies Record<string, readonly string[]>;
 /** Decode order: what the office needs first. Anything else follows. */
+/** A species no character has used this long has its decoded sheets closed
+ *  (it decodes again when one does). */
+export const POKEMON_SHEET_RELEASE_AFTER_MS = 5 * 60_000;
+/** How often (simulated seconds) OfficeState sweeps unused species. */
+export const POKEMON_SHEET_SWEEP_SEC = 30;
 export const POKEMON_DECODE_ORDER = [
   'Idle',
   'Walk',
@@ -737,6 +738,11 @@ export const PARTY_SLEEP_AFTER_MS = 120_000;
 export const EVOLUTION_LEVELS: readonly number[] = [16, 36];
 /** How often time-derived slot states (asleep, "synced Xs ago") re-render. */
 export const CONDUCTOR_UI_TICK_MS = 5_000;
+/** The local server's same-origin sprite route (standalone only): the PC Box
+ *  asks it for portraits of species nobody in the office uses. */
+export const POKEMON_PORTRAIT_ROUTE_PREFIX = '/api/pokemon';
+/** Highest National Dex number the server's sprite route accepts. */
+export const POKEMON_MAX_DEX = 1025;
 /** Pixel size of a PMD portrait (portraits are drawn at integer multiples). */
 export const PORTRAIT_SOURCE_PX = 40;
 /** Pokédex header portrait size (2× the source). */
@@ -754,6 +760,15 @@ export const POKEDEX_SHEET_MAX_HEIGHT_RATIO = 0.72;
 export const POKEDEX_REFRESH_MS = 5_000;
 /** An action outcome stays visible in the Pokédex this long. */
 export const POKEDEX_ACTION_RESULT_VISIBLE_MS = 8_000;
+/** A sent message with no conductorActionResult after this long shows as
+ *  unconfirmed (it may still have reached Conductor). */
+export const POKEDEX_SEND_TIMEOUT_MS = 15_000;
+/** A history page with no sessionHistory reply after this long offers a retry. */
+export const POKEDEX_HISTORY_TIMEOUT_MS = 20_000;
+/** The chat thread follows new lines while scrolled within this of the end. */
+export const POKEDEX_CHAT_STICK_SLACK_PX = 24;
+/** Compact portrait in the chat tab's identity row (the source size). */
+export const POKEDEX_CHAT_PORTRAIT_PX = 40;
 /** What Revive sends to a fainted (errored) session. */
 export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
 /** Deep links the UI will hand to openExternal (the server re-validates). */
@@ -780,6 +795,8 @@ export const TOAST_MAX_VISIBLE = 3;
 export const TOAST_Z_INDEX = 60;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
+/** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */
+export const PIXEL_AGENTS_REPO_URL = 'https://github.com/pixel-agents-hq/pixel-agents';
 /** Credits links (PMD Sprite Repository and the community art license). */
 export const PMD_SPRITE_SITE_URL = 'https://sprites.pmdcollab.org';
 export const PMD_SPRITE_REPO_URL = 'https://github.com/PMDCollab/SpriteCollab';

@@ -18,7 +18,7 @@ import {
   conductorStatusLine,
   modelLabel,
   needsSignIn,
-  windowLabel,
+  windowOptions,
   workspaceLabel,
 } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
@@ -252,6 +252,10 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
     setConductorScope(next);
   };
 
+  const activeWindowOptions = useMemo(
+    () => windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, scope?.activeWithinHours),
+    [scope?.activeWithinHours],
+  );
   const maxOptions = useMemo(() => {
     const values = new Set<number>(CONDUCTOR_SCOPE_MAX_SESSIONS);
     if (scope) values.add(scope.maxSessions);
@@ -279,10 +283,7 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
               label="Active in"
               value={scope.activeWithinHours}
               disabled={readOnly}
-              options={CONDUCTOR_SCOPE_WINDOW_HOURS.map((hours) => ({
-                value: hours,
-                label: windowLabel(hours),
-              }))}
+              options={activeWindowOptions}
               onChange={(activeWithinHours) => changeScope({ activeWithinHours })}
             />
             <Segmented

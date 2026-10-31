@@ -53,6 +53,19 @@ export function pokemonLabel(ch: Character): PokemonLabel {
   };
 }
 
+/**
+ * The small line above a themed label's nickname: LEAD for a Lead, a child's
+ * name only when the nickname line doesn't already show it. A spawned
+ * Conductor session's agentName is its session label, which is also its
+ * nickname, so it would otherwise read twice.
+ */
+export function themedRoleLabel(ch: Character, nickname: string | null): string | null {
+  if (ch.isTeamLead) return 'LEAD';
+  const name = ch.agentName?.trim();
+  if (!name || name === nickname?.trim()) return null;
+  return name;
+}
+
 /** HP = context left: 1 − used/window, clamped to 0..1. */
 export function hpFraction(contextTokens: number, maxContextTokens: number): number {
   if (maxContextTokens <= 0) return 0;

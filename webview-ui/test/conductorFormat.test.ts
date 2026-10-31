@@ -10,10 +10,12 @@ import {
   safeHttpsUrl,
   shortAge,
   windowLabel,
+  windowOptions,
   workspaceLabel,
 } from '../src/conductor/format.js';
 import { readBoolPref, writeBoolPref } from '../src/conductor/preferences.js';
 import { archivedSessions, groupSessions, leadSessionIds } from '../src/conductor/sessionsView.js';
+import { CONDUCTOR_SCOPE_WINDOW_HOURS } from '../src/constants.js';
 
 const scope = { creator: 'me' as const, activeWithinHours: 6, showIdle: true, maxSessions: 24 };
 
@@ -93,6 +95,20 @@ describe('small formatters', () => {
     expect(modelLabel(undefined, 'codex')).toBe('codex');
     expect(windowLabel(0)).toBe('All');
     expect(windowLabel(24)).toBe('24h');
+  });
+
+  it('offers "All" (0, no limit) last and shows a value the server applied', () => {
+    const labels = (current?: number) =>
+      windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, current).map((o) => o.label);
+    expect(labels()).toEqual(['1h', '6h', '24h', '72h', 'All']);
+    expect(windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, 0).at(-1)).toEqual({
+      value: 0,
+      label: 'All',
+    });
+    // A window the server clamped or kept from an older build stays visible.
+    expect(labels(12)).toEqual(['1h', '6h', '12h', '24h', '72h', 'All']);
+    expect(labels(720)).toEqual(['1h', '6h', '24h', '72h', '720h', 'All']);
+    expect(labels(-1)).toEqual(['1h', '6h', '24h', '72h', 'All']);
   });
 });
 

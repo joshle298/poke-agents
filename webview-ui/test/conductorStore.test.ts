@@ -374,6 +374,70 @@ describe('ConductorStore', () => {
     });
   });
 
+  describe('chat history', () => {
+    const page = (keys: string[], at0: number) =>
+      keys.map((key, i) => ({ role: 'assistant' as const, text: key, at: at0 + i, key }));
+    const history = () => store.getState().chatHistories[3];
+
+    it('takes the newest page, then older pages by cursor, merged by key', () => {
+      store.noteHistoryRequest(3);
+      expect(history().pendingSince).toBe(clock);
+      apply({
+        type: 'sessionHistory',
+        id: 3,
+        entries: page(['c', 'd'], 30),
+        before: 'cur-1',
+        hasMore: true,
+      });
+      expect(history()).toMatchObject({ cursor: 'cur-1', hasMore: true, loaded: true });
+      expect(history().pendingSince).toBeUndefined();
+
+      store.noteHistoryRequest(3);
+      apply({
+        type: 'sessionHistory',
+        id: 3,
+        entries: page(['a', 'b', 'c'], 10),
+        before: 'cur-2',
+        hasMore: false,
+      });
+      expect(history().entries.map((e) => e.key)).toEqual(['a', 'b', 'c', 'd']);
+      expect(history()).toMatchObject({ cursor: 'cur-2', hasMore: false });
+    });
+
+    it('never moves the cursor on a late duplicate reply', () => {
+      store.noteHistoryRequest(3);
+      apply({ type: 'sessionHistory', id: 3, entries: [], before: 'cur-1', hasMore: true });
+      apply({ type: 'sessionHistory', id: 3, entries: [], before: 'cur-0', hasMore: true });
+      expect(history().cursor).toBe('cur-1');
+    });
+
+    it('keeps what it has on an error, and has no more without a cursor', () => {
+      store.noteHistoryRequest(3);
+      apply({ type: 'sessionHistory', id: 3, entries: page(['x'], 1), hasMore: true });
+      expect(history().hasMore).toBe(false);
+      store.noteHistoryRequest(3);
+      apply({
+        type: 'sessionHistory',
+        id: 3,
+        entries: [],
+        hasMore: false,
+        error: 'Conductor is rate limiting this app.',
+      });
+      expect(history().entries.map((e) => e.key)).toEqual(['x']);
+      expect(history().error).toBe('Conductor is rate limiting this app.');
+      expect(history().pendingSince).toBeUndefined();
+      store.noteHistoryRequest(3);
+      expect(history().error).toBeUndefined();
+    });
+
+    it('is dropped with its agent', () => {
+      apply({ type: 'agentCreated', id: 3 });
+      store.noteHistoryRequest(3);
+      apply({ type: 'agentClosed', id: 3 });
+      expect(history()).toBeUndefined();
+    });
+  });
+
   describe('subscription', () => {
     it('notifies on change, keeps untouched slices identical, ignores unrelated messages', () => {
       let calls = 0;

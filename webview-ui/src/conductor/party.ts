@@ -4,8 +4,14 @@
  * emotion for it, and the HP reading.
  */
 
-import { PARTY_MAX_NEST_DEPTH, PARTY_SLEEP_AFTER_MS } from '../constants.js';
-import type { ConductorAgent, ConductorState } from './conductorStore.js';
+import type { ConductorSessionSummary } from '../../../core/src/messages.js';
+import {
+  PARTY_MAX_NEST_DEPTH,
+  PARTY_SLEEP_AFTER_MS,
+  POKEMON_MAX_DEX,
+  POKEMON_PORTRAIT_ROUTE_PREFIX,
+} from '../constants.js';
+import type { ConductorAgent, ConductorState, SpeciesRef } from './conductorStore.js';
 import { agentNickname, currentActivity, findSpecies, isStreamProvider } from './conductorStore.js';
 
 export interface PartyEntry {
@@ -97,6 +103,42 @@ export function pickPortrait(
 ): string | undefined {
   if (!portraits) return undefined;
   return portraits[emotion] ?? portraits.Normal ?? Object.values(portraits)[0];
+}
+
+/** The Pokémon a PC Box row shows: the summary's own species (the server
+ *  sends it with every session, so it survives a reload), else the one this
+ *  page last saw the session as. */
+export function pcBoxSpecies(
+  session: Pick<ConductorSessionSummary, 'sessionId' | 'species' | 'shiny'>,
+  sessionSpecies: Readonly<Record<string, SpeciesRef>>,
+): SpeciesRef | undefined {
+  if (session.species !== undefined) {
+    return { species: session.species, shiny: session.shiny === true };
+  }
+  return sessionSpecies[session.sessionId];
+}
+
+/**
+ * The portrait for a PC Box row. A species this office has loaded gives its
+ * own Normal portrait. An archived session's species usually isn't loaded
+ * (nobody in the office uses it), so where the local server serves its
+ * portrait route (standalone, theme on) the row asks it for the dex's Normal
+ * portrait: the server downloads it into its cache on demand. A shiny shows
+ * the base form's, as the server does when a shiny has no portraits of its
+ * own. Otherwise undefined (the Poké Ball).
+ */
+export function pcBoxPortraitUrl(
+  ref: SpeciesRef | undefined,
+  state: Pick<ConductorState, 'species'>,
+  portraitRoute: boolean,
+): string | undefined {
+  if (!ref) return undefined;
+  const loaded = pickPortrait(findSpecies(state, ref.species, ref.shiny)?.portraits, 'Normal');
+  if (loaded) return loaded;
+  if (!portraitRoute || !Number.isInteger(ref.species)) return undefined;
+  if (ref.species < 1 || ref.species > POKEMON_MAX_DEX) return undefined;
+  const dex4 = String(ref.species).padStart(4, '0');
+  return `${POKEMON_PORTRAIT_ROUTE_PREFIX}/${dex4}/portrait/Normal.png`;
 }
 
 /** Context left as a 0..1 fraction (HP), or null when there is no usage yet. */

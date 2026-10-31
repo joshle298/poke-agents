@@ -14,6 +14,12 @@
  *
  * No art ships with the app: sheets arrive at runtime as same-origin URLs
  * (standalone) or data URLs (VS Code), and nothing else is fetched.
+ *
+ * Decoded sheets are big (a few MB per species) and session churn keeps
+ * bringing new species, so OfficeState sweeps the store: a species no
+ * character has used for POKEMON_SHEET_RELEASE_AFTER_MS has its bitmaps
+ * closed. Its metadata stays (credits, portraits, a later return), and it
+ * decodes again when a character uses it.
  */
 
 import type {
@@ -26,6 +32,7 @@ import {
   POKEMON_ALPHA_THRESHOLD,
   POKEMON_DECODE_ORDER,
   POKEMON_GEOMETRY_ANIMS,
+  POKEMON_SHEET_RELEASE_AFTER_MS,
 } from '../../constants.js';
 import type { PokemonAnimSource } from '../engine/pokemonAnim.js';
 
@@ -81,6 +88,12 @@ interface SpeciesEntry {
   failed: Set<string>;
   geometry: PokemonGeometry | null;
   source: PokemonAnimSource;
+  /** Sheets closed by a sweep; the next use decodes them again. */
+  released: boolean;
+  /** Bumped on release, so a decode that lands afterwards is dropped. */
+  epoch: number;
+  /** When a sweep first found no character using it (sweep clock, ms). */
+  unusedSince?: number;
 }
 
 const entries = new Map<string, SpeciesEntry>();
@@ -186,8 +199,14 @@ export function hasPokemonSheetLoader(): boolean {
   return loader !== null;
 }
 
+/** Free a decoded sheet's memory now (ImageBitmap.close) rather than at GC. */
+function closeSheet(sheet: DecodedSheet): void {
+  (sheet.image as { close?: () => void }).close?.();
+}
+
 /** Forget every species (tests). */
 export function clearPokemonSpecies(): void {
+  for (const entry of entries.values()) entry.sheets.forEach(closeSheet);
   entries.clear();
   notify();
 }
@@ -239,12 +258,18 @@ function decodeOrder(anims: Record<string, PokemonAnim>): string[] {
 
 async function decode(key: string, entry: SpeciesEntry, name: string): Promise<void> {
   const anim = entry.info.anims[name];
+  const epoch = entry.epoch;
+  const stale = () => entries.get(key) !== entry || entry.epoch !== epoch;
   try {
     if (!anim || !isAllowedSpriteUrl(anim.url, pageOrigin())) {
       throw new Error('sheet URL not allowed');
     }
     const sheet = await activeLoader().load(anim.url);
-    if (entries.get(key) !== entry) return; // replaced while decoding
+    if (stale()) {
+      // Replaced or released while decoding: nobody will draw this one.
+      closeSheet(sheet);
+      return;
+    }
     if (
       sheet.width < anim.frameWidth * anim.frames ||
       sheet.height < anim.frameHeight * anim.directions
@@ -255,7 +280,7 @@ async function decode(key: string, entry: SpeciesEntry, name: string): Promise<v
     measure(entry);
     notify();
   } catch (err) {
-    if (entries.get(key) !== entry) return;
+    if (stale()) return;
     entry.failed.add(name);
     // Idle failing hands the measurement to Walk, if Walk is already in.
     measure(entry);
@@ -293,6 +318,8 @@ export function setPokemonSpecies(msg: PokemonSpeciesLoaded): void {
       has: (anim) => entry.sheets.has(anim),
       durations: (anim) => entry.info.anims[anim]?.durations,
     },
+    released: false,
+    epoch: 0,
   };
   if (prev) {
     for (const [name, sheet] of prev.sheets) {
@@ -306,6 +333,8 @@ export function setPokemonSpecies(msg: PokemonSpeciesLoaded): void {
         a.frameHeight === b.frameHeight
       ) {
         entry.sheets.set(name, sheet);
+      } else {
+        closeSheet(sheet);
       }
     }
     if (prev.geometry && geometryAnim(entry) === geometryAnim(prev)) {
@@ -318,6 +347,64 @@ export function setPokemonSpecies(msg: PokemonSpeciesLoaded): void {
   for (const name of decodeOrder(anims)) {
     if (!entry.sheets.has(name)) void decode(key, entry, name);
   }
+}
+
+function release(entry: SpeciesEntry): void {
+  entry.sheets.forEach(closeSheet);
+  entry.sheets.clear();
+  entry.failed.clear();
+  entry.geometry = null;
+  entry.released = true;
+  entry.epoch += 1;
+}
+
+function revive(key: string, entry: SpeciesEntry): void {
+  entry.released = false;
+  entry.unusedSince = undefined;
+  for (const name of decodeOrder(entry.info.anims)) void decode(key, entry, name);
+}
+
+/** A character is about to use this species: decode it again if a sweep
+ *  released it. */
+export function retainPokemonSpecies(dex: number, shiny: boolean): void {
+  const key = pokemonSpeciesKey(dex, shiny);
+  const entry = entries.get(key);
+  if (!entry) return;
+  entry.unusedSince = undefined;
+  if (entry.released) {
+    revive(key, entry);
+    notify();
+  }
+}
+
+/**
+ * Close the sheets of every species no character has used for
+ * `releaseAfterMs`, and decode again the released ones in use. `inUse` holds
+ * pokemonSpeciesKey values; `nowMs` is any monotonic-enough clock the caller
+ * keeps using.
+ */
+export function sweepPokemonSheets(
+  inUse: ReadonlySet<string>,
+  nowMs: number,
+  releaseAfterMs = POKEMON_SHEET_RELEASE_AFTER_MS,
+): void {
+  let changed = false;
+  for (const [key, entry] of entries) {
+    if (inUse.has(key)) {
+      entry.unusedSince = undefined;
+      if (entry.released) {
+        revive(key, entry);
+        changed = true;
+      }
+      continue;
+    }
+    entry.unusedSince ??= nowMs;
+    if (!entry.released && nowMs - entry.unusedSince >= releaseAfterMs) {
+      release(entry);
+      changed = true;
+    }
+  }
+  if (changed) notify();
 }
 
 export function getPokemonSpeciesInfo(dex: number, shiny: boolean): PokemonSpeciesInfo | undefined {

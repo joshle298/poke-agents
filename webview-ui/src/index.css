@@ -42,6 +42,10 @@
   --color-status-success: #89d185;
   --color-status-error: var(--color-danger);
 
+  /* Agent Teams: the LEAD line and a teammate's name above its label */
+  --color-team-lead: #ffd700;
+  --color-team-role: #66aaff;
+
   /* Controls drawn on the panel fill (checkbox frame) and text on accent fills */
   --color-control-border: rgba(255, 255, 255, 0.5);
   --color-on-accent: #ffffff;
@@ -92,6 +96,8 @@
   --color-status-success: #78c850;
   --color-status-error: #c03028;
   --color-status-asleep: #a8a8b8;
+  --color-team-lead: #a06800;
+  --color-team-role: #2858b8;
   --color-control-border: #3c4858;
   --shadow-pixel: 2px 2px 0px #1a1c2c;
 }
@@ -135,6 +141,8 @@
   --color-status-success: var(--color-status-success);
   --color-status-error: var(--color-status-error);
   --color-status-asleep: var(--color-status-asleep);
+  --color-team-lead: var(--color-team-lead);
+  --color-team-role: var(--color-team-role);
   --color-control-border: var(--color-control-border);
   --color-on-accent: var(--color-on-accent);
   --color-panel-inner: var(--color-panel-inner);
@@ -412,12 +420,6 @@
     inset 0 0 0 2px var(--color-panel-inner),
     var(--shadow-pixel);
   text-shadow: 1px 1px 0 var(--color-text-shadow);
-}
-
-/* The office void stays night-dark under the theme: OfficeCanvas paints its
-   container with bg-bg, which the theme turns into the light dialog fill. */
-:root[data-theme='pokemon'] div:has(> canvas[data-testid='office-canvas']) {
-  background-color: var(--color-bg-dark);
 }
 
 /* The battle log's one-line dialog box (shown only under the Pokémon theme). */

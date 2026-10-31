@@ -20,6 +20,7 @@ import {
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
   POKEMON_EVOLVE_SEC,
+  POKEMON_SHEET_SWEEP_SEC,
   PROJECTILE_MAX_IN_FLIGHT,
   PROJECTILE_MAX_SEC,
   PROJECTILE_MIN_SEC,
@@ -37,6 +38,11 @@ import {
 } from '../layout/layoutSerializer.js';
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
+import {
+  pokemonSpeciesKey,
+  retainPokemonSpecies,
+  sweepPokemonSheets,
+} from '../sprites/pokemonSprites.js';
 import { getLoadedCharacterCount } from '../sprites/spriteData.js';
 import type {
   AgentNoticeBubble,
@@ -70,6 +76,7 @@ import {
   pokemonAnimSourceOf,
   pokemonHitBox,
 } from './pokemonCharacter.js';
+import { isPokemonThemeEnabled } from './pokemonTheme.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 
 /** Pokémon identity and display facts carried by agentCreated / agentDetails.
@@ -174,6 +181,8 @@ export class OfficeState {
   notices: Map<number, AgentNoticeBubble> = new Map();
   /** Seconds of simulated time: drives the links' marching dashes. */
   clock = 0;
+  /** Simulated seconds since the last sweep of unused Pokémon sheets. */
+  private speciesSweepTimer = 0;
   private nextOverlayId = 1;
 
   setAreaMappings(mappings: Record<string, string[]>): void {
@@ -506,7 +515,15 @@ export class OfficeState {
     directoryName?: string,
     nearAgentId?: number,
   ): void {
-    if (this.characters.has(id)) return;
+    const existing = this.characters.get(id);
+    if (existing) {
+      // Conductor sessions keep their agent id, so one can come back while
+      // its recall is still playing (hide then show, a cap flap, a paused
+      // background tab). Drop the leaving character and seat a new one;
+      // removeAgent already freed its seat.
+      if (existing.matrixEffect !== 'despawn') return;
+      this.characters.delete(id);
+    }
 
     let palette: number;
     let hueShift: number;
@@ -1017,6 +1034,8 @@ export class OfficeState {
     const headingTo = evolving ? ch.nextSpecies : ch.species;
     const headingShiny = evolving ? ch.nextShiny : ch.shiny;
     if (species === headingTo && shiny === headingShiny) return;
+    // A species a sweep released decodes again before anyone draws it.
+    retainPokemonSpecies(species, shiny === true);
     if (evolve && ch.species !== undefined && species !== ch.species && isPokemonCharacter(ch)) {
       ch.nextSpecies = species;
       ch.nextShiny = shiny;
@@ -1029,6 +1048,25 @@ export class OfficeState {
     ch.nextShiny = undefined;
     ch.evolveTimer = undefined;
     ch.pmdAnimKey = undefined;
+  }
+
+  /**
+   * Release the decoded sheets of species no character has used for a while,
+   * and decode again the released ones a character uses (the theme turning
+   * back on). Runs from update() every POKEMON_SHEET_SWEEP_SEC and whenever a
+   * new species arrives, since a background tab gets no frames.
+   */
+  sweepPokemonSheets(nowMs = Date.now()): void {
+    const inUse = new Set<string>();
+    if (isPokemonThemeEnabled()) {
+      for (const ch of this.characters.values()) {
+        if (ch.species !== undefined) inUse.add(pokemonSpeciesKey(ch.species, ch.shiny === true));
+        if (ch.nextSpecies !== undefined) {
+          inUse.add(pokemonSpeciesKey(ch.nextSpecies, ch.nextShiny === true));
+        }
+      }
+    }
+    sweepPokemonSheets(inUse, nowMs);
   }
 
   /** The species swaps at the flash's midpoint; the flash ends at its end. */
@@ -1514,6 +1552,12 @@ export class OfficeState {
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id);
+    }
+
+    this.speciesSweepTimer += dt;
+    if (this.speciesSweepTimer >= POKEMON_SHEET_SWEEP_SEC) {
+      this.speciesSweepTimer = 0;
+      this.sweepPokemonSheets();
     }
 
     this.advanceOverlays(dt);
