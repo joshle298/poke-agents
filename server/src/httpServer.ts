@@ -17,10 +17,14 @@ import type {
 import { handleClientMessage } from './clientMessageHandler.js';
 import {
   HOOK_API_PREFIX,
+  LAUNCH_CODE_API_PATH,
+  LAUNCH_PATH_PREFIX,
   MAX_HOOK_BODY_SIZE,
+  REFUSED_HOST_LOG_MAX,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
+import { LaunchCodes } from './launchCodes.js';
 import { registerPokemonRoutes } from './pokemon/routes.js';
 import { createSpeciesDelivery } from './pokemon/speciesDelivery.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
@@ -29,8 +33,10 @@ import type { AgentState } from './types.js';
 import {
   bearerTokenValid,
   isAllowedWebSocketOrigin,
+  normalizeHostname,
   privilegedHostnames,
   redactTokenQuery,
+  standaloneConnectionHostAllowed,
   standaloneHandshakeVerdict,
 } from './wsAuth.js';
 
@@ -118,6 +124,7 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
 
   registerHealthRoute(app);
   registerHookRoute(app, options);
+  if (!options.embedded) registerLaunchRoutes(app, options.token, allowedHostnames);
   registerWebSocketRoute(app, options, allowedHostnames);
   registerTerminalRoutes(app, {
     token: options.token,
@@ -188,6 +195,41 @@ function registerHookRoute(app: FastifyInstance, options: HttpServerOptions): vo
   );
 }
 
+// ── Launch codes (--open) ──────────────────────────────────────
+
+/**
+ * `POST /api/launch-code` (Bearer token) mints a one-time code for `--open`;
+ * `GET /launch/:code` redeems it and redirects to the tokened office URL, so
+ * the browser's command line never carries the token (see launchCodes.ts).
+ */
+function registerLaunchRoutes(
+  app: FastifyInstance,
+  token: string,
+  allowedHostnames: ReadonlySet<string>,
+): void {
+  const codes = new LaunchCodes();
+  app.post(LAUNCH_CODE_API_PATH, { preHandler: bearerAuth(token) }, async (_request, reply) => {
+    if (reply.sent) return reply;
+    return reply.header('cache-control', 'no-store').send({ code: codes.mint() });
+  });
+  app.get<{ Params: { code: string } }>(`${LAUNCH_PATH_PREFIX}/:code`, async (request, reply) => {
+    const hostname = normalizeHostname(request.headers.host);
+    if (hostname === null || !allowedHostnames.has(hostname)) {
+      return reply.code(403).send();
+    }
+    reply.header('cache-control', 'no-store').header('referrer-policy', 'no-referrer');
+    if (!codes.redeem(request.params.code)) {
+      return reply
+        .code(410)
+        .type('text/plain; charset=utf-8')
+        .send(
+          'This launch link has expired or was already used. Open the URL poke-agents printed in your terminal.',
+        );
+    }
+    return reply.redirect(`/?token=${encodeURIComponent(token)}`, 302);
+  });
+}
+
 // ── WebSocket ──────────────────────────────────────────────────
 
 function registerWebSocketRoute(
@@ -198,9 +240,11 @@ function registerWebSocketRoute(
   app.get('/ws', { websocket: true }, (socket, request) => {
     // CONNECTION gate. Embedded (VS Code) requires the Bearer token. Standalone
     // requires a same-origin handshake instead (isAllowedWebSocketOrigin), so a
-    // non-browser local client with no Origin can still watch the office. What
-    // may be DONE over an accepted connection is a separate question, decided
-    // below.
+    // non-browser local client with no Origin can still watch the office, and
+    // a Host that is an allowlisted name or an IP literal: a DNS-rebound page
+    // arrives under its own name and must not even watch (the feed carries
+    // session names, commands and message previews). What may be DONE over an
+    // accepted connection is a separate question, decided below.
     if (options.embedded) {
       if (!bearerTokenValid(request.headers.authorization, options.token)) {
         socket.close(WS_CLOSE_UNAUTHORIZED, 'unauthorized');
@@ -208,6 +252,10 @@ function registerWebSocketRoute(
       }
     } else if (!isAllowedWebSocketOrigin(request.headers.origin, request.headers.host)) {
       socket.close(WS_CLOSE_FORBIDDEN_ORIGIN, 'forbidden origin');
+      return;
+    } else if (!standaloneConnectionHostAllowed(request.headers.host, allowedHostnames)) {
+      warnRefusedHost(request.headers.host);
+      socket.close(WS_CLOSE_FORBIDDEN_ORIGIN, 'forbidden host');
       return;
     }
 
@@ -300,6 +348,19 @@ function registerWebSocketRoute(
   });
 }
 
+/** Host names already reported as refused, so a page retrying its socket logs once. */
+const reportedRefusedHosts = new Set<string>();
+
+/** Say once per name why a connection was refused and how to allow it. */
+function warnRefusedHost(host: string | undefined): void {
+  const name = normalizeHostname(host) ?? 'an unreadable Host header';
+  if (reportedRefusedHosts.has(name) || reportedRefusedHosts.size >= REFUSED_HOST_LOG_MAX) return;
+  reportedRefusedHosts.add(name);
+  console.warn(
+    `[Pixel Agents] Refused a connection via Host "${name}" (DNS-rebinding defence). If that is your own name for this machine, restart with --allowed-host ${name}.`,
+  );
+}
+
 // ── Auth Helper ────────────────────────────────────────────────
 
 function bearerAuth(expectedToken: string) {
@@ -317,11 +378,16 @@ function bearerAuth(expectedToken: string) {
 export function serializeRequestForLog(request: FastifyRequest): Record<string, unknown> {
   return {
     method: request.method,
-    url: redactTokenQuery(request.url),
+    url: redactLaunchCode(redactTokenQuery(request.url)),
     hostname: request.hostname,
     remoteAddress: request.ip,
     remotePort: request.socket.remotePort,
   };
+}
+
+/** A launch code is single-use, but it is still a key to the token: keep it out of the log. */
+function redactLaunchCode(url: string): string {
+  return url.startsWith(`${LAUNCH_PATH_PREFIX}/`) ? `${LAUNCH_PATH_PREFIX}/[redacted]` : url;
 }
 
 // ── Utilities ──────────────────────────────────────────────────

@@ -59,6 +59,23 @@ function fakeConductor(overrides: Partial<StreamProvider> = {}): StreamProvider 
         { role: 'peerOut' as const, text: 'Done', at: 3, peerSessionId: 'gone' },
       ],
       truncated: true,
+      question: { kind: 'askUser' as const, text: 'Which one?', options: ['A', 'B'] },
+    })),
+    getSessionHistory: vi.fn(async (_sessionId: string, before?: string) => ({
+      entries: [
+        { role: 'user' as const, text: 'Older ask', at: 0, key: 'item-0' },
+        {
+          role: 'peerOut' as const,
+          text: 'Go',
+          at: 0,
+          key: 'peerOut:m1',
+          peerSessionId: 's2',
+          peerLabel: 'Lead',
+        },
+        { role: 'tool' as const, text: 'Running: ls', at: 0, key: 'tool:t0', toolName: 'Bash' },
+      ],
+      before: before === undefined ? 'o100' : undefined,
+      hasMore: before === undefined,
     })),
     sendMessage: vi.fn(async () => {}),
     stopSession: vi.fn(async () => {}),
@@ -158,7 +175,7 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
     it('replays agent details and the provider state after the layout', () => {
       sink.setStatus({ state: 'connected', scope: SCOPE });
       sink.sessionsChanged([summary('s1')]);
-      const a = adopt('s1', { details: { repo: 'hue-run/fern' } });
+      const a = adopt('s1', { details: { repo: 'example-org/example-repo' } });
       const b = adopt('s2', { leadSessionId: 's1' });
 
       send({ type: 'webviewReady' });
@@ -168,10 +185,17 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(types.indexOf('conductorStatus')).toBeGreaterThan(layoutAt);
       expect(types.indexOf('agentLinks')).toBeGreaterThan(layoutAt);
       expect(ofType('agentDetails')).toContainEqual(
-        expect.objectContaining({ id: a, repo: 'hue-run/fern', conductorSessionId: 's1' }),
+        expect.objectContaining({
+          id: a,
+          repo: 'example-org/example-repo',
+          conductorSessionId: 's1',
+        }),
       );
       expect(ofType('conductorSessions')).toEqual([
-        { type: 'conductorSessions', sessions: [{ ...summary('s1'), agentId: a }] },
+        {
+          type: 'conductorSessions',
+          sessions: [{ ...summary('s1'), agentId: a, species: expect.any(Number), shiny: false }],
+        },
       ]);
       expect(ofType('agentLinks')[0]).toEqual({
         type: 'agentLinks',
@@ -204,6 +228,7 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
             { role: 'peerOut', text: 'Done', at: 3, peerId: undefined },
           ],
           truncated: true,
+          question: { kind: 'askUser', text: 'Which one?', options: ['A', 'B'] },
         },
       ]);
     });
@@ -212,6 +237,96 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       send({ type: 'requestSessionDetail', id: 404 });
       await settle();
       expect(ofType('sessionDetail')).toEqual([{ type: 'sessionDetail', id: 404, entries: [] }]);
+    });
+  });
+
+  // ── Chat history ──────────────────────────────────────────────
+
+  describe('requestSessionHistory', () => {
+    it('answers with a page of older conversation, peers mapped to agents', async () => {
+      const id = adopt('s1');
+      const peer = adopt('s2');
+      send({ type: 'requestSessionHistory', id });
+      send({ type: 'requestSessionHistory', id, before: 'o100' });
+      await settle();
+      expect(provider.getSessionHistory).toHaveBeenNthCalledWith(1, 's1', undefined);
+      expect(provider.getSessionHistory).toHaveBeenNthCalledWith(2, 's1', 'o100');
+      expect(provider.setFocus).toHaveBeenCalledWith(['s1']);
+      const [first, second] = ofType('sessionHistory');
+      expect(first).toEqual({
+        type: 'sessionHistory',
+        id,
+        entries: [
+          { role: 'user', text: 'Older ask', at: 0, key: 'item-0', peerId: undefined },
+          {
+            role: 'peerOut',
+            text: 'Go',
+            at: 0,
+            key: 'peerOut:m1',
+            peerLabel: 'Lead',
+            peerId: peer,
+          },
+          {
+            role: 'tool',
+            text: 'Running: ls',
+            at: 0,
+            key: 'tool:t0',
+            toolName: 'Bash',
+            peerId: undefined,
+          },
+        ],
+        before: 'o100',
+        hasMore: true,
+        error: undefined,
+      });
+      expect(second).toMatchObject({ before: undefined, hasMore: false });
+    });
+
+    it('refuses a malformed cursor and a non-session agent without asking the provider', async () => {
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id, before: '../../etc' });
+      send({ type: 'requestSessionHistory', id: 999 });
+      await settle();
+      expect(provider.getSessionHistory).not.toHaveBeenCalled();
+      expect(ofType('sessionHistory').map((m) => [m.id, m.hasMore, m.error])).toEqual([
+        [id, false, 'Invalid request.'],
+        [999, false, 'This agent is not a Conductor session.'],
+      ]);
+    });
+
+    it('reports a failed page with the provider message', async () => {
+      provider.getSessionHistory = vi.fn(async () => {
+        throw new Error('Conductor is rate limiting requests. Try again shortly.');
+      });
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id });
+      await settle();
+      expect(ofType('sessionHistory')).toEqual([
+        {
+          type: 'sessionHistory',
+          id,
+          entries: [],
+          before: undefined,
+          hasMore: false,
+          error: 'Conductor is rate limiting requests. Try again shortly.',
+        },
+      ]);
+    });
+
+    it('is privileged: a read-only viewer gets no conversation, and its request settles', async () => {
+      const id = adopt('s1');
+      send({ type: 'requestSessionHistory', id }, ctx({ privileged: false }));
+      await settle();
+      expect(provider.getSessionHistory).not.toHaveBeenCalled();
+      expect(ofType('sessionHistory')).toEqual([
+        {
+          type: 'sessionHistory',
+          id,
+          entries: [],
+          hasMore: false,
+          error: 'Read-only office: open the tokened URL to read conversations.',
+        },
+      ]);
     });
   });
 
@@ -343,7 +458,10 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(ofType('conductorSessions')).toEqual([
         {
           type: 'conductorSessions',
-          sessions: [{ ...summary('s1'), agentId: id }, summary('elsewhere')],
+          sessions: [
+            { ...summary('s1'), agentId: id, species: expect.any(Number), shiny: false },
+            summary('elsewhere'),
+          ],
         },
       ]);
     });
@@ -366,6 +484,37 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       send({ type: 'closeAgent', id });
       expect(provider.onDismiss).toHaveBeenCalledWith('s1');
       expect(store.has(id)).toBe(false);
+    });
+  });
+
+  // ── Seats ─────────────────────────────────────────────────────
+
+  describe('saveAgentSeats', () => {
+    it('keeps the desks of remembered sessions the office has not shown yet', () => {
+      // Two sessions from a previous run, each with its desk.
+      const adapter = store.getAdapter() as FileStateAdapter;
+      adapter.saveStreamAgent('conductor:a', { agentId: 1 });
+      adapter.saveStreamAgent('conductor:b', { agentId: 2 });
+      adapter.saveSeats({ '1': { seatId: 'desk-a' }, '2': { seatId: 'desk-b' }, '9': {} });
+      runtime.dispose();
+      runtime = new AgentRuntime(store, claudeProvider);
+      sink = runtime.attachStreamProvider(provider, { memory: adapter });
+
+      // A walks in; the office saves the seats of the characters it has.
+      expect(adopt('a')).toBe(1);
+      send({ type: 'saveAgentSeats', seats: { '1': { seatId: 'desk-a2', palette: 1 } } });
+
+      // B, adopted later, still finds its desk; agent 9 (gone, unknown) is pruned.
+      expect(adapter.loadSeats()).toEqual({
+        '1': { seatId: 'desk-a2', palette: 1 },
+        '2': { seatId: 'desk-b' },
+      });
+      const created: Message[] = [];
+      store.on('agentAdded', (id: number) => {
+        created.push({ id, seatId: adapter.loadSeats()[String(id)]?.seatId });
+      });
+      expect(adopt('b')).toBe(2);
+      expect(created).toEqual([{ id: 2, seatId: 'desk-b' }]);
     });
   });
 
@@ -476,6 +625,10 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
         provider.setSessionPinned,
         provider.setScope,
         provider.getSessionDetail,
+        provider.setFocus,
+        // Answering a refused toggle must not ask the provider either: its
+        // listSessions starts the PC Box's archived listings.
+        provider.listSessions,
         openExternal,
       ]) {
         expect(call).not.toHaveBeenCalled();

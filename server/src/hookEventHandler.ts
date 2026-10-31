@@ -4,6 +4,7 @@ import type { AgentEvent, HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { markAgentWaiting } from './agentTransitions.js';
 import { SESSION_END_GRACE_MS } from './constants.js';
+import { countToolCall } from './pokemon/agentLevel.js';
 import type { SessionRouter } from './sessionRouter.js';
 import { getInlineTeammates, hasInlineTeammates } from './teamUtils.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
@@ -425,6 +426,10 @@ export class HookEventHandler {
     agent.currentHookToolName = toolName;
     agent.currentHookIsTeammateSpawn =
       this.provider.team?.isTeammateSpawnCall(toolName, toolInput) ?? false;
+
+    // A transcript-backed agent counts its tool calls as the transcript names
+    // them (transcriptParser); one with only hooks counts them here.
+    if (agent.hooksOnly) countToolCall(agentId, agent, this.agents);
 
     // When a lead has inline teammates, hook tool events are ambiguous (could be
     // from the lead or any teammate -- they share session_id). Suppress hook-originated

@@ -1,8 +1,13 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  STATE_LAZY_SAVE_MS,
+  STATE_SAVE_DEBOUNCE_MS,
+  STATE_SESSIONS_MAX,
+} from '../src/providers/stream/conductor/constants.js';
 import { repoShortName, repoSlug, sessionLabel } from '../src/providers/stream/conductor/naming.js';
 import { SessionLogStore } from '../src/providers/stream/conductor/sessionLog.js';
 import { ConductorStateStore, sanitizeScope } from '../src/providers/stream/conductor/state.js';
@@ -28,17 +33,8 @@ describe('conductor-state.json', () => {
       showIdle: true,
       maxSessions: 24,
     });
-    store.patchSession('s1', {
-      agentId: 7,
-      hidden: true,
-      cursor: { lastId: 'item-9', lastIndex: 9 },
-    });
-    store.patchSession('s2', {
-      agentId: 12,
-      firstSender: null,
-      shiny: false,
-      pokemonLine: 'eevee',
-    });
+    store.patchSession('s1', { hidden: true, cursor: { lastId: 'item-9', lastIndex: 9 } });
+    store.patchSession('s2', { firstSender: null, harness: 'codex', lastActivityAt: Date.now() });
     store.flush();
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(fs.existsSync(`${file}.tmp`)).toBe(false);
@@ -47,18 +43,111 @@ describe('conductor-state.json', () => {
       version: 1,
       scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 24 },
       sessions: {
-        s1: { agentId: 7, hidden: true, cursor: { lastId: 'item-9', lastIndex: 9 } },
-        s2: { agentId: 12, firstSender: null, shiny: false, pokemonLine: 'eevee' },
+        s1: {
+          hidden: true,
+          cursor: { lastId: 'item-9', lastIndex: 9 },
+          seenAt: expect.any(Number),
+        },
+        s2: { firstSender: null, harness: 'codex', lastActivityAt: expect.any(Number) },
       },
     });
-    expect(new ConductorStateStore(file).maxAgentId()).toBe(12);
   });
 
   it('clears flags on false/undefined but keeps meaningful falsy values', () => {
     const store = new ConductorStateStore(statePath());
-    store.patchSession('s', { hidden: true, pinned: true, shiny: true });
-    store.patchSession('s', { hidden: false, pinned: undefined, shiny: false });
-    expect(store.session('s')).toEqual({ shiny: false });
+    store.patchSession('s', { hidden: true, pinned: true, firstSender: 'lead' });
+    store.patchSession('s', { hidden: false, pinned: undefined, firstSender: null });
+    expect(store.session('s')).toEqual({ firstSender: null, seenAt: expect.any(Number) });
+  });
+
+  it('keeps no agent ids or Pokémon: the runtime stream memory owns them', () => {
+    const file = statePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        scope: {},
+        sessions: { s: { agentId: 7, pokemonLine: 'eevee', shiny: true, pinned: true } },
+      }),
+    );
+    const store = new ConductorStateStore(file);
+    expect(store.session('s')).toEqual({ pinned: true, seenAt: expect.any(Number) });
+    store.flush();
+    expect(fs.readFileSync(file, 'utf-8')).not.toMatch(/agentId|pokemonLine|shiny/);
+  });
+
+  it('writes user decisions within a second and poll bookkeeping lazily', () => {
+    vi.useFakeTimers();
+    try {
+      const file = statePath();
+      const store = new ConductorStateStore(file);
+      const written = () => (fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '');
+
+      // A busy feed moves the cursor every poll: no rewrite every second.
+      for (let i = 1; i <= 20; i++) {
+        store.patchSession('s', { cursor: { lastId: `item-${i}`, lastIndex: i } });
+        vi.advanceTimersByTime(1_000);
+      }
+      expect(written()).toBe('');
+      vi.advanceTimersByTime(STATE_LAZY_SAVE_MS);
+      expect(written()).toContain('item-');
+
+      // Hiding a session is the user's decision: it lands at once, and pulls
+      // a pending lazy write forward with it.
+      store.patchSession('s', { cursor: { lastId: 'item-99', lastIndex: 99 } });
+      store.patchSession('t', { hidden: true });
+      vi.advanceTimersByTime(STATE_SAVE_DEBOUNCE_MS);
+      expect(JSON.parse(written()).sessions).toMatchObject({
+        s: { cursor: { lastId: 'item-99' } },
+        t: { hidden: true },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('prunes entries nothing touched for 30 days, even those without activity', () => {
+    const file = statePath();
+    let now = Date.parse('2026-03-01T00:00:00Z');
+    const day = 24 * 3_600_000;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        scope: {},
+        sessions: {
+          old: { lastActivityAt: now - 40 * day },
+          recent: { lastActivityAt: now - 2 * day },
+          probedOnly: { firstSender: null },
+          hiddenOld: { hidden: true, lastActivityAt: now - 400 * day },
+        },
+      }),
+    );
+    const store = new ConductorStateStore(file, undefined, () => now);
+    store.flush();
+    expect(store.sessionIds().sort()).toEqual(['hiddenOld', 'probedOnly', 'recent']);
+
+    // An entry with no activity ages out 30 days after it was last seen.
+    now += 31 * day;
+    store.flush();
+    expect(store.sessionIds()).toEqual(['hiddenOld']);
+  });
+
+  it('keeps at most a bounded number of entries, the least recent going first', () => {
+    const now = Date.parse('2026-03-01T00:00:00Z');
+    const store = new ConductorStateStore(statePath(), undefined, () => now);
+    for (let i = 0; i < STATE_SESSIONS_MAX + 5; i++) {
+      store.patchSession(`s${i}`, { lastActivityAt: now - (STATE_SESSIONS_MAX + 5 - i) * 1_000 });
+    }
+    store.patchSession('s0', { pinned: true });
+    store.flush();
+    const ids = store.sessionIds();
+    expect(ids).toHaveLength(STATE_SESSIONS_MAX);
+    expect(ids).toContain('s0');
+    expect(ids).not.toContain('s1');
+    expect(ids).toContain(`s${STATE_SESSIONS_MAX + 4}`);
   });
 
   it('ignores unreadable or foreign-version files and sanitizes what it loads', () => {
@@ -92,7 +181,7 @@ describe('conductor-state.json', () => {
       showIdle: true,
       maxSessions: 1,
     });
-    expect(store.session('a')).toEqual({ pinned: true });
+    expect(store.session('a')).toEqual({ pinned: true, seenAt: expect.any(Number) });
   });
 
   it('sanitizes scopes from the wire against the current one', () => {
@@ -121,10 +210,18 @@ describe('Pokédex session log', () => {
     expect(log.get('s')).toEqual({
       prompt: 'First task',
       entries: [
-        { role: 'user', text: 'First', at: 1_000 },
-        { role: 'assistant', text: 'Second', at: 2_000 },
+        { role: 'user', text: 'First', at: 1_000, key: 'item-1' },
+        { role: 'assistant', text: 'Second', at: 2_000, key: 'item-2' },
       ],
     });
+  });
+
+  it('names the tool of a tool entry', () => {
+    const log = new SessionLogStore();
+    log.addTool('s', 'Running: npm test', 1, 'tool:t1', 'Bash');
+    expect(log.get('s').entries).toEqual([
+      { role: 'tool', text: 'Running: npm test', at: 1, key: 'tool:t1', toolName: 'Bash' },
+    ]);
   });
 
   it('keeps only the last 5 tool labels and at most 40 entries, then reports truncation', () => {
@@ -155,6 +252,7 @@ describe('Pokédex session log', () => {
         role: 'peerOut',
         text: 'Review the change',
         at: 5,
+        key: 'peerOut:msg-1',
         peerSessionId: 'child',
         peerLabel: 'Worker A',
       },

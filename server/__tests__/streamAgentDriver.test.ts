@@ -12,6 +12,7 @@ import {
   AGENT_MESSAGE_PAIR_INTERVAL_MS,
   EXTERNAL_STALE_CHECK_INTERVAL_MS,
   STREAM_SNAPSHOT_DEBOUNCE_MS,
+  STREAM_TURN_MIN_ACTIVE_MS,
   TOOL_DONE_DELAY_MS,
 } from '../src/constants.js';
 import * as species from '../src/pokemon/speciesAssigner.js';
@@ -124,7 +125,7 @@ describe('StreamAgentDriver', () => {
     return {
       sessionId,
       label: `Session ${sessionId}`,
-      directoryName: 'fern',
+      directoryName: 'example-repo',
       details: {
         externalUrl: `conductor://workspace?id=w-${sessionId}&session=${sessionId}`,
         model: 'claude-opus-5-5',
@@ -132,7 +133,7 @@ describe('StreamAgentDriver', () => {
         workspaceId: `w-${sessionId}`,
         workspaceName: 'Workspace',
         workspaceNumber: 12,
-        repo: 'hue-run/fern',
+        repo: 'example-org/example-repo',
       },
       initialStatus: 'waiting',
       ...extra,
@@ -178,7 +179,7 @@ describe('StreamAgentDriver', () => {
         id,
         providerId: 'conductor',
         label: 'Session s1',
-        directoryName: 'fern',
+        directoryName: 'example-repo',
         isExternal: true,
         hooksOnly: true,
         species: 172,
@@ -195,7 +196,7 @@ describe('StreamAgentDriver', () => {
         conductorWorkspaceName: 'Workspace',
         conductorWorkspaceNumber: 12,
         externalUrl: 'conductor://workspace?id=w-s1&session=s1',
-        repo: 'hue-run/fern',
+        repo: 'example-org/example-repo',
         species: 172,
         level: 1,
       });
@@ -313,7 +314,10 @@ describe('StreamAgentDriver', () => {
         expect.objectContaining({ type: 'agentDetails', id, label: 'Renamed' }),
       ]);
       // Absent fields are unknown, not cleared.
-      expect(sent[0]).toMatchObject({ repo: 'hue-run/fern', conductorWorkspaceNumber: 12 });
+      expect(sent[0]).toMatchObject({
+        repo: 'example-org/example-repo',
+        conductorWorkspaceNumber: 12,
+      });
     });
 
     it('recomputes the level when the message count changes', async () => {
@@ -465,6 +469,7 @@ describe('StreamAgentDriver', () => {
 
     it('turnEnd marks the agent waiting once, keeping background tools', () => {
       sink.emit('s1', { kind: 'turnStart' });
+      vi.advanceTimersByTime(STREAM_TURN_MIN_ACTIVE_MS);
       sink.emit('s1', { kind: 'toolStart', toolId: 'fg', toolName: 'Bash' });
       sink.emit('s1', {
         kind: 'toolStart',
@@ -497,6 +502,7 @@ describe('StreamAgentDriver', () => {
 
     it('an errored turn faints the agent until the next turn starts', () => {
       sink.emit('s1', { kind: 'turnStart' });
+      vi.advanceTimersByTime(STREAM_TURN_MIN_ACTIVE_MS);
       sent = [];
       sink.emit('s1', { kind: 'turnEnd', outcome: 'error', errorMessage: 'e'.repeat(300) });
       const errorMessage = `${'e'.repeat(AGENT_ERROR_MESSAGE_MAX_LENGTH - 1)}…`;
@@ -513,6 +519,43 @@ describe('StreamAgentDriver', () => {
       sink.emit('s1', { kind: 'turnStart' });
       expect(sent).toContainEqual({ type: 'agentStatus', id, status: 'active' });
       expect(store.get(id)!.isErrored).toBeUndefined();
+    });
+
+    it('shows a turn that ends moments after it started before announcing its end', () => {
+      sink.emit('s1', { kind: 'turnStart' });
+      sent = [];
+      // A whole short turn landed in one poll: its end follows at once.
+      vi.advanceTimersByTime(100);
+      sink.emit('s1', { kind: 'turnEnd' });
+      expect(ofType('agentStatus')).toEqual([]);
+      vi.advanceTimersByTime(STREAM_TURN_MIN_ACTIVE_MS - 101);
+      expect(ofType('agentStatus')).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(ofType('agentStatus')).toEqual([
+        { type: 'agentStatus', id, status: 'waiting', awaitingInput: false },
+      ]);
+    });
+
+    it('drops a held turn end when the turn turns out to continue', () => {
+      sink.emit('s1', { kind: 'turnStart' });
+      sent = [];
+      sink.emit('s1', { kind: 'turnEnd' });
+      sink.emit('s1', { kind: 'toolStart', toolId: 't1', toolName: 'Bash' });
+      vi.advanceTimersByTime(STREAM_TURN_MIN_ACTIVE_MS);
+      // It never flickered to waiting and back.
+      expect(ofType('agentStatus')).toEqual([]);
+      expect(store.get(id)!.activeToolIds.has('t1')).toBe(true);
+    });
+
+    it('applies a held turn end before a question that follows it', () => {
+      sink.emit('s1', { kind: 'turnStart' });
+      sink.emit('s1', { kind: 'turnEnd', outcome: 'error', errorMessage: 'boom' });
+      sent = [];
+      sink.emit('s1', { kind: 'awaitingInput' });
+      expect(sent.filter((m) => m.type === 'agentStatus')).toEqual([
+        { type: 'agentStatus', id, status: 'error', errorMessage: 'boom' },
+        { type: 'agentStatus', id, status: 'waiting', awaitingInput: true },
+      ]);
     });
 
     it('contextUsage uses the provider window for the model, and skips repeats', () => {
@@ -832,7 +875,8 @@ describe('StreamAgentDriver', () => {
         {
           type: 'conductorSessions',
           sessions: [
-            { ...summary('in'), agentId: agentIdOf('in') },
+            // The species it shows, for the PC Box.
+            { ...summary('in'), agentId: agentIdOf('in'), species: 172, shiny: false },
             {
               sessionId: 'out',
               label: 'out',
@@ -852,6 +896,55 @@ describe('StreamAgentDriver', () => {
       expect(ofType('conductorSessions')[0].sessions).toContainEqual(
         expect.objectContaining({ sessionId: 'out', agentId: agentIdOf('out') }),
       );
+    });
+
+    it('names the Pokémon a session out of the office was last shown as', () => {
+      memory.records.set('conductor:archived', {
+        agentId: 41,
+        pokemonLine: 'pichu',
+        species: 25,
+        shiny: true,
+      });
+      runtime.dispose();
+      runtime = new AgentRuntime(store, claudeProvider);
+      attach();
+      sent = [];
+      sink.sessionsChanged([
+        {
+          sessionId: 'archived',
+          label: 'Old',
+          workspaceId: 'w',
+          workspaceName: 'W',
+          status: 'idle',
+          hidden: false,
+          archived: true,
+          species: 999, // the provider never knows; never trusted
+        },
+      ]);
+      expect(ofType('conductorSessions')[0].sessions).toEqual([
+        expect.objectContaining({ sessionId: 'archived', species: 25, shiny: true }),
+      ]);
+      const [listed] = ofType('conductorSessions')[0].sessions as ConductorSessionSummary[];
+      expect(listed).not.toHaveProperty('agentId');
+    });
+
+    it('seeds silently: no status it causes chimes', () => {
+      const driver = runtime.streamDriver('conductor')!;
+      sent = [];
+      driver.seedSilently('seeded', () => {
+        sink.upsertSession(session('seeded', { initialStatus: 'active' }));
+        sink.emit('seeded', { kind: 'toolStart', toolId: 'ask', toolName: 'AskUserQuestion' });
+        sink.emit('seeded', { kind: 'awaitingInput' });
+      });
+      const statuses = ofType('agentStatus');
+      expect(statuses.length).toBeGreaterThan(1);
+      expect(statuses.every((m) => m.silent === true)).toBe(true);
+      // Afterwards the session's news is news again.
+      sent = [];
+      sink.emit('seeded', { kind: 'turnEnd' });
+      expect(ofType('agentStatus')).toEqual([
+        { type: 'agentStatus', id: agentIdOf('seeded'), status: 'waiting', awaitingInput: false },
+      ]);
     });
 
     it('replays cached state to a connecting client', () => {

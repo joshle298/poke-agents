@@ -126,6 +126,16 @@ function toolForItem(item: Rec): ToolSpec | undefined {
   }
 }
 
+/** Option labels of a question: strings, or objects with a `label`/`title`. */
+function optionLabels(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((o) =>
+      typeof o === 'string' ? o : (asString(asRecord(o)?.label) ?? asString(asRecord(o)?.title)),
+    )
+    .filter((o): o is string => !!o && o.trim().length > 0);
+}
+
 function agentLabel(item: Rec): string {
   const threads = Array.isArray(item.receiverThreads) ? item.receiverThreads : [];
   const nickname = asString(asRecord(threads[0])?.agentNickname);
@@ -218,8 +228,11 @@ function handleItem(ci: ConductorItem, event: Rec, state: NormState, out: Provid
     }
     const questions = Array.isArray(item.questions) ? item.questions : [];
     if (item.delivery === 'async' && questions.length > 0) {
-      const title = asString(asRecord(questions[0])?.title) ?? text ?? 'Question';
+      const first = asRecord(questions[0]);
+      const title = asString(first?.title) ?? text ?? 'Question';
       out.push({ kind: 'notice', text: clipText(title, NOTICE_TEXT_MAX), tone: 'info' });
+      const options = optionLabels(first?.options);
+      state.asyncQuestion = options.length > 0 ? { text: title, options } : { text: title };
     }
     return;
   }

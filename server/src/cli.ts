@@ -12,6 +12,7 @@
  * embedded terminal -- is opt-in with --claude.
  */
 
+import * as os from 'os';
 import * as path from 'path';
 
 import type { StreamProvider } from '../../core/src/provider.js';
@@ -36,6 +37,7 @@ import {
   DEFAULT_STANDALONE_PORT,
   MAX_PORT,
   MIN_PORT,
+  SERVER_JSON_DIR,
   TERMINAL_DISABLED_BY_FLAG_REASON,
   TERMINAL_DISABLED_NO_CLAUDE_REASON,
   WILDCARD_HOSTNAMES,
@@ -47,10 +49,13 @@ import {
   isBrowserId,
   openAppWindow,
   openWithSystem,
+  requestLaunchUrl,
 } from './openAppWindow.js';
-import { setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
+import { setEvolutionPreloader } from './pokemon/agentLevel.js';
+import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
+import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
 import { PixelAgentsServer, type ServerConfig } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
@@ -66,8 +71,10 @@ export interface CliArgs {
    *  browser can neither launch them nor attach to their terminals. */
   terminal: boolean;
   /** --allowed-host names (repeatable): extra Host names, beyond loopback and a
-   *  specific --host, that a tokened browser session is privileged under --
-   *  typically a reverse proxy's public name. See wsAuth.privilegedHostnames. */
+   *  specific --host, that a browser may connect under (any other DNS name is
+   *  refused) and a tokened session is privileged under -- typically a reverse
+   *  proxy's public name. See wsAuth.privilegedHostnames and
+   *  wsAuth.standaloneConnectionHostAllowed. */
   allowedHosts: string[];
   /** --rotate-token: replace the persisted server token before starting. */
   rotateToken: boolean;
@@ -180,9 +187,11 @@ Options:
   --port, -p <number>   Port to listen on (default: ${DEFAULT_STANDALONE_PORT}, or an
                         OS-assigned port when that one is busy)
   --host <string>       Host to bind to (default: 127.0.0.1)
-  --allowed-host <name> Also accept the tokened URL at this host name, e.g. a
-                        reverse proxy's (Tailscale Serve). Repeatable. Without
-                        it, only localhost and a specific --host are privileged
+  --allowed-host <name> Also accept this host name, e.g. a reverse proxy's
+                        (Tailscale Serve), for viewing and for the tokened
+                        URL. Repeatable. Other names are refused (DNS-rebinding
+                        defence); IP addresses may watch, and only localhost
+                        and a specific --host may make changes
   --rotate-token        Replace the server token. Every URL that carried the
                         old one (bookmarks, other devices) stops working
   --open, --app         Open the office in an app window (Chromium browsers;
@@ -308,6 +317,17 @@ export async function startOnPreferredPort<T>(
   }
 }
 
+/** The machine-wide Conductor poller lock, or null when it can't be taken
+ *  (an unwritable data directory must not keep Conductor off). */
+function acquireConductorLock(port: number): PollerLock | null {
+  try {
+    return acquirePollerLock({ dir: path.join(os.homedir(), SERVER_JSON_DIR), port });
+  } catch (err) {
+    console.warn(`[Pixel Agents] Could not take the Conductor lock: ${errorText(err)}`);
+    return { acquired: true, release: () => undefined };
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -353,6 +373,9 @@ async function main(): Promise<void> {
   const store = new AgentStateStore();
   const adapter = new FileStateAdapter({ namespace: 'standalone' });
   store.setAdapter(adapter);
+  // A Claude agent's evolution waits for its new species' sprites (as the
+  // stream driver's does), so the office plays the flash.
+  setEvolutionPreloader((dex, shiny) => ensureSpeciesLoaded(dex, shiny, store));
 
   // ── Create server ──
   const server = new PixelAgentsServer();
@@ -492,7 +515,18 @@ async function main(): Promise<void> {
     // office URL prints at once and sessions stream in as they are found.
     // A Conductor failure never takes the office down with it.
     let conductor: StreamProvider | null = null;
+    let conductorLock: PollerLock | null = null;
     if (args.conductor && ownsServer) {
+      // One poller per machine: an office in another mode (no shared server)
+      // would otherwise double the API traffic and overwrite this one's state.
+      conductorLock = acquireConductorLock(config.port);
+    }
+    if (conductorLock && !conductorLock.acquired) {
+      const { pid, port } = conductorLock.holder;
+      console.warn(
+        `[Pixel Agents] Conductor sessions are already tracked by the Poke Agents office${port ? ` on port ${port}` : ''} (PID ${pid}). This office shows no Conductor sessions: open that one, or stop it and restart this one.`,
+      );
+    } else if (conductorLock) {
       try {
         conductor = createConductorProvider({
           budgetPerMinute: args.conductorBudget,
@@ -578,13 +612,16 @@ async function main(): Promise<void> {
     // address; only the consent-bearing toggle needs the token.
     const displayHost =
       args.host === '0.0.0.0' || args.host === '::' || args.host === '' ? '127.0.0.1' : args.host;
-    const officeUrl = `http://${displayHost}:${config.port}/?token=${config.token}`;
+    const officeBase = `http://${displayHost}:${config.port}`;
+    const officeUrl = `${officeBase}/?token=${config.token}`;
     console.log(`\n  Poke Agents running at ${officeUrl}\n`);
 
     // --open also runs against a reused server: it just opens another window
-    // onto the running office.
+    // onto the running office. The window gets a one-time launch URL, never
+    // the token itself (a browser's argv is readable by other local users).
     if (args.open) {
-      openAppWindow(officeUrl, { browser: args.browser })
+      requestLaunchUrl(officeBase, config.token)
+        .then((launchUrl) => openAppWindow(launchUrl, { browser: args.browser }))
         .then((via) => console.log(`[Pixel Agents] Opened the office in ${via}`))
         .catch((err: unknown) =>
           console.warn(
@@ -604,6 +641,7 @@ async function main(): Promise<void> {
       await conductor?.stop().catch((err: unknown) => {
         console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
       });
+      if (conductorLock?.acquired) conductorLock.release();
       // Kill child terminals before the runtime tears their agents down, and
       // wait for them: exiting now would cancel the SIGKILL escalation and
       // leave a child that ignores SIGHUP orphaned on a dead server.

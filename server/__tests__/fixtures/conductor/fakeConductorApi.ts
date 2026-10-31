@@ -73,12 +73,15 @@ export class FakeConductorApi {
   }
 
   addSession(session: Partial<FakeSession> & { id: string; workspaceId: string }): FakeSession {
+    // Like the real API: an idle session's status last changed when its feed
+    // went quiet (its newest item), not now.
+    const lastItemAt = session.items?.at(-1)?.receivedAt;
     const full: FakeSession = {
       name: 'Session',
       model: 'opus-5-5-1m',
       resolvedModel: 'claude-opus-5-5[1m]',
       items: [],
-      status: { status: 'idle', updatedAt: new Date(this.now()).toISOString() },
+      status: { status: 'idle', updatedAt: lastItemAt ?? new Date(this.now()).toISOString() },
       ...session,
     };
     this.sessions.set(full.id, full);

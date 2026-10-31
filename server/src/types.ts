@@ -145,4 +145,6 @@ export interface PersistedAgent {
   pokemonLine?: string;
   species?: number;
   shiny?: boolean;
+  /** Tool calls observed, which level an agent without a message count. */
+  toolCallCount?: number;
 }

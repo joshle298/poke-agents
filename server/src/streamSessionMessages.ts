@@ -7,6 +7,12 @@
  * Agent-addressed messages resolve their session through the driver that owns
  * the agent; session-addressed ones go to the Conductor driver. Every action
  * answers its sender with conductorActionResult, success or not.
+ *
+ * The Pokédex detail and the chat history carry conversation text (prompts,
+ * replies, commands), more than the office feed shows, so they are privileged
+ * like everything else here: a read-only viewer (no token, e.g. a LAN watcher)
+ * sees the office but not conversations; a device opened with the tokened URL
+ * sees both.
  */
 
 import type { ConductorAction, ConductorScope } from '../../core/src/messages.js';
@@ -39,10 +45,16 @@ const INVALID_SCOPE_MESSAGE = 'Invalid scope.';
 const BLOCKED_LINK_MESSAGE = 'Only Conductor links can be opened.';
 const NO_LINK_OPENER_MESSAGE = 'Opening links is not available here.';
 const READ_ONLY_MESSAGE = 'Read-only office: open the tokened URL to make changes.';
+const READ_ONLY_HISTORY_MESSAGE = 'Read-only office: open the tokened URL to read conversations.';
+const HISTORY_FAILED_MESSAGE = "Couldn't load earlier messages.";
+
+/** History cursors as they may arrive from a client (the provider validates its own). */
+const HISTORY_CURSOR_WIRE_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
 
 /** Every message type this module handles. */
 export const STREAM_SESSION_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'requestSessionDetail',
+  'requestSessionHistory',
   'sendSessionMessage',
   'stopSession',
   'archiveSession',
@@ -74,6 +86,9 @@ export function handleStreamSessionMessage(
   switch (msg.type) {
     case 'requestSessionDetail':
       void requestSessionDetail(msg, send, ctx);
+      return;
+    case 'requestSessionHistory':
+      void requestSessionHistory(msg, send, ctx);
       return;
     case 'sendSessionMessage': {
       const text = typeof msg.text === 'string' ? msg.text : '';
@@ -145,10 +160,25 @@ export function refuseStreamSessionMessage(
   ctx: ClientMessageContext,
 ): void {
   const type = String(msg.type);
+  if (type === 'requestSessionHistory') {
+    // Settle the chat view's "Load earlier" instead of leaving it spinning.
+    if (isAgentId(msg.id)) {
+      send({
+        type: 'sessionHistory',
+        id: msg.id,
+        entries: [],
+        hasMore: false,
+        error: READ_ONLY_HISTORY_MESSAGE,
+      });
+    }
+    return;
+  }
   if (!ACTION_TYPES.has(type)) return;
   const driver = conductorDriver(ctx);
   if (type === 'setSessionHidden' || type === 'setSessionPinned') {
-    if (driver) send({ type: 'conductorSessions', sessions: driver.sessionsSnapshot() });
+    // The cached list: asking the provider (listSessions) would also start
+    // the PC Box's archived listings, an effect only privileged clients get.
+    if (driver) send({ type: 'conductorSessions', sessions: driver.cachedSessionsSnapshot() });
   } else if (type === 'setConductorScope') {
     const status = driver?.statusMessage();
     if (status) send(status);
@@ -207,11 +237,9 @@ async function requestSessionDetail(
       type: 'sessionDetail',
       id,
       prompt: detail?.prompt,
-      entries: (detail?.entries ?? []).map(({ peerSessionId, ...entry }) => ({
-        ...entry,
-        peerId: peerSessionId !== undefined ? driver.agentIdFor(peerSessionId) : undefined,
-      })),
+      entries: withPeerIds(detail?.entries ?? [], driver),
       truncated: detail?.truncated,
+      question: detail?.question,
     });
   } catch (err) {
     // Keep whatever the panel already shows; a later request may succeed.
@@ -219,6 +247,66 @@ async function requestSessionDetail(
       `[Pixel Agents] Session detail for agent ${id} failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/** One page of an agent's older conversation (the Pokédex chat view). */
+async function requestSessionHistory(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+): Promise<void> {
+  const id = msg.id;
+  if (!isAgentId(id)) return;
+  const answer = (
+    page: { entries?: unknown[]; before?: string; hasMore?: boolean },
+    error?: string,
+  ) =>
+    send({
+      type: 'sessionHistory',
+      id,
+      entries: page.entries ?? [],
+      before: page.before,
+      hasMore: page.hasMore ?? false,
+      error,
+    });
+  const before = msg.before;
+  if (
+    before !== undefined &&
+    (typeof before !== 'string' || !HISTORY_CURSOR_WIRE_PATTERN.test(before))
+  ) {
+    answer({}, INVALID_REQUEST_MESSAGE);
+    return;
+  }
+  const driver = ctx.runtime?.streamDriverForAgent(id);
+  const sessionId = driver?.sessionIdFor(id);
+  if (!driver || sessionId === undefined) {
+    answer({}, NOT_A_SESSION_MESSAGE);
+    return;
+  }
+  const provider = driver.provider;
+  if (!provider.getSessionHistory) {
+    answer({}, `${provider.displayName} does not support this.`);
+    return;
+  }
+  try {
+    // The chat view is open: keep the session polled fast, like the Pokédex.
+    provider.setFocus?.([sessionId]);
+    const page = await provider.getSessionHistory(sessionId, before);
+    answer({ ...page, entries: withPeerIds(page.entries, driver) });
+  } catch (err) {
+    answer({}, err instanceof Error && err.message ? userMessage(err) : HISTORY_FAILED_MESSAGE);
+  }
+}
+
+/** Entries with peer session ids mapped to the agent ids in the office. */
+function withPeerIds(
+  entries: ReadonlyArray<{ peerSessionId?: string } & Record<string, unknown>>,
+  driver: StreamAgentDriver,
+): Array<Record<string, unknown>> {
+  return entries.map(({ peerSessionId, ...entry }) => ({
+    ...entry,
+    peerId: peerSessionId !== undefined ? driver.agentIdFor(peerSessionId) : undefined,
+  }));
 }
 
 async function openExternal(url: unknown, send: WsSend, ctx: ClientMessageContext): Promise<void> {

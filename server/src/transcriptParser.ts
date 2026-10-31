@@ -4,6 +4,7 @@ import type { HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { TEXT_IDLE_DELAY_MS, TOOL_DONE_DELAY_MS } from './constants.js';
 import { updateContextUsage } from './contextUsage.js';
+import { countToolCall } from './pokemon/agentLevel.js';
 import { hasInlineTeammates, hasPromotedBackgroundAgent } from './teamUtils.js';
 import {
   cancelPermissionTimer,
@@ -161,7 +162,10 @@ export function processTranscriptLine(
             console.log(
               `[Pixel Agents] JSONL: Agent ${agentId} - tool start: ${block.id} ${status}`,
             );
+            const firstSeen = !agent.activeToolIds.has(block.id);
             agent.activeToolIds.add(block.id);
+            // Each tool call counts toward the agent's Pokémon level.
+            if (firstSeen) countToolCall(agentId, agent, agents);
             agent.activeToolStatuses.set(block.id, status);
             agent.activeToolNames.set(block.id, toolName);
             if (!exemptTools().has(toolName)) {

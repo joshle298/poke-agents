@@ -24,8 +24,10 @@ export const PMD_MISSING_TTL_MS = 60 * 60 * 1000;
 /** After every host failed for a file (offline, upstream down), serve what is
  *  cached (or nothing) without asking again for this long. */
 export const PMD_FAILURE_BACKOFF_MS = 60 * 1000;
-/** After a species fails to load (offline, upstream down), retry no sooner than this. */
+/** After a species fails to load (offline, upstream down), retry no sooner than
+ *  this; each further failure doubles the wait, up to PMD_SPECIES_RETRY_MAX_MS. */
 export const PMD_SPECIES_RETRY_MS = 60 * 1000;
+export const PMD_SPECIES_RETRY_MAX_MS = 30 * 60 * 1000;
 export const PMD_FETCH_TIMEOUT_MS = 10_000;
 export const PMD_MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const PMD_FETCH_CONCURRENCY = 4;

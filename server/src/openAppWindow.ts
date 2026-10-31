@@ -3,13 +3,21 @@
  * app-mode window (`--open`), and Conductor deep links (`openExternal`).
  *
  * Every launch goes through execFile with an argument array: never a shell,
- * so nothing in a URL is ever interpreted. The office URL carries the server
- * token; it travels only inside the `--app=` argument.
+ * so nothing in a URL is ever interpreted. The URL a window opens never carries
+ * the server token: a browser keeps its argv for its lifetime, where other
+ * local users can read it. `--open` asks the server for a one-time launch code
+ * instead (requestLaunchUrl), and the server redirects the window to the
+ * tokened URL when it redeems the code.
  */
 
 import { execFile } from 'child_process';
 
-import { OPEN_COMMAND_TIMEOUT_MS } from './constants.js';
+import {
+  LAUNCH_CODE_API_PATH,
+  LAUNCH_CODE_REQUEST_TIMEOUT_MS,
+  LAUNCH_PATH_PREFIX,
+  OPEN_COMMAND_TIMEOUT_MS,
+} from './constants.js';
 
 /** Runs a program with arguments; resolves when it exits 0. */
 export type ExecFn = (file: string, args: readonly string[]) => Promise<void>;
@@ -80,6 +88,36 @@ export async function openAppWindow(
     return DEFAULT_BROWSER_LABEL;
   }
   throw new Error(`opening a window is not supported on ${platform}`);
+}
+
+/**
+ * The URL `--open` hands to the browser: `<base>/launch/<code>`, with a code
+ * the server at `base` mints for the holder of its token (sent in a header,
+ * never on a command line). Rejects when the server has no launch route (an
+ * older server being reused) or refuses: the caller then points the user at
+ * the printed URL rather than putting the token in argv.
+ */
+export async function requestLaunchUrl(
+  base: string,
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const res = await fetchImpl(`${base}${LAUNCH_CODE_API_PATH}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+    signal: AbortSignal.timeout(LAUNCH_CODE_REQUEST_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`the server refused a launch code (HTTP ${res.status})`);
+  let code: unknown;
+  try {
+    code = ((await res.json()) as { code?: unknown } | null)?.code;
+  } catch {
+    code = undefined;
+  }
+  if (typeof code !== 'string' || !/^[A-Za-z0-9_-]+$/.test(code)) {
+    throw new Error('the server has no launch codes (an older version?)');
+  }
+  return `${base}${LAUNCH_PATH_PREFIX}/${code}`;
 }
 
 /**

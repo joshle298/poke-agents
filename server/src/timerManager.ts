@@ -8,6 +8,8 @@ export function clearAgentActivity(
   agentId: number,
   agents: AgentStateStore,
   permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
+  /** A seed (the state a stream session was adopted in), not news: no chime. */
+  silent = false,
 ): void {
   if (!agent) return;
 
@@ -55,7 +57,12 @@ export function clearAgentActivity(
       });
     }
   }
-  agents.broadcast({ type: 'agentStatus', id: agentId, status: 'active' });
+  agents.broadcast({
+    type: 'agentStatus',
+    id: agentId,
+    status: 'active',
+    ...(silent ? { silent: true } : {}),
+  });
 }
 
 export function cancelWaitingTimer(

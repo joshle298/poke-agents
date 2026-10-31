@@ -13,6 +13,7 @@ import {
   normalizeHostname,
   privilegedHostnames,
   redactTokenQuery,
+  standaloneConnectionHostAllowed,
   standaloneHandshakeVerdict,
   standaloneTokenValid,
   timingSafeStringEqual,
@@ -160,6 +161,31 @@ describe('privilegedHostnames', () => {
     expect(names.has('my-mac.tailnet.ts.net')).toBe(true);
     expect(privilegedHostnames('0.0.0.0', []).has('0.0.0.0')).toBe(false);
     expect(privilegedHostnames('::', []).has('::')).toBe(false);
+  });
+});
+
+describe('standaloneConnectionHostAllowed', () => {
+  const allowed = privilegedHostnames('127.0.0.1', ['office.example.ts.net']);
+
+  it('admits loopback, listed names and IP literals', () => {
+    expect(standaloneConnectionHostAllowed('127.0.0.1:41510', allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('localhost:41510', allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('[::1]:41510', allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('Office.Example.ts.net', allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('192.168.1.20:41510', allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('[fe80::1]:41510', allowed)).toBe(true);
+  });
+
+  it('refuses DNS names off the allowlist (rebinding needs one) and junk', () => {
+    expect(standaloneConnectionHostAllowed('evil.example:41510', allowed)).toBe(false);
+    expect(standaloneConnectionHostAllowed('127.0.0.1.nip.io:41510', allowed)).toBe(false);
+    expect(standaloneConnectionHostAllowed('my-mac.local', allowed)).toBe(false);
+    expect(standaloneConnectionHostAllowed('evil@127.0.0.1', allowed)).toBe(false);
+  });
+
+  it('admits a handshake with no Host (not a browser)', () => {
+    expect(standaloneConnectionHostAllowed(undefined, allowed)).toBe(true);
+    expect(standaloneConnectionHostAllowed('', allowed)).toBe(true);
   });
 });
 

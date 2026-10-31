@@ -94,10 +94,13 @@ export const SERVER_REGISTRY_PROTOCOL_VERSION = 1;
  *  still connects, unprivileged -- see wsAuth.ts). */
 export const WS_CLOSE_UNAUTHORIZED = 4001;
 
-/** Standalone mode: the handshake's Origin is not this server's own origin.
- *  WebSocket connects bypass CORS, so this is the only thing standing between
- *  a drive-by web page and the privileged client-message channel. */
+/** Standalone mode: the handshake's Origin is not this server's own origin, or
+ *  its Host is a DNS name off the allowlist (wsAuth.standaloneConnectionHostAllowed).
+ *  WebSocket connects bypass CORS, so this is what stands between a drive-by
+ *  or DNS-rebound web page and the office feed. */
 export const WS_CLOSE_FORBIDDEN_ORIGIN = 4003;
+/** Distinct refused Host names logged per process (each name once). */
+export const REFUSED_HOST_LOG_MAX = 32;
 /** Terminal socket: the agent has no PTY on this server (never spawned, or
  *  already exited). The route only ever attaches; it cannot start one. */
 export const WS_CLOSE_NO_SESSION = 4004;
@@ -173,6 +176,17 @@ export const CONDUCTOR_BUDGET_MIN = 1;
 export const CONDUCTOR_BUDGET_MAX = 6_000;
 /** How long `open` / `xdg-open` may take before the attempt counts as failed. */
 export const OPEN_COMMAND_TIMEOUT_MS = 10_000;
+/** `--open` launch codes (launchCodes.ts): random bytes per code, how long an
+ *  unused one stays valid (a cold browser start included), and how many may
+ *  wait at once. */
+export const LAUNCH_CODE_BYTES = 24;
+export const LAUNCH_CODE_TTL_MS = 120_000;
+export const LAUNCH_CODE_MAX = 8;
+/** Routes: the CLI mints a code (Bearer token), the window redeems it. */
+export const LAUNCH_CODE_API_PATH = '/api/launch-code';
+export const LAUNCH_PATH_PREFIX = '/launch';
+/** How long the CLI waits for the server to mint a launch code. */
+export const LAUNCH_CODE_REQUEST_TIMEOUT_MS = 5_000;
 
 // ── Stream providers (Conductor) ────────────────────────────
 /** The agentLinks snapshot is broadcast at most this often (debounced). */
@@ -190,6 +204,10 @@ export const STREAM_LINKS_MAX = 500;
 /** Remembered stream sessions (agent id + Pokémon) in <namespace>-state.json;
  *  the oldest entries go first past this. */
 export const STREAM_AGENT_MEMORY_MAX = 1_000;
+/** A stream agent that went active is shown working at least this long: a
+ *  turn that started and ended within one poll would otherwise flash by
+ *  unseen (its turn end is broadcast once this has passed). */
+export const STREAM_TURN_MIN_ACTIVE_MS = 2_500;
 /** An evolved (or promoted) species is announced once its sprites load, or
  *  after this long, whichever comes first (the office keeps the old one meanwhile). */
 export const STREAM_SPECIES_LOAD_TIMEOUT_MS = 15_000;

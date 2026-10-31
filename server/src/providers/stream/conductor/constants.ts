@@ -76,8 +76,9 @@ export const DISCOVERY_INTERVAL_MS = 15_000;
 export const FULL_LIST_INTERVAL_MS = 5 * 60_000;
 /** Lists of recently active workspaces are refreshed when older than this. */
 export const SESSION_LIST_MAX_AGE_MS = 60_000;
-/** A workspace whose lastActivityAt advanced is re-listed at most this often. */
-export const SESSION_LIST_MIN_GAP_MS = 10_000;
+/** A workspace whose lastActivityAt advanced is re-listed at most this often
+ *  (planIntervals budgets for it). */
+export const SESSION_LIST_MIN_GAP_MS = 60_000;
 /** Archived session listings (PC Box) per workspace, at most this often. */
 export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
@@ -121,8 +122,25 @@ export const HOT_RECENT_MS = 60_000;
 export const WARM_RECENT_MS = 15 * 60_000;
 /** Done sessions in a `ready` workspace stay Warm for this long. */
 export const WARM_READY_WORKSPACE_MS = 60 * 60_000;
-/** How long a discovery hit or a link keeps a session Hot. */
+/** How long a live link or a user action keeps a session Hot. */
 export const PROMOTION_MS = 60_000;
+/** A workspace's activity asks each of its other sessions for one catch-up
+ *  poll, at most this often per session (it does not promote them). */
+export const WORKSPACE_CATCHUP_MIN_GAP_MS = 60_000;
+/** A focused session (open Pokédex) stays focused this long after the last
+ *  request asked for it: twice the panel's 5 s refresh. */
+export const FOCUS_TTL_MS = 10_000;
+/** A focused session's linked sessions poll as Hot when their link carried
+ *  activity this recently; at most this many of them. */
+export const FOCUS_PEER_RECENT_MS = 15 * 60_000;
+export const FOCUS_PEERS_MAX = 4;
+/** A shown session walks in once its message count (its level) is known; if
+ *  reading it fails, or takes longer than this after onboarding (a starved
+ *  budget), it walks in anyway. */
+export const LEVEL_WAIT_MAX_MS = 3 * 60_000;
+/** A session withdrawn from the PC Box is shown like a pinned one this long;
+ *  afterwards the withdrawal counts as its activity for the scope window. */
+export const RESTORE_PIN_MS = 10 * 60_000;
 /** Polls further apart than this are catch-ups, not steady tail polls. */
 export const STEADY_POLL_GAP_MS = 60_000;
 /** Feed items newer than this (and from a steady poll) animate links and notices. */
@@ -179,12 +197,35 @@ export const LOG_TOOL_KEEP = 5;
 /** Item keys remembered per log so replayed pages never duplicate entries. */
 export const LOG_KEY_MEMORY = 2_000;
 export const USER_ACTION_DETAIL_MAX = 120;
+/** A pending question (sessionDetail.question): its text, and up to this many
+ *  options of at most this length each. */
+export const QUESTION_TEXT_MAX = 1_200;
+export const QUESTION_OPTIONS_MAX = 8;
+export const QUESTION_OPTION_MAX = 120;
+
+// ── Chat history (getSessionHistory) ───────────────────────
+
+/** Feed items per history page (the API's page cap). */
+export const HISTORY_PAGE_ITEMS = 100;
+/** Cursors this provider issues: `o<offset>`. */
+export const HISTORY_CURSOR_PATTERN = /^o(\d{1,9})$/;
 
 // ── Persistence ─────────────────────────────────────────────
 
 export const STATE_FILE_NAME = 'conductor-state.json';
+/** Held by the one office process that polls Conductor (pollerLock.ts). */
+export const POLLER_LOCK_FILE_NAME = 'conductor.lock';
 export const STATE_FILE_VERSION = 1;
 export const STATE_FILE_MODE = 0o600;
+/** User decisions (scope, hidden, pinned, a withdrawal) are written this soon... */
 export const STATE_SAVE_DEBOUNCE_MS = 1_000;
+/** ...and poll bookkeeping (cursors, activity times) at most this often. */
+export const STATE_LAZY_SAVE_MS = 30_000;
+/** Entries neither hidden nor pinned go once nothing touched them for this long. */
+export const STATE_STALE_ENTRY_MS = 30 * 24 * 60 * 60_000;
+/** At most this many session entries; the least recent go first. */
+export const STATE_SESSIONS_MAX = 2_000;
+/** A listed session's seenAt is refreshed at most this often. */
+export const STATE_SEEN_REFRESH_MS = 24 * 60 * 60_000;
 
 export const LOG_PREFIX = '[Pixel Agents] Conductor:';

@@ -244,7 +244,7 @@ describe('resendAgentActivity', () => {
         label: 'Fix the flaky test',
         agentName: 'Fix the flaky test',
         leadAgentId: 2,
-        details: { repo: 'hue-run/fern' },
+        details: { repo: 'example-org/example-repo' },
         species: 25,
         activeToolStatuses: new Map([['tool-1', 'Running']]),
         activeToolNames: new Map([['tool-1', 'Bash']]),
@@ -258,7 +258,7 @@ describe('resendAgentActivity', () => {
       providerId: 'conductor',
       label: 'Fix the flaky test',
       conductorSessionId: 's1',
-      repo: 'hue-run/fern',
+      repo: 'example-org/example-repo',
       species: 25,
     });
   });
