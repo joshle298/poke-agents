@@ -16,13 +16,16 @@ import { buildEditorRenderState } from '../editor/editorRenderState.js';
 import type { EditorState } from '../editor/editorState.js';
 import { startGameLoop } from '../engine/gameLoop.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { isPokemonThemeEnabled } from '../engine/pokemonTheme.js';
 import type {
+  ConnectionsRenderState,
   DeleteButtonBounds,
   EditorRenderState,
   RotateButtonBounds,
   SelectionRenderState,
 } from '../engine/renderer.js';
 import { renderFrame } from '../engine/renderer.js';
+import { getShowConnections } from '../showConnections.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
 import { useCanvasTouchGestures } from './useCanvasTouchGestures.js';
@@ -37,9 +40,19 @@ function dragMoveCursor(editorState: EditorState): string {
   return editorState.dragDuplicate ? 'copy' : 'grabbing';
 }
 
+/** How a character was clicked: `meta` = ⌘/Ctrl held, `double` = a
+ *  double-click (both open the agent's deep link in the chrome). */
+export interface CanvasClickModifiers {
+  meta: boolean;
+  double: boolean;
+}
+
+const PLAIN_CLICK: CanvasClickModifiers = { meta: false, double: false };
+
 interface OfficeCanvasProps {
   officeState: OfficeState;
-  onClick: (agentId: number) => void;
+  /** A character was clicked or tapped (after selection has been updated). */
+  onClick: (agentId: number, mods: CanvasClickModifiers) => void;
   isEditMode: boolean;
   editorState: EditorState;
   onEditorTileAction: (col: number, row: number) => void;
@@ -194,6 +207,14 @@ export function OfficeCanvas({
           characters: officeState.characters,
         };
 
+        const connections: ConnectionsRenderState = {
+          links: getShowConnections() ? officeState.getLinkSegments() : [],
+          projectiles: officeState.projectiles,
+          characters: officeState.characters,
+          time: officeState.clock,
+          themed: isPokemonThemeEnabled(),
+        };
+
         const layout = officeState.getLayout();
         const { offsetX, offsetY } = renderFrame(
           ctx,
@@ -216,6 +237,7 @@ export function OfficeCanvas({
           showAreas,
           activeAreaLabel,
           officeState.pets,
+          connections,
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 
@@ -603,7 +625,7 @@ export function OfficeCanvas({
   // Shared by mouse click and touch tap — both resolve a viewport point to a
   // character / pet / seat interaction.
   const performTap = useCallback(
-    (clientX: number, clientY: number) => {
+    (clientX: number, clientY: number, mods: CanvasClickModifiers = PLAIN_CLICK) => {
       const pos = screenToWorld(clientX, clientY);
       if (!pos) return;
 
@@ -616,7 +638,7 @@ export function OfficeCanvas({
         // Deselection is tapping empty floor, as ever.
         if (tapSelectsFirst) {
           if (officeState.selectedAgentId === hitId) {
-            onClick(hitId);
+            onClick(hitId, mods);
           } else {
             officeState.selectedAgentId = hitId;
             officeState.cameraFollowId = hitId;
@@ -631,7 +653,7 @@ export function OfficeCanvas({
           officeState.selectedAgentId = hitId;
           officeState.cameraFollowId = hitId;
         }
-        onClick(hitId); // still focus terminal
+        onClick(hitId, mods); // still focus terminal
         return;
       }
 
@@ -690,9 +712,26 @@ export function OfficeCanvas({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (isEditMode) return; // handled by mouseDown/mouseUp
-      performTap(e.clientX, e.clientY);
+      performTap(e.clientX, e.clientY, { meta: e.metaKey || e.ctrlKey, double: false });
     },
     [isEditMode, performTap],
+  );
+
+  // A double-click arrives after two clicks, the second of which toggled the
+  // character back off: re-select it (camera follows, as on any click) and
+  // report the double so the chrome can open the deep link.
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isEditMode) return;
+      const pos = screenToWorld(e.clientX, e.clientY);
+      if (!pos) return;
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY);
+      if (hitId === null) return;
+      officeState.selectedAgentId = hitId;
+      officeState.cameraFollowId = hitId;
+      onClick(hitId, { meta: e.metaKey || e.ctrlKey, double: true });
+    },
+    [isEditMode, officeState, onClick, screenToWorld],
   );
 
   const handleMouseLeave = useCallback(() => {
@@ -796,7 +835,7 @@ export function OfficeCanvas({
     panRef,
     clampPan,
     onManualPan: () => officeState.breakCameraFollow(),
-    onTap: performTap,
+    onTap: (clientX, clientY) => performTap(clientX, clientY),
   });
 
   // Prevent default middle-click browser behavior (auto-scroll)
@@ -813,6 +852,7 @@ export function OfficeCanvas({
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onAuxClick={handleAuxClick}
         onMouseLeave={handleMouseLeave}
         onContextMenu={handleContextMenu}

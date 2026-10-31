@@ -31,6 +31,42 @@ function recordSoundForTests(kind: 'done' | 'permission'): void {
   window.__pixelAgentsTestHooks.playedSounds.push({ kind, at: Date.now() });
 }
 
+/** Which sound an agentStatus deserves: the done chime, the attention tap,
+ *  or none. */
+export type StatusChime = 'done' | 'attention' | null;
+
+export interface StatusChimeInput {
+  status: string;
+  /** status is 'waiting' and the agent asked the user something. */
+  awaitingInput: boolean;
+  /** A seeding / reconnect resend — never a sound. */
+  silent: boolean;
+  /** Fed by a stream provider (Conductor): dozens of them run at once. */
+  streamAgent: boolean;
+  /** The agent is the office's selected character. */
+  selected: boolean;
+  /** The status differs from the last one this client saw for the agent. */
+  changed: boolean;
+}
+
+/**
+ * Chime policy. Upstream agents keep the upstream rule (every finished turn
+ * chimes). A stream agent chimes only when it needs an answer, when the
+ * selected agent errors (attention tap), or when the selected agent's status
+ * changes to an inactive form — an office of forty cloud sessions would
+ * otherwise chime constantly. Silent resends never sound. The Settings sound
+ * switch still gates playback itself.
+ */
+export function statusChimeFor(input: StatusChimeInput): StatusChime {
+  if (input.silent) return null;
+  if (!input.streamAgent) return input.status === 'waiting' ? 'done' : null;
+  if (input.status === 'waiting' && input.awaitingInput) return 'done';
+  if (!input.selected) return null;
+  if (input.status === 'error') return 'attention';
+  if (input.status === 'waiting' && input.changed) return 'done';
+  return null;
+}
+
 export function setSoundEnabled(enabled: boolean): void {
   soundEnabled = enabled;
 }

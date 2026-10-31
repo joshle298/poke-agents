@@ -22,7 +22,6 @@ export const SEAT_REST_MAX_SEC = 240.0;
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
 export const MATRIX_TRAIL_LENGTH = 6;
 export const MATRIX_SPRITE_COLS = 16;
-export const MATRIX_SPRITE_ROWS = 24;
 export const MATRIX_FLICKER_FPS = 30;
 export const MATRIX_FLICKER_VISIBILITY_THRESHOLD = 180;
 export const MATRIX_COLUMN_STAGGER_RANGE = 0.3;
@@ -560,3 +559,157 @@ export const VISUAL_VIEWPORT_FULL_EPSILON_PX = 1;
  *  (with an editable focused) = the software keyboard is up. Well above an
  *  address bar collapsing (~56 px), well below any on-screen keyboard. */
 export const KEYBOARD_MIN_HEIGHT_PX = 150;
+
+// ── Pokémon office ───────────────────────────────────────────
+// Characters drawn from PMDCollab sheets (decoded at runtime, never bundled),
+// the Poké Ball spawn/recall, links and message projectiles between agents,
+// and the themed overlay label. Theme off = none of this runs.
+
+/** PMD sheet durations are game frames at this rate. */
+export const PMD_FPS = 60;
+/** A PMD frame's ground point is (floor(w/2), floor(h/2) + this). */
+export const PMD_GROUND_Y_OFFSET_PX = 4;
+/** PMD rows: 0 Down, 1 DownRight, 2 Right, 3 UpRight, 4 Up, 5 UpLeft, 6 Left, 7 DownLeft. */
+export const PMD_DIRECTION_ROWS = 8;
+/** Pixels with alpha below this are transparent when measuring a body. */
+export const POKEMON_ALPHA_THRESHOLD = 2;
+/** Anims a species needs decoded (either one) before it replaces the upstream character. */
+export const POKEMON_GEOMETRY_ANIMS = ['Idle', 'Walk'] as const;
+/** Not active for this long = asleep (Sleep anim, SLP badge). */
+export const POKEMON_SLEEP_AFTER_SEC = 120;
+/** A seated Pokémon shifts down this many world px (humans: CHARACTER_SITTING_OFFSET_PX). */
+export const POKEMON_SITTING_OFFSET_PX = 2;
+/** World px from the tile centre to where the ground point is drawn. */
+export const POKEMON_GROUND_OFFSET_PX = -3;
+/** Feet reach this far below the ground point (hit box bottom). */
+export const POKEMON_FEET_BELOW_GROUND_PX = 2;
+/** World px between the top of a Pokémon's body and its overlay label anchor. */
+export const POKEMON_LABEL_GAP_PX = 8;
+/** World px between the top of a Pokémon's body and its speech bubble. */
+export const POKEMON_BUBBLE_GAP_PX = 1;
+/** Fallback chains per situation: the first anim the species has wins. */
+export const POKEMON_ANIM_FALLBACKS = {
+  walk: ['Walk'],
+  idle: ['Idle', 'Walk'],
+  work: ['Charge', 'Shoot', 'Attack', 'Idle', 'Walk'],
+  read: ['Nod', 'Idle', 'Walk'],
+  sleep: ['Sleep', 'Idle', 'Walk'],
+  alert: ['Pose', 'Idle', 'Walk'],
+  hurt: ['Hurt'],
+  faint: ['Faint', 'Sleep', 'Hurt', 'Idle', 'Walk'],
+  toolBurst: ['Shoot', 'Charge'],
+  message: ['Attack', 'Shoot'],
+  turnEnd: ['Hop'],
+  wake: ['Wake', 'Hop'],
+} as const satisfies Record<string, readonly string[]>;
+/** Decode order: what the office needs first. Anything else follows. */
+export const POKEMON_DECODE_ORDER = [
+  'Idle',
+  'Walk',
+  'Sleep',
+  'Charge',
+  'Hurt',
+  'Faint',
+  'Hop',
+  'Shoot',
+  'Attack',
+  'Nod',
+  'Wake',
+  'Pose',
+] as const;
+/** Fainted (errored) Pokémon: alpha and grey tint. */
+export const POKEMON_FAINT_ALPHA = 0.6;
+export const POKEMON_FAINT_TINT = 'rgba(112, 112, 120, 0.6)';
+/** Evolution: a white-silhouette flash; the species swaps at the midpoint. */
+export const POKEMON_EVOLVE_SEC = 1.2;
+/** Flicker rate of the evolution flash (on/off cycles per second). */
+export const POKEMON_EVOLVE_FLICKER_HZ = 5;
+/** The flash is solid white while its envelope (0 → 1 at the swap → 0) is at
+ *  least this, hiding the species swap. */
+export const POKEMON_EVOLVE_SOLID_ENVELOPE = 0.8;
+/** Strength of the flash's "off" beats relative to its envelope. */
+export const POKEMON_EVOLVE_FLICKER_LOW = 0.4;
+export const POKEMON_SILHOUETTE_COLOR = '#ffffff';
+export const POKEMON_OUTLINE_COLOR = '#ffffff';
+export const POKEMON_RECALL_COLOR = '#ff4040';
+
+// Poké Ball spawn (throw → open → materialize) and recall (red beam → return).
+export const POKEBALL_SPAWN_SEC = 0.9;
+export const POKEBALL_RECALL_SEC = 0.6;
+/** Spawn phase boundaries as fractions of POKEBALL_SPAWN_SEC. */
+export const POKEBALL_THROW_END = 0.4;
+export const POKEBALL_OPEN_END = 0.55;
+/** Recall: beam phase ends here; the ball flies off for the rest. */
+export const POKEBALL_RECALL_BEAM_END = 0.5;
+/** With no thrower, the ball drops from this far above the ground point. */
+export const POKEBALL_DROP_HEIGHT_PX = 48;
+/** Peak height of a thrown ball's arc above the straight line. */
+export const POKEBALL_THROW_ARC_PX = 20;
+/** The materializing body starts at this scale and grows to 1. */
+export const POKEBALL_MATERIALIZE_MIN_SCALE = 0.25;
+/** Share of the materialize phase spent growing (the rest fades white → colour). */
+export const POKEBALL_GROW_SHARE = 0.6;
+export const POKEBALL_FLASH_COLOR = '#ffffff';
+/** Burst ring radius (world px) when the ball opens, and its sample count. */
+export const POKEBALL_BURST_RADIUS_PX = 10;
+export const POKEBALL_BURST_POINTS = 16;
+export const POKEBALL_RECALL_BEAM_COLOR = 'rgba(255, 64, 64, 0.9)';
+/** During recall the ball hovers this far above the head, then leaves this far up. */
+export const POKEBALL_RECALL_HOVER_PX = 6;
+export const POKEBALL_RECALL_EXIT_PX = 40;
+
+// Links between agents (agentLinks), drawn on the floor under everyone.
+export const LINK_MARCH_PX_PER_SEC = 12;
+/** Dash pattern per kind, in world px: `on` lit pixels every `period`. */
+export const LINK_PATTERNS = {
+  spawned: { period: 6, on: 4 },
+  messaged: { period: 4, on: 1 },
+  watched: { period: 6, on: 2 },
+} as const;
+export const LINK_COLORS = {
+  spawned: 'rgba(255, 215, 64, 0.85)',
+  messaged: 'rgba(110, 170, 255, 0.9)',
+  watched: 'rgba(255, 255, 255, 0.3)',
+} as const;
+/** localStorage key of the local "Show connections" setting (default on). */
+export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
+
+// Message projectiles (agentMessage): a ball flies sender → receiver.
+export const PROJECTILE_SPEED_PX_PER_SEC = 160;
+export const PROJECTILE_MIN_SEC = 0.4;
+export const PROJECTILE_MAX_SEC = 1.4;
+export const PROJECTILE_ARC_LIFT_PX = 16;
+/** The server coalesces; this caps what the client keeps in the air. */
+export const PROJECTILE_MAX_IN_FLIGHT = 8;
+/** Message preview bubble near the receiver once the ball lands. */
+export const MESSAGE_PREVIEW_SEC = 3;
+export const MESSAGE_PREVIEW_MAX_CHARS = 80;
+/** agentNotice speech bubble. */
+export const AGENT_NOTICE_SEC = 4;
+export const AGENT_NOTICE_MAX_CHARS = 120;
+/** Max width (CSS px) of preview and notice bubbles. */
+export const SPEECH_BUBBLE_MAX_WIDTH_PX = 220;
+/** CSS px between a character's bubble anchor and a notice / preview bubble. */
+export const SPEECH_BUBBLE_RISE_PX = 18;
+export const SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX = 14;
+export const NOTICE_ERROR_COLOR = '#c03028';
+
+/** A stream teammate sits near its Lead only while the Lead has at most this
+ *  many visible children (counting the new one); past it, the usual seat search. */
+export const TEAMMATE_CLUSTER_MAX_CHILDREN = 6;
+
+// Themed overlay: HP bar (context left) and status badges.
+export const HP_HIGH_THRESHOLD = 0.5;
+export const HP_LOW_THRESHOLD = 0.2;
+export const HP_COLOR_HIGH = '#58d080';
+export const HP_COLOR_MID = '#f8c030';
+export const HP_COLOR_LOW = '#f05038';
+export const HP_BG = '#304030';
+export const HP_BAR_WIDTH_PX = 48;
+export const HP_BAR_HEIGHT_PX = 4;
+export const STATUS_BADGE_TEXT_COLOR = '#ffffff';
+export const STATUS_BADGE_COLORS = {
+  asleep: '#7880a0',
+  fainted: '#c03028',
+  needsYou: '#e0a000',
+} as const;

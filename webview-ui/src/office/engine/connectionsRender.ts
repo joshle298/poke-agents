@@ -1,0 +1,77 @@
+/**
+ * Links and message projectiles between agents (drawing only; OfficeState
+ * owns the data).
+ *
+ * Links lie on the floor under everyone: pixel-art dashes between two
+ * characters' tiles, marching from sender to receiver — spawned as dashes,
+ * messaged as dots, watched faint. Projectiles fly above everyone on an arc
+ * from chest to chest: a Poké Ball while themed, an envelope otherwise.
+ */
+
+import {
+  LINK_COLORS,
+  LINK_MARCH_PX_PER_SEC,
+  LINK_PATTERNS,
+  PROJECTILE_ARC_LIFT_PX,
+} from '../../constants.js';
+import { ENVELOPE_SPRITE, POKEBALL_CLOSED_SPRITE } from '../sprites/pokemonUiSprites.js';
+import type { Character, LinkSegment, Projectile } from '../types.js';
+import { forEachLinePixel, isDashLit } from './pixelLine.js';
+import { drawCenteredSprite } from './pokeballEffect.js';
+import { characterChest } from './pokemonCharacter.js';
+
+/** What renderFrame needs to draw connections this frame. */
+export interface ConnectionsRenderState {
+  /** Empty when the "Show connections" setting is off. */
+  links: LinkSegment[];
+  projectiles: Projectile[];
+  characters: Map<number, Character>;
+  /** Seconds of simulated time (OfficeState.clock). */
+  time: number;
+  /** Fly Poké Balls (themed) or envelopes. */
+  themed: boolean;
+}
+
+export function renderLinks(
+  ctx: CanvasRenderingContext2D,
+  links: LinkSegment[],
+  time: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const march = time * LINK_MARCH_PX_PER_SEC;
+  ctx.save();
+  for (const { from, to, kind } of links) {
+    const { period, on } = LINK_PATTERNS[kind];
+    ctx.fillStyle = LINK_COLORS[kind];
+    forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
+      if (!isDashLit(step, march, period, on)) return;
+      ctx.fillRect(Math.round(offsetX + x * zoom), Math.round(offsetY + y * zoom), zoom, zoom);
+    });
+  }
+  ctx.restore();
+}
+
+export function renderProjectiles(
+  ctx: CanvasRenderingContext2D,
+  state: ConnectionsRenderState,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const sprite = state.themed ? POKEBALL_CLOSED_SPRITE : ENVELOPE_SPRITE;
+  for (const p of state.projectiles) {
+    const from = state.characters.get(p.fromId);
+    const to = state.characters.get(p.toId);
+    if (!from || !to) continue;
+    const q = p.dur > 0 ? Math.min(1, Math.max(0, p.t / p.dur)) : 1;
+    const a = characterChest(from);
+    const b = characterChest(to);
+    const at = {
+      x: Math.round(a.x + (b.x - a.x) * q),
+      y: Math.round(a.y + (b.y - a.y) * q - PROJECTILE_ARC_LIFT_PX * 4 * q * (1 - q)),
+    };
+    drawCenteredSprite(ctx, sprite, at, offsetX, offsetY, zoom);
+  }
+}

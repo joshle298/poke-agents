@@ -1,0 +1,18 @@
+{
+  "name": "envelope",
+  "description": "Message envelope (7x5) flown between agents while the Pokémon theme is off.",
+  "width": 7,
+  "height": 5,
+  "palette": {
+    "_": "",
+    "B": "#555566",
+    "F": "#EEEEFF"
+  },
+  "pixels": [
+    ["B", "B", "B", "B", "B", "B", "B"],
+    ["B", "B", "F", "F", "F", "B", "B"],
+    ["B", "F", "B", "F", "B", "F", "B"],
+    ["B", "F", "F", "B", "F", "F", "B"],
+    ["B", "B", "B", "B", "B", "B", "B"]
+  ]
+}

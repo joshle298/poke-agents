@@ -3,9 +3,6 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/ui/Button.js';
 import {
   BUBBLE_FADE_DURATION_SEC,
-  BUBBLE_SITTING_OFFSET_PX,
-  BUBBLE_VERTICAL_OFFSET_PX,
-  CHARACTER_SITTING_OFFSET_PX,
   CONTEXT_CRITICAL_THRESHOLD,
   CONTEXT_DANGER_THRESHOLD,
   CONTEXT_GAUGE_BG,
@@ -16,20 +13,37 @@ import {
   CONTEXT_GAUGE_HEIGHT_PX,
   CONTEXT_GAUGE_WIDTH_PX,
   CONTEXT_WARN_THRESHOLD,
+  HP_BAR_HEIGHT_PX,
+  HP_BAR_WIDTH_PX,
+  HP_BG,
+  NOTICE_ERROR_COLOR,
   OVERLAY_BUBBLE_Z_INDEX,
   OVERLAY_LABEL_SELECTED_Z_INDEX,
   OVERLAY_LABEL_Z_INDEX,
+  SPEECH_BUBBLE_MAX_WIDTH_PX,
+  SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
+  SPEECH_BUBBLE_RISE_PX,
+  STATUS_BADGE_COLORS,
+  STATUS_BADGE_TEXT_COLOR,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
-  TOOL_OVERLAY_VERTICAL_OFFSET,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { isPokemonCharacter, overlayAnchorY } from '../engine/pokemonCharacter.js';
+import type { OverlayProjection } from '../projection.js';
 import { overlayProjection } from '../projection.js';
+import { BUBBLE_ALERT_SPRITE, BUBBLE_SLEEP_SPRITE } from '../sprites/pokemonUiSprites.js';
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
-import type { ToolActivity } from '../types.js';
-import { CharacterState } from '../types.js';
+import type { Character, SpriteData, ToolActivity } from '../types.js';
+import {
+  CONDITION_BADGE,
+  hpColor,
+  hpFraction,
+  isThemedOverlay,
+  pokemonLabel,
+} from './pokemonOverlay.js';
 
 // Both turn-end states show the green checkmark bubble. A finished turn (Stop)
 // shows ONLY the checkmark (the label falls through to its normal idle text);
@@ -57,7 +71,10 @@ function getActivityText(
   isActive: boolean,
   bubbleType: 'permission' | 'waiting' | null,
   waitingAwaitingInput: boolean,
+  errorMessage?: string,
 ): string {
+  // Only stream sessions report errors; upstream agents never reach this.
+  if (errorMessage !== undefined) return errorMessage || 'Error';
   if (bubbleType === 'permission') return 'Needs approval';
   // Only the idle case ("Waiting for input") gets a dedicated label. A finished
   // turn (Stop, waitingAwaitingInput=false) falls through so the checkmark alone
@@ -110,6 +127,236 @@ function OverlayBubble({ cached, dpr }: { cached: HTMLCanvasElement; dpr: number
   );
 }
 
+/** Which bubble a character shows, and its opacity. Upstream: permission dots,
+ *  or the done checkmark fading out. Themed: a "!" while it needs you (until
+ *  it turns active), the checkmark, or "z" while a drawn Pokémon sleeps. */
+function bubbleFor(ch: Character, themed: boolean): { sprite: SpriteData; alpha: number } | null {
+  const fade =
+    ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
+      ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
+      : 1;
+  if (!themed) {
+    if (!ch.bubbleType || (ch.bubbleType === 'waiting' && ch.waitingAwaitingInput)) return null;
+    return {
+      sprite: ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
+      alpha: fade,
+    };
+  }
+  const label = pokemonLabel(ch);
+  if (label.condition === 'fainted') return null;
+  if (label.condition === 'needsYou') return { sprite: BUBBLE_ALERT_SPRITE, alpha: 1 };
+  if (ch.bubbleType === 'waiting' && !ch.waitingAwaitingInput) {
+    return { sprite: BUBBLE_WAITING_SPRITE, alpha: fade };
+  }
+  if (label.condition === 'asleep' && isPokemonCharacter(ch)) {
+    return { sprite: BUBBLE_SLEEP_SPRITE, alpha: 1 };
+  }
+  return null;
+}
+
+interface ThemedLabelProps {
+  ch: Character;
+  id: number;
+  left: number;
+  top: number;
+  isSelected: boolean;
+  dimmed: boolean;
+  dotColor: string | null;
+  pulse: boolean;
+  teamRoleLabel: string | null;
+  activityText: string;
+  showHp: boolean;
+  contextRatio: number;
+  onClose: () => void;
+}
+
+/** The themed label: nickname + Lv and status badges, the species in small
+ *  text, the activity, and an HP bar (context left) in place of the gauge.
+ *  Hangs from its anchor by its bottom edge, so extra lines grow upward. */
+function ThemedLabel({
+  ch,
+  id,
+  left,
+  top,
+  isSelected,
+  dimmed,
+  dotColor,
+  pulse,
+  teamRoleLabel,
+  activityText,
+  showHp,
+  contextRatio,
+  onClose,
+}: ThemedLabelProps) {
+  const label = pokemonLabel(ch);
+  const hp = hpFraction(ch.contextTokens, ch.maxContextTokens);
+  return (
+    <div
+      className="absolute flex flex-col items-center"
+      style={{
+        left,
+        top,
+        transform: 'translate(-50%, -100%)',
+        pointerEvents: isSelected ? 'auto' : 'none',
+        opacity: dimmed ? 0.75 : 1,
+        zIndex: isSelected ? OVERLAY_LABEL_SELECTED_Z_INDEX : OVERLAY_LABEL_Z_INDEX,
+      }}
+      data-testid="agent-overlay"
+      data-agent-id={id}
+    >
+      <div className="flex items-center border-border px-8 pt-2 pb-4 gap-5 pixel-panel whitespace-nowrap max-w-2xs">
+        {dotColor && (
+          <span
+            className={`w-6 h-6 rounded-full shrink-0 ${pulse ? 'pixel-pulse' : ''}`}
+            style={{ background: dotColor }}
+          />
+        )}
+        <div className="flex flex-col gap-0 overflow-hidden">
+          {teamRoleLabel && (
+            <span
+              className="overflow-hidden text-ellipsis block leading-none"
+              style={{
+                fontSize: '18px',
+                color: ch.isTeamLead ? TEAM_LEAD_COLOR : TEAM_ROLE_COLOR,
+                fontWeight: ch.isTeamLead ? 'bold' : undefined,
+              }}
+            >
+              {teamRoleLabel}
+            </span>
+          )}
+          {(label.nickname || label.level || label.condition) && (
+            <span className="flex items-center gap-4 leading-none" style={{ fontSize: '22px' }}>
+              {label.nickname && (
+                <span className="overflow-hidden text-ellipsis">{label.nickname}</span>
+              )}
+              {label.level && <span className="shrink-0">{label.level}</span>}
+              {label.condition && (
+                <span
+                  className="shrink-0 px-2 leading-none"
+                  style={{
+                    fontSize: '14px',
+                    background: STATUS_BADGE_COLORS[label.condition],
+                    color: STATUS_BADGE_TEXT_COLOR,
+                  }}
+                >
+                  {CONDITION_BADGE[label.condition]}
+                </span>
+              )}
+            </span>
+          )}
+          {label.species && (
+            <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
+              {label.species}
+            </span>
+          )}
+          <span
+            className="overflow-hidden text-ellipsis block leading-none"
+            style={{ fontSize: '20px' }}
+          >
+            {activityText}
+          </span>
+          {ch.directoryName && (
+            <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
+              {ch.directoryName}
+            </span>
+          )}
+        </div>
+        {isSelected && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            title="Close agent"
+            className="ml-2 shrink-0 leading-none"
+          >
+            ×
+          </Button>
+        )}
+      </div>
+      {showHp && (
+        <div className="flex items-center gap-2 leading-none" style={{ marginTop: 2 }}>
+          <span className="text-2xs leading-none">HP</span>
+          <div
+            style={{ width: HP_BAR_WIDTH_PX, height: HP_BAR_HEIGHT_PX, background: HP_BG }}
+            title={`${Math.round(hp * 100)}% context left (${(ch.contextTokens / 1000).toFixed(0)}k of ${(ch.maxContextTokens / 1000).toFixed(0)}k tokens used)`}
+            data-testid="context-gauge"
+            data-context-pct={Math.round(contextRatio * 100)}
+          >
+            <div style={{ width: `${hp * 100}%`, height: '100%', background: hpColor(hp) }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Message previews near their receivers and agent notices above heads: DOM
+ *  speech bubbles that follow the characters (projected every frame). */
+function SpeechBubbles({
+  officeState,
+  project,
+}: {
+  officeState: OfficeState;
+  project: OverlayProjection;
+}) {
+  const fadeOf = (timer: number) =>
+    timer < BUBBLE_FADE_DURATION_SEC ? timer / BUBBLE_FADE_DURATION_SEC : 1;
+  const bubbleStyle = (left: number, top: number, timer: number, centered: boolean) => ({
+    left,
+    top,
+    maxWidth: SPEECH_BUBBLE_MAX_WIDTH_PX,
+    transform: centered ? 'translate(-50%, -100%)' : 'translateY(-100%)',
+    opacity: fadeOf(timer),
+    zIndex: OVERLAY_BUBBLE_Z_INDEX,
+  });
+  return (
+    <>
+      {officeState.messagePreviews.map((m) => {
+        const ch = officeState.characters.get(m.toId);
+        if (!ch) return null;
+        return (
+          <div
+            key={`preview-${m.id}`}
+            className="absolute pixel-panel px-6 py-2 text-2xs leading-tight whitespace-normal break-words pointer-events-none"
+            style={bubbleStyle(
+              project.toScreenX(ch.x) + SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
+              project.toScreenY(overlayAnchorY(ch, 'bubble')) - SPEECH_BUBBLE_RISE_PX,
+              m.timer,
+              false,
+            )}
+          >
+            {m.text}
+          </div>
+        );
+      })}
+      {Array.from(officeState.notices, ([id, notice]) => {
+        const ch = officeState.characters.get(id);
+        if (!ch) return null;
+        return (
+          <div
+            key={`notice-${id}`}
+            className="absolute pixel-panel px-6 py-2 text-2xs leading-tight whitespace-normal break-words pointer-events-none"
+            style={{
+              ...bubbleStyle(
+                project.toScreenX(ch.x),
+                project.toScreenY(overlayAnchorY(ch, 'bubble')) - SPEECH_BUBBLE_RISE_PX,
+                notice.timer,
+                true,
+              ),
+              color: notice.tone === 'error' ? NOTICE_ERROR_COLOR : undefined,
+            }}
+          >
+            {notice.text}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 export function ToolOverlay({
   officeState,
   agents,
@@ -153,6 +400,7 @@ export function ToolOverlay({
 
   return (
     <>
+      <SpeechBubbles officeState={officeState} project={project} />
       {allIds.map((id) => {
         const ch = officeState.characters.get(id);
         if (!ch) return null;
@@ -165,18 +413,13 @@ export function ToolOverlay({
         // the DOM, above the label panels (OVERLAY_BUBBLE_Z_INDEX over the label panels), for every
         // character regardless of label visibility. Mirrors the geometry the
         // canvas renderer used. The idle "Waiting for input" state speaks
-        // through its label, not a bubble.
+        // through its label, not a bubble — except when themed, where needing
+        // you (permission or a question) is a "!" until the agent turns active.
+        const themed = isThemedOverlay(ch);
+        const bubble = bubbleFor(ch, themed);
         let bubbleNode = null;
-        if (ch.bubbleType && !(ch.bubbleType === 'waiting' && ch.waitingAwaitingInput)) {
-          const cachedBubble = getCachedSprite(
-            ch.bubbleType === 'permission' ? BUBBLE_PERMISSION_SPRITE : BUBBLE_WAITING_SPRITE,
-            zoom,
-          );
-          const bubbleSittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0;
-          const alpha =
-            ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC
-              ? ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
-              : 1;
+        if (bubble) {
+          const cachedBubble = getCachedSprite(bubble.sprite, zoom);
           bubbleNode = (
             <div
               className="absolute -translate-x-1/2 pointer-events-none"
@@ -186,9 +429,9 @@ export function ToolOverlay({
                 // anchor: project the anchor, then lift by the bubble's own
                 // device-pixel height plus one zoomed pixel, in CSS px.
                 top:
-                  project.toScreenY(ch.y + bubbleSittingOff - BUBBLE_VERTICAL_OFFSET_PX) -
+                  project.toScreenY(overlayAnchorY(ch, 'bubble')) -
                   (cachedBubble.height + zoom) / dpr,
-                opacity: alpha,
+                opacity: bubble.alpha,
                 zIndex: OVERLAY_BUBBLE_Z_INDEX,
               }}
             >
@@ -204,9 +447,8 @@ export function ToolOverlay({
         }
 
         // Position above character
-        const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
         const screenX = project.toScreenX(ch.x);
-        const screenY = project.toScreenY(ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET);
+        const screenY = project.toScreenY(overlayAnchorY(ch, 'label'));
 
         // A "Done" agent (finished turn: waiting bubble without awaitingInput)
         // shows ONLY its floating green checkmark bubble, never the label panel
@@ -233,9 +475,10 @@ export function ToolOverlay({
         const hasWaitingBubble = ch.bubbleType === 'waiting';
         const subHasPermission = isSub && ch.bubbleType === 'permission';
         let activityText: string;
-        if (hasWaitingBubble && ch.waitingAwaitingInput) {
+        if ((hasWaitingBubble && ch.waitingAwaitingInput) || (themed && ch.awaitingInput)) {
           // Idle, waiting on the user -> dedicated label. A finished turn (Stop)
           // shows only the checkmark and falls through to the normal idle text.
+          // Themed, the question holds the label until the agent turns active.
           activityText = WAITING_INPUT_ACTIVITY_TEXT;
         } else if (isSub) {
           if (subHasPermission) {
@@ -256,6 +499,7 @@ export function ToolOverlay({
             ch.isActive,
             ch.bubbleType,
             ch.waitingAwaitingInput ?? false,
+            ch.isErrored ? (ch.errorMessage ?? '') : undefined,
           );
         }
 
@@ -282,6 +526,29 @@ export function ToolOverlay({
         // have no session of their own, so contextTokens stays 0.
         const contextRatio = ch.contextTokens / ch.maxContextTokens;
         const showContextGauge = !isSub && ch.contextTokens > 0;
+
+        if (themed) {
+          return (
+            <Fragment key={id}>
+              {bubbleNode}
+              <ThemedLabel
+                ch={ch}
+                id={id}
+                left={screenX}
+                top={screenY}
+                isSelected={isSelected}
+                dimmed={alwaysShowOverlay && !isSelected && !isHovered}
+                dotColor={dotColor}
+                pulse={isActive && !hasPermission && !hasWaiting}
+                teamRoleLabel={teamRoleLabel}
+                activityText={activityText}
+                showHp={showContextGauge}
+                contextRatio={contextRatio}
+                onClose={() => onCloseAgent(id)}
+              />
+            </Fragment>
+          );
+        }
 
         return (
           <Fragment key={id}>
