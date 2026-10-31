@@ -110,8 +110,14 @@ import type {
 } from './types.js';
 
 type Tier = 'focus' | 'hot' | 'warm' | 'cold';
+/** Onboarding tier of the cheap /status pass over recently active sessions. */
+const ONBOARD_TIER_STATUS = 1;
 /** Onboarding tier for sessions neither pinned nor recently active. */
 const ONBOARD_TIER_OTHER = 4;
+/** Unit priority of the /status pass for recent sessions the cap would not
+ *  show yet: after every shown session's feed phase (tiers 0-3 run at 3.0-3.3),
+ *  so the office fills before the rest of the scope is checked. */
+const PRIORITY_UNIT_STATUS_UNSHOWN = 3.45;
 type TurnEndEvent = Extract<AgentEvent, { kind: 'turnEnd' }>;
 type ToolStartEvent = Extract<AgentEvent, { kind: 'toolStart' }>;
 type ContextUsageEvent = Extract<AgentEvent, { kind: 'contextUsage' }>;
@@ -603,9 +609,19 @@ export class ConductorPoller {
         a.rec.firstSeen - b.rec.firstSeen,
     );
     for (const { rec, tier } of ranked) {
-      const background = tier === ONBOARD_TIER_OTHER && !this.wanted.has(rec.id);
+      const wanted = this.wanted.has(rec.id);
+      const background = tier === ONBOARD_TIER_OTHER && !wanted;
+      // Accounts with dozens of recently active sessions would otherwise check
+      // every /status before any session reads item #1 and walks in. A session
+      // that is working outranks idle ones once its /status lands, so one the
+      // cap does not show yet still gets in on a later tick.
+      const priority = background
+        ? 7.5
+        : tier === ONBOARD_TIER_STATUS && !wanted
+          ? PRIORITY_UNIT_STATUS_UNSHOWN
+          : 3 + tier / 10;
       add(
-        background ? 7.5 : 3 + tier / 10,
+        priority,
         () =>
           this.withSession(rec, () =>
             this.onboard(rec, !background, background ? PRIORITY_BACKGROUND : PRIORITY_DISCOVERY),
@@ -632,7 +648,7 @@ export class ConductorPoller {
   private onboardingTier(rec: SessionRecord, now: number): number {
     if (this.state.session(rec.id)?.pinned) return 0;
     const recent = now - this.activityOf(rec) < WARM_RECENT_MS;
-    if (recent && rec.statusAt === undefined) return 1;
+    if (recent && rec.statusAt === undefined) return ONBOARD_TIER_STATUS;
     if (rec.runStatus === 'working') return 2;
     if (recent) return 3;
     return ONBOARD_TIER_OTHER;

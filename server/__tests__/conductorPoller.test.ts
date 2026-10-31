@@ -345,6 +345,45 @@ describe('Conductor provider startup', () => {
     await provider.stop();
   });
 
+  it('lets the sessions the cap shows walk in before checking the rest of the scope', async () => {
+    const stateDir = tmpStateDir();
+    writeState(stateDir, {
+      version: 1,
+      scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 1 },
+      sessions: {},
+    });
+    // Six recently active idle sessions; the cap shows one (the most recent).
+    const ids = [0, 1, 2, 3, 4, 5].map((i) => uuid(0x301 + i));
+    const { api, sink, provider } = await boot({
+      stateDir,
+      prepare: (a) => {
+        ids.forEach((id, i) => {
+          const at = NOW - (i + 1) * 60_000;
+          a.addWorkspace({ id: uuid(0x401 + i), lastActivityAt: new Date(at).toISOString() });
+          a.addSession({ id, workspaceId: uuid(0x401 + i), items: idleFeed(id, at) });
+        });
+      },
+    });
+    const order = api.calls
+      .map((c) => {
+        const id = c.path.split('/')[3];
+        if (c.path.endsWith('/status')) return `status:${id}`;
+        if (c.path.endsWith('/messages') && c.query.offset === '0' && c.query.limit === '1') {
+          return `probe:${id}`;
+        }
+        return null;
+      })
+      .filter((step): step is string => step !== null);
+    const [shown] = ids;
+    const leastRecent = ids[ids.length - 1];
+    // The shown session reads item #1 (and walks in) before the /status pass
+    // reaches the sessions the cap leaves out.
+    expect(order.indexOf(`probe:${shown}`)).toBeGreaterThan(-1);
+    expect(order.indexOf(`probe:${shown}`)).toBeLessThan(order.indexOf(`status:${leastRecent}`));
+    expect([...sink.adopted.keys()]).toEqual([shown]);
+    await provider.stop();
+  });
+
   it('lists only enough workspaces to fill the office before start() resolves', async () => {
     const clock = manualClock(NOW);
     const api = new FakeConductorApi(() => clock.t);
