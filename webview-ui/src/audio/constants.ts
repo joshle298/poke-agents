@@ -106,3 +106,7 @@ export const SOUND_PACK_LIST_URL = '/api/sounds';
 export const SOUND_PACK_FILE_URL_PREFIX = '/api/sounds/';
 /** Shown in Settings: where the user drops sound pack files. */
 export const SOUND_PACK_FOLDER_LABEL = '~/.pixel-agents/sounds';
+
+// ── Credits ─────────────────────────────────────────────────────
+/** Where the cries come from (Settings → Credits). */
+export const POKEAPI_CRIES_REPO_URL = 'https://github.com/PokeAPI/cries';

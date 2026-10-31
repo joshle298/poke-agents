@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
+import { POKEAPI_CRIES_REPO_URL } from '../audio/constants.js';
 import { useConductor } from '../conductor/conductorStore.js';
 import { safeHttpsUrl } from '../conductor/format.js';
 import { CC_BY_NC_LICENSE_URL, PMD_SPRITE_REPO_URL, PMD_SPRITE_SITE_URL } from '../constants.js';
@@ -52,8 +53,15 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
           non-commercial purposes. Each artist is listed below.
         </p>
         <p className="m-0">
+          When sounds are on, the app also downloads Pokémon cries from the PokéAPI cries project (
+          <ExternalLink href={POKEAPI_CRIES_REPO_URL}>PokeAPI/cries</ExternalLink>, collected from
+          Pokémon Showdown, Veekun and The Sounds Resource) to the same cache. Cries are © Nintendo,
+          Creatures Inc. and GAME FREAK inc. They are fetched at runtime and not redistributed. The
+          other sound effects are original compositions synthesized in the app.
+        </p>
+        <p className="m-0">
           The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded
-          artwork.
+          artwork or cries.
         </p>
 
         <section className="flex flex-col gap-6">

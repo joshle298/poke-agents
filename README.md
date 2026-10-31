@@ -16,6 +16,7 @@ Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel
 - **Sessions modal.** Choose which sessions are visible: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search across every session in scope.
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
+- **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a Poké Ball pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
 - **Desktop window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
@@ -59,7 +60,7 @@ The command prints a URL with a `?token=`. Treat it as a secret: whoever has it 
 - Click a Pokémon or its party slot to open its Pokédex. Cmd-click (Ctrl-click) or double-click opens the session in Conductor.
 - **Sessions** in the toolbar opens the Sessions modal. **PC** opens the PC Box.
 - The × on a Pokémon or its party slot hides the session. Find it again in Sessions.
-- **Settings** has the Pokémon theme, Show connections and Battle log toggles, and Credits for the sprites in use.
+- **Settings** has the Pokémon theme, Show connections and Battle log toggles, the [Sound](#sounds) controls, and Credits for the sprites in use.
 
 Actions that change a session are the only writes Poke Agents makes to Conductor, and each one happens only when you click it in a tokened office:
 
@@ -91,6 +92,38 @@ A session becomes a Lead when it creates another session with a first message, f
 - dots: one session messaged the other
 - faint: one session read the other's messages
 
+## Sounds
+
+Each Pokémon makes sounds when something happens to its session. Sound is on by default and starts after your first click or key press in the office: browsers keep audio locked until then, and nothing that happened before is played late.
+
+| When                                                          | You hear                                              |
+| ------------------------------------------------------------- | ----------------------------------------------------- |
+| A session needs your answer or a permission                   | An alert, then its Pokémon's cry                      |
+| A session errors (faints)                                     | Its cry, pitched down, and a falling tone             |
+| A fainted session works again                                 | A rising heal arpeggio                                |
+| A Pokémon levels up                                           | A short level-up arpeggio                             |
+| A Pokémon evolves                                             | A rising shimmer, then the new species' cry           |
+| A Lead creates a session                                      | A Poké Ball throw, the pop, and the new Pokémon's cry |
+| Any other session appears                                     | The pop and its cry                                   |
+| One session messages another                                  | A whoosh                                              |
+| A session leaves the office (hidden, deposited, out of scope) | A recall zap                                          |
+| The selected or a pinned session finishes its turn            | A soft two-note tone                                  |
+| You open a Pokédex                                            | That Pokémon's cry                                    |
+
+A busy office stays bearable: at most four sounds a second, one cry at a time, a cooldown per session, nothing for five seconds after the office connects, and no level-up sound while a session's real level is being filled in. With the Pokémon theme off, only the alert, faint and done tones play. Claude Code agents (`--claude`) keep the upstream chime.
+
+**Settings → Sound** has the on/off switch (**Sounds**), a volume slider, toggles for **Cries**, **Alerts** (needs you, faint, done) and **Effects** (everything else), and a button to test each sound. The volume and the toggles are saved per device.
+
+**Cries** are the official cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project, which collects them from Pokémon Showdown, Veekun and The Sounds Resource. Poke Agents downloads a species' cry from `raw.githubusercontent.com` the first time it's needed and keeps it in `~/.pixel-agents/cache/cries/`. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc. They are fetched on your computer and are not included in or redistributed by this repository. The other effects are original chiptune sounds synthesized in the app; none reuses music from the games.
+
+**Sound pack.** To use your own sounds, put files in `~/.pixel-agents/sounds/` named after the effect they replace, with the extension `.ogg`, `.mp3` or `.wav`, for example `~/.pixel-agents/sounds/levelUp.ogg`:
+
+`alert`, `done`, `faint`, `heal`, `levelUp`, `evolution`, `ballThrow`, `ballPop`, `recall`, `message`, `blip`
+
+Use the names exactly as written. Each file must be an audio file of at most 2 MB, not a link. Its volume is matched to the built-in sounds. Settings → Sound lists the files in use; reopen Settings after adding one. Use only sounds you have the right to use. Cries can't be replaced.
+
+**To mute**, turn off **Sounds** in Settings, or one of the three categories. `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`) stops cry downloads and the sound pack; the synthesized effects follow the Settings switch.
+
 ## Configuration
 
 | Flag                     | Default      | Effect                                                                                                                                                                         |
@@ -103,6 +136,7 @@ A session becomes a Lead when it creates another session with a first message, f
 | `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                             |
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                        |
 | `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                              |
+| `--no-sounds`            | sounds on    | Never download cries or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                               |
 
 Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as described under [Upstream Pixel Agents](#upstream-pixel-agents). The embedded terminal only exists with `--claude`.
 
@@ -112,16 +146,17 @@ Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as descri
 | `CONDUCTOR_API_TOKEN`          | Used when `CONDUCTOR_API_KEY` is not set.                                 |
 | `CONDUCTOR_API_URL`            | Conductor API base URL. Default `https://api.conductor.build`.            |
 | `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                     |
+| `POKE_AGENTS_SOUNDS`           | `off` disables cry downloads and the sound pack, like `--no-sounds`.      |
 | `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
 | `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
 
 Without either variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
 
-Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents: `conductor-state.json` holds the scope, hidden and pinned sessions and each session's Pokémon (never the token), and `cache/pmd/` holds downloaded sprites.
+Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents: `conductor-state.json` holds the scope, hidden and pinned sessions and each session's Pokémon (never the token), `cache/pmd/` holds downloaded sprites, `cache/cries/` downloaded cries, and `sounds/` your [sound pack](#sounds).
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`) and, for sprites, to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, and for cries to `raw.githubusercontent.com`. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
 - There is no telemetry or analytics.
@@ -134,6 +169,8 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 - **macOS asks to allow access to a Keychain item.** That is the token `conductor auth login` saved. Choose Allow, or set `CONDUCTOR_API_KEY` to skip the Keychain.
 - **The office opens in a normal browser tab.** No supported Chromium browser was found. Install Chrome, or pick one with `--browser`.
 - **An installed web app can't connect after a restart.** Port 41510 was busy, so the office started on another port. Stop whatever holds 41510, or always pass the same `--port`.
+- **No sound.** Click or press a key in the office once: browsers keep audio locked until then. Check that **Sounds** is on in Settings and the volume is up.
+- **No cries, but the other sounds play.** Cries download in the background from `raw.githubusercontent.com` and are mostly Ogg files: Chrome, Edge, Firefox and the Mac app play them; some Safari versions can't. They also need the Pokémon theme and sprites on.
 - **Pokémon show as office workers.** Sprites download in the background, and the upstream character shows until a sprite is ready. If it never changes, check that `raw.githubusercontent.com` or `cdn.jsdelivr.net` is reachable.
 
 ## Mac Verification Checklist
@@ -172,7 +209,9 @@ Poke Agents is a fan project and is not affiliated with, endorsed, sponsored or 
 
 This repository contains no Pokémon artwork. When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Use them only for non-commercial purposes: don't sell, advertise in or host a public demo of a build that shows them. **Settings → Credits** lists the artists for each species in use.
 
-The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork.
+When sounds are on, the app also downloads Pokémon cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project (collected from Pokémon Showdown, Veekun and The Sounds Resource) to the same cache. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc., fetched at runtime and not redistributed. The other sound effects are original compositions synthesized in the app.
+
+The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork or cries.
 
 The office, its characters and furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
 

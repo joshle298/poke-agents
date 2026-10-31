@@ -13,13 +13,14 @@ First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](http
 - **PC Box** for archived sessions, with Withdraw to bring one back.
 - **Sessions modal** for scope (your workspaces or the organization), activity window, idle sessions, cap, search, hide and pin.
 - **Party bar**, an optional **battle log**, and **Settings → Credits** for the sprite artists.
+- **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, Poké Balls, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
 - **Desktop window:** `npm start` (`poke-agents --open`) opens the office in a Chromium app window, on fixed port 41510 so an installed web app keeps working.
 
 ### Changes
 
 - The package is `@joshle298/poke-agents` and the command is `poke-agents`. Install it from GitHub (clone and `npm start`, or `npx github:joshle298/poke-agents --open`); it is not published to npm.
 - Conductor is on by default (`--no-conductor` turns it off). Claude Code tracking is opt-in with `--claude`.
-- New flags: `--open`/`--app`, `--browser`, `--claude`, `--no-conductor`, `--conductor-budget`, `--no-sprites`.
+- New flags: `--open`/`--app`, `--browser`, `--claude`, `--no-conductor`, `--conductor-budget`, `--no-sprites`, `--no-sounds`.
 - Turning the Pokémon theme off in Settings restores the Pixel Agents look and stops sprite downloads.
 - No Pokémon artwork is in the repository: sprites are downloaded at runtime from the PMD Sprite Repository to `~/.pixel-agents/cache/pmd/`.
 

@@ -231,6 +231,14 @@ _Avoid_: XP, score
 The badge on a Pokémon character that names its state in Pokémon terms: `SLP` asleep (not active for a while), `FNT` fainted (its session errored), `!` needs you (waiting for input or a permission request).
 _Avoid_: status (that's the agent's status), badge
 
+**Cry**:
+A Pokémon's own call, played when its session needs you, faints (pitched down), arrives or evolves, and when its Pokédex opens. The official cries are downloaded at runtime and never shipped.
+_Avoid_: voice, roar
+
+**Sound pack**:
+The user's own audio files in `~/.pixel-agents/sounds/`, one per effect name (`levelUp.ogg`), that replace the office's synthesized effects. Cries can't be replaced.
+_Avoid_: theme, skin
+
 ## Integration Boundary
 
 **Provider**:
