@@ -7,6 +7,9 @@ export default defineConfig({
     globals: true,
     testTimeout: 10_000,
     include: ['__tests__/**/*.test.ts'],
+    // No sprite downloads from tests: the Pokémon tests opt back in with
+    // setPokemonSpritesEnabled(true) and a fake fetch.
+    env: { POKE_AGENTS_SPRITES: 'off' },
     setupFiles: ['allure-vitest/setup'],
     reporters: [
       'default',
