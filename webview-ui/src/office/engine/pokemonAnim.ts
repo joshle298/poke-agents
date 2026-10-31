@@ -148,7 +148,8 @@ function choice(
 
 /**
  * The animation for a character right now (DESIGN §D table). Precedence:
- * fainted, a one-shot, walking, needs-you, asleep, working, idle. Null when
+ * fainted (walking while it heads to the Pokémon Center), a one-shot,
+ * walking, needs-you, asleep, working, idle. Null when
  * the species has none of the chain (the caller draws the upstream character).
  */
 export function choosePokemonAnim(
@@ -160,6 +161,11 @@ export function choosePokemonAnim(
     if (ch.pmdAnim === 'hurt') {
       const hurt = choice('hurt', false, has);
       if (hurt) return hurt;
+    }
+    // On its way to the Pokémon Center it walks; it faints once there.
+    if (ch.state === CharacterState.WALK && ch.townGoal === 'center') {
+      const walk = choice('walk', true, has);
+      if (walk) return walk;
     }
     return choice('faint', false, has);
   }

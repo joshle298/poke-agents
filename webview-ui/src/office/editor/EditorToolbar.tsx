@@ -16,6 +16,8 @@ import {
 } from '../../constants.js';
 import { getColorizedSprite } from '../colorize.js';
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js';
+import type { BundledLayoutId } from '../layout/bundledLayouts.js';
+import { BUNDLED_LAYOUTS } from '../layout/bundledLayouts.js';
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js';
 import {
   buildDynamicCatalog,
@@ -83,6 +85,8 @@ interface EditorToolbarProps {
   onRenameArea: (oldLabel: string, newLabel: string) => void;
   onAreaColorChange: (label: string, color: string) => void;
   onAreaMappingChange: (directoryName: string, areaLabel: string, action: 'add' | 'remove') => void;
+  /** Replace the layout with a bundled one (undoable). */
+  onLoadBundledLayout: (id: BundledLayoutId) => void;
 }
 
 const THUMB_ZOOM = 2;
@@ -129,8 +133,17 @@ export function EditorToolbar({
   onRenameArea,
   onAreaColorChange,
   onAreaMappingChange,
+  onLoadBundledLayout,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurniturePanelCategory>('desks');
+  // The Templates panel belongs to the Select tool (no other tool panel shows
+  // then); picking any tool closes it.
+  const [templatesRequested, setTemplatesRequested] = useState(false);
+  const isTemplatesOpen = templatesRequested && activeTool === EditTool.SELECT;
+  const pickTool = (tool: EditTool) => {
+    setTemplatesRequested(false);
+    onToolChange(tool);
+  };
   const [showColor, setShowColor] = useState(false);
   const [showWallColor, setShowWallColor] = useState(false);
   const [showFurnitureColor, setShowFurnitureColor] = useState(false);
@@ -245,7 +258,7 @@ export function EditorToolbar({
         <Button
           variant={isFurnitureActive ? 'active' : 'default'}
           size="md"
-          onClick={() => onToolChange(EditTool.FURNITURE_PLACE)}
+          onClick={() => pickTool(EditTool.FURNITURE_PLACE)}
           title="Place furniture"
         >
           Furniture
@@ -253,7 +266,7 @@ export function EditorToolbar({
         <Button
           variant={isFloorActive ? 'active' : 'default'}
           size="md"
-          onClick={() => onToolChange(EditTool.TILE_PAINT)}
+          onClick={() => pickTool(EditTool.TILE_PAINT)}
           title="Paint floor tiles"
         >
           Floor
@@ -261,7 +274,7 @@ export function EditorToolbar({
         <Button
           variant={isWallActive ? 'active' : 'default'}
           size="md"
-          onClick={() => onToolChange(EditTool.WALL_PAINT)}
+          onClick={() => pickTool(EditTool.WALL_PAINT)}
           title="Paint walls (click to toggle)"
         >
           Walls
@@ -269,7 +282,7 @@ export function EditorToolbar({
         <Button
           variant={isPetsActive ? 'active' : 'default'}
           size="md"
-          onClick={() => onToolChange(EditTool.PETS)}
+          onClick={() => pickTool(EditTool.PETS)}
           title="Place pets"
         >
           Pets
@@ -278,7 +291,7 @@ export function EditorToolbar({
           <Button
             variant={isAreasActive ? 'active' : 'default'}
             size="md"
-            onClick={() => onToolChange(EditTool.AREA_PAINT)}
+            onClick={() => pickTool(EditTool.AREA_PAINT)}
             title="Define folder-bound areas — agents spawn in their folder's area"
           >
             Areas
@@ -287,12 +300,40 @@ export function EditorToolbar({
         <Button
           variant={isEraseActive ? 'active' : 'default'}
           size="md"
-          onClick={() => onToolChange(EditTool.ERASE)}
+          onClick={() => pickTool(EditTool.ERASE)}
           title="Erase tiles to void"
         >
           Erase
         </Button>
+        <Button
+          variant={isTemplatesOpen ? 'active' : 'default'}
+          size="md"
+          onClick={() => {
+            onToolChange(EditTool.SELECT);
+            setTemplatesRequested((open) => !open || activeTool !== EditTool.SELECT);
+          }}
+          title="Start over from a bundled layout"
+        >
+          Templates
+        </Button>
       </div>
+
+      {/* Sub-panel: Templates — bundled layouts; loading one is an undoable edit */}
+      {isTemplatesOpen && (
+        <div className="flex gap-4 items-center" data-testid="templates-panel">
+          {BUNDLED_LAYOUTS.map((template) => (
+            <Button
+              key={template.id}
+              variant="default"
+              size="sm"
+              onClick={() => onLoadBundledLayout(template.id)}
+              title={`Replace the layout with the ${template.label} (Undo brings yours back)`}
+            >
+              {template.label}
+            </Button>
+          ))}
+        </div>
+      )}
 
       {/* Sub-panel: Floor tiles — stacked bottom-to-top via column-reverse */}
       {isFloorActive && (

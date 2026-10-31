@@ -750,6 +750,7 @@ function App() {
                   onRenameArea={editor.handleRenameArea}
                   onAreaColorChange={editor.handleAreaColorChange}
                   onAreaMappingChange={handleAreaMappingChange}
+                  onLoadBundledLayout={(id) => void editor.handleLoadBundledLayout(id)}
                 />
               );
             })()}

@@ -22,6 +22,7 @@ import {
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
+  FLOOR_FOREGROUND_Z_OFFSET,
   GHOST_BORDER_HOVER_FILL,
   GHOST_BORDER_HOVER_STROKE,
   GHOST_BORDER_STROKE,
@@ -30,6 +31,7 @@ import {
   GHOST_PREVIEW_TINT_ALPHA,
   GHOST_VALID_TINT,
   GRID_LINE_COLOR,
+  GROUND_CACHE_MAX_PIXELS,
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
@@ -43,11 +45,22 @@ import {
   VOID_TILE_DASH_PATTERN,
   VOID_TILE_OUTLINE_COLOR,
 } from '../../constants.js';
-import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js';
+import type { ForegroundEntity } from '../floorForeground.js';
+import { foregroundPieces } from '../floorForeground.js';
+import {
+  floorPatternHasForeground,
+  getColorizedFloorSprite,
+  getFloorForeground,
+  getFloorSpritesVersion,
+  hasAnyFloorForeground,
+  hasFloorSprites,
+  WALL_COLOR,
+} from '../floorTiles.js';
 import { mapOffset } from '../projection.js';
 import {
   getCarpetJunctionSprite,
   getCarpetPaletteKey,
+  getCarpetSpritesVersion,
   hasCarpetSprites,
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
@@ -302,6 +315,131 @@ export function renderAreaLabels(
   ctx.restore();
 }
 
+const NEUTRAL_FLOOR_COLOR: ColorValue = { h: 0, s: 0, b: 0, c: 0 };
+
+/** The ground drawn once into an offscreen canvas, and what it was drawn from. */
+interface GroundCache {
+  canvas: HTMLCanvasElement;
+  tileMap: TileTypeVal[][];
+  tileColors: Array<ColorValue | null> | undefined;
+  carpetTiles: Array<CarpetTile | null> | undefined;
+  cols: number;
+  rows: number;
+  zoom: number;
+  floorVersion: number;
+  carpetVersion: number;
+}
+
+let groundCache: GroundCache | null = null;
+
+/**
+ * Floor tiles, the wall base color and carpets never change between layout
+ * edits, but a large layout is thousands of drawImage calls a frame. Draw
+ * them once per (layout arrays, zoom, sprite sets) into an offscreen canvas
+ * and blit that; a layout too large at this zoom is drawn directly instead.
+ */
+function renderGround(
+  ctx: CanvasRenderingContext2D,
+  tileMap: TileTypeVal[][],
+  tileColors: Array<ColorValue | null> | undefined,
+  carpetTiles: Array<CarpetTile | null> | undefined,
+  cols: number,
+  rows: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const drawGround = (target: CanvasRenderingContext2D, x: number, y: number) => {
+    renderTileGrid(target, tileMap, x, y, zoom, tileColors, cols);
+    if (carpetTiles && carpetTiles.length > 0) {
+      renderCarpetLayer(target, carpetTiles, cols, rows, x, y, zoom);
+    }
+  };
+  const width = cols * TILE_SIZE * zoom;
+  const height = rows * TILE_SIZE * zoom;
+  if (width <= 0 || height <= 0 || width * height > GROUND_CACHE_MAX_PIXELS) {
+    drawGround(ctx, offsetX, offsetY);
+    return;
+  }
+  const floorVersion = getFloorSpritesVersion();
+  const carpetVersion = getCarpetSpritesVersion();
+  let cache = groundCache;
+  if (
+    !cache ||
+    cache.tileMap !== tileMap ||
+    cache.tileColors !== tileColors ||
+    cache.carpetTiles !== carpetTiles ||
+    cache.cols !== cols ||
+    cache.rows !== rows ||
+    cache.zoom !== zoom ||
+    cache.floorVersion !== floorVersion ||
+    cache.carpetVersion !== carpetVersion
+  ) {
+    const canvas = cache?.canvas ?? document.createElement('canvas');
+    canvas.width = width; // also clears it
+    canvas.height = height;
+    const target = canvas.getContext('2d');
+    if (!target) {
+      drawGround(ctx, offsetX, offsetY);
+      return;
+    }
+    target.imageSmoothingEnabled = false;
+    drawGround(target, 0, 0);
+    cache = {
+      canvas,
+      tileMap,
+      tileColors,
+      carpetTiles,
+      cols,
+      rows,
+      zoom,
+      floorVersion,
+      carpetVersion,
+    };
+    groundCache = cache;
+  }
+  ctx.drawImage(cache.canvas, offsetX, offsetY);
+}
+
+/**
+ * Tall grass: the foreground pixels of the floor tiles characters and pets
+ * stand in, as drawables sorted just in front of them (see floorForeground.ts).
+ * Nothing to do (and no work) unless a loaded floor pattern has foreground.
+ *
+ * @internal
+ */
+export function floorForegroundDrawables(
+  tileMap: TileTypeVal[][],
+  tileColors: Array<ColorValue | null> | undefined,
+  layoutCols: number,
+  entities: Iterable<ForegroundEntity>,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): ZDrawable[] {
+  if (!hasAnyFloorForeground()) return [];
+  const rows = tileMap.length;
+  const cols = rows > 0 ? tileMap[0].length : 0;
+  const hasForeground = (c: number, r: number) =>
+    r >= 0 && c >= 0 && r < rows && c < cols && floorPatternHasForeground(tileMap[r][c]);
+  const s = TILE_SIZE * zoom;
+  const out: ZDrawable[] = [];
+  for (const piece of foregroundPieces(entities, hasForeground)) {
+    const color = tileColors?.[piece.row * layoutCols + piece.col] ?? NEUTRAL_FLOOR_COLOR;
+    const halves = getFloorForeground(tileMap[piece.row][piece.col], color);
+    const sprite = piece.part === 'own' ? halves.own : halves.below;
+    if (!sprite) continue;
+    const cached = getCachedSprite(sprite, zoom);
+    const x = offsetX + piece.col * s;
+    const y = offsetY + piece.row * s;
+    out.push({
+      zY: (piece.zRow + 1) * TILE_SIZE + FLOOR_FOREGROUND_Z_OFFSET,
+      draw: (c) => c.drawImage(cached, x, y),
+    });
+  }
+  return out;
+}
+
 /** @internal */
 export function renderTileGrid(
   ctx: CanvasRenderingContext2D,
@@ -341,7 +479,7 @@ export function renderTileGrid(
 
       // Floor tile: get colorized sprite
       const colorIdx = r * layoutCols + c;
-      const color = tileColors?.[colorIdx] ?? { h: 0, s: 0, b: 0, c: 0 };
+      const color = tileColors?.[colorIdx] ?? NEUTRAL_FLOOR_COLOR;
       const sprite = getColorizedFloorSprite(tile, color);
       const cached = getCachedSprite(sprite, zoom);
       ctx.drawImage(cached, offsetX + c * s, offsetY + r * s);
@@ -360,8 +498,9 @@ export function renderScene(
   selectedAgentId: number | null,
   hoveredAgentId: number | null,
   pets: Pet[] = [],
+  extra: ZDrawable[] = [],
 ): void {
-  const drawables: ZDrawable[] = [];
+  const drawables: ZDrawable[] = [...extra];
 
   // Furniture
   for (const f of furniture) {
@@ -934,13 +1073,8 @@ export function renderFrame(
   // the DOM overlays so a label lands exactly on the sprite it belongs to.
   const { offsetX, offsetY } = mapOffset(canvasWidth, canvasHeight, cols, rows, zoom, panX, panY);
 
-  // Draw tiles (floor + wall base color)
-  renderTileGrid(ctx, tileMap, offsetX, offsetY, zoom, tileColors, layoutCols);
-
-  // Carpet layer (above floor, below seat indicators / furniture / characters)
-  if (carpetTiles && carpetTiles.length > 0) {
-    renderCarpetLayer(ctx, carpetTiles, cols, rows, offsetX, offsetY, zoom);
-  }
+  // Floor tiles, wall base color and carpets: the static ground
+  renderGround(ctx, tileMap, tileColors, carpetTiles, cols, rows, offsetX, offsetY, zoom);
 
   // Area overlay (translucent color wash) — above carpets, below seat indicators
   if (showAreas) {
@@ -970,6 +1104,17 @@ export function renderFrame(
   const wallInstances = hasWallSprites() ? getWallInstances(tileMap, tileColors, layoutCols) : [];
   const allFurniture = wallInstances.length > 0 ? [...wallInstances, ...furniture] : furniture;
 
+  // Tall grass in front of whoever stands in it
+  const foreground = floorForegroundDrawables(
+    tileMap,
+    tileColors,
+    cols,
+    [...characters, ...(pets ?? [])],
+    offsetX,
+    offsetY,
+    zoom,
+  );
+
   // Draw walls + furniture + characters (z-sorted)
   const selectedId = selection?.selectedAgentId ?? null;
   const hoveredId = selection?.hoveredAgentId ?? null;
@@ -983,6 +1128,7 @@ export function renderFrame(
     selectedId,
     hoveredId,
     pets ?? [],
+    foreground,
   );
 
   // Message projectiles fly over everyone

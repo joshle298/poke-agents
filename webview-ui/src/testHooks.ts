@@ -15,6 +15,10 @@ declare global {
         waitingAwaitingInput?: boolean;
         isHeadless?: boolean;
         isGreeter?: boolean;
+        /** Current tile, and where a town Area role sends it (undefined outside the town). */
+        col: number;
+        row: number;
+        townGoal?: 'meadow' | 'center' | 'stay';
       }>;
       /** The character the camera follows (null = free camera). */
       getCameraFollowId?: () => number | null;
@@ -152,6 +156,9 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
       waitingAwaitingInput: ch.waitingAwaitingInput,
       isHeadless: ch.isHeadless,
       isGreeter: ch.isGreeter,
+      col: ch.tileCol,
+      row: ch.tileRow,
+      townGoal: ch.townGoal,
     }));
   };
 

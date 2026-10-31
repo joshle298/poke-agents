@@ -9,6 +9,8 @@
 import type { ColorValue } from '../components/ui/types.js';
 import { CANVAS_ERROR_TILE_COLOR, FALLBACK_FLOOR_COLOR, TILE_SIZE } from '../constants.js';
 import { clearColorizeCache, getColorizedSprite } from './colorize.js';
+import type { FloorForegroundSprites } from './floorForeground.js';
+import { hasForegroundPixels, splitFloorForeground } from './floorForeground.js';
 import type { SpriteData } from './types.js';
 
 /** Default solid gray 16×16 tile used when floor tile PNGs are not loaded */
@@ -23,10 +25,53 @@ let floorSprites: SpriteData[] = [];
 // Re-export WALL_COLOR from constants for backward compatibility
 export { WALL_COLOR } from '../constants.js';
 
+/** Pattern indices (1-based, like tile values) whose sprite marks foreground pixels. */
+let foregroundPatterns = new Set<number>();
+/** Colorized foreground halves, keyed like the colorized floor sprite. */
+const foregroundCache = new Map<string, FloorForegroundSprites>();
+
+/** Bumped whenever the floor sprites change, so cached ground layers redraw. */
+let floorSpritesVersion = 0;
+
+export function getFloorSpritesVersion(): number {
+  return floorSpritesVersion;
+}
+
 /** Set floor tile sprites (called once when extension sends floorTilesLoaded) */
 export function setFloorSprites(sprites: SpriteData[]): void {
   floorSprites = sprites;
+  floorSpritesVersion++;
   clearColorizeCache();
+  foregroundCache.clear();
+  foregroundPatterns = new Set();
+  sprites.forEach((sprite, i) => {
+    if (hasForegroundPixels(sprite)) foregroundPatterns.add(i + 1);
+  });
+}
+
+/** Whether any loaded floor pattern has foreground pixels (tall grass). */
+export function hasAnyFloorForeground(): boolean {
+  return foregroundPatterns.size > 0;
+}
+
+/** Whether a tile value is a floor pattern with foreground pixels. */
+export function floorPatternHasForeground(patternIndex: number): boolean {
+  return foregroundPatterns.has(patternIndex);
+}
+
+/** A floor pattern's foreground, colorized like the tile it belongs to. */
+export function getFloorForeground(
+  patternIndex: number,
+  color: ColorValue,
+): FloorForegroundSprites {
+  const key = `fg-${patternIndex}-${color.h}-${color.s}-${color.b}-${color.c}`;
+  const cached = foregroundCache.get(key);
+  if (cached) return cached;
+  const result = floorPatternHasForeground(patternIndex)
+    ? splitFloorForeground(getColorizedFloorSprite(patternIndex, color))
+    : { own: null, below: null };
+  foregroundCache.set(key, result);
+  return result;
 }
 
 /** Get the raw (grayscale) floor sprite for a pattern index (1-7 -> array index 0-6).

@@ -14,6 +14,8 @@ const MOCK_CLAUDE_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude');
 const MOCK_CLAUDE_CMD_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude.cmd');
 const MOCK_CLAUDE_RUNNER_PATH = path.join(REPO_ROOT, 'e2e/fixtures/mock-claude-runner.cjs');
 const TAIL_FOLLOW_PATH = path.join(REPO_ROOT, 'e2e/fixtures/tail-follow.cjs');
+/** The classic office (still VS Code's default) that standalone specs run in. */
+const CLASSIC_LAYOUT = path.join(REPO_ROOT, 'webview-ui/public/assets/default-layout-1.json');
 
 export interface RecordedServerMessage {
   type: string;
@@ -63,7 +65,8 @@ export interface LaunchStandaloneOptions {
    *  viewport renders the mobile shell instead. */
   viewport?: { width: number; height: number };
   /** Pre-seed `~/.pixel-agents/layout.json` before the host starts (see
-   *  helpers/layout-seed.ts — it must carry a high layoutRevision). */
+   *  helpers/layout-seed.ts — it must carry a high layoutRevision). Without
+   *  it, a HOME with no layout yet gets the classic office. */
   seedLayout?: unknown;
   /** Extra top-level fields for the seeded `~/.pixel-agents/config.json`
    *  (e.g. `directories`), merged over the baseline (consent, and the start
@@ -320,10 +323,15 @@ export async function launchStandalone(
     fs.mkdirSync(path.dirname(configPath), { recursive: true });
     fs.writeFileSync(configPath, JSON.stringify(seeded, null, 2));
   }
-  if (options.seedLayout !== undefined) {
-    const layoutPath = path.join(tmpHome, '.pixel-agents', 'layout.json');
+  const layoutPath = path.join(tmpHome, '.pixel-agents', 'layout.json');
+  // A fresh standalone office opens on the Pokémon Town; the specs are written
+  // against the classic office, so a HOME without a layout gets that one.
+  const seedLayout =
+    options.seedLayout ??
+    (fs.existsSync(layoutPath) ? undefined : JSON.parse(fs.readFileSync(CLASSIC_LAYOUT, 'utf-8')));
+  if (seedLayout !== undefined) {
     fs.mkdirSync(path.dirname(layoutPath), { recursive: true });
-    fs.writeFileSync(layoutPath, JSON.stringify(options.seedLayout, null, 2));
+    fs.writeFileSync(layoutPath, JSON.stringify(seedLayout, null, 2));
   }
   const hostPort = await getFreePort();
   const hostUrl = `http://127.0.0.1:${hostPort}`;

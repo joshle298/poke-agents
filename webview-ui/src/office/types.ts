@@ -141,11 +141,24 @@ export interface CarpetTile {
 // AREAS — translucent named overlays for Directory ↔ seat preference.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * What an Area does beyond Directory mapping. Idle characters wander and nap in
+ * the `meadow`; fainted (errored) ones walk to the `center` and rest there until
+ * revived. A layout with neither keeps the upstream behavior.
+ */
+export const AreaRole = {
+  MEADOW: 'meadow',
+  CENTER: 'center',
+} as const;
+export type AreaRole = (typeof AreaRole)[keyof typeof AreaRole];
+
 export interface AreaDefinition {
   /** Stable label used as the FK in `areaTiles` and `OfficeState.areaMappings`. */
   label: string;
   /** Hex color (e.g. "#ff6b6b"). RGB only — alpha applied at render time. */
   color: string;
+  /** Optional behavior role (see AreaRole). Survives rename and recolor. */
+  role?: AreaRole;
 }
 
 export interface OfficeLayout {
@@ -289,7 +302,17 @@ export interface Character {
   /** Species (and shininess) swapped in at the evolution flash's midpoint. */
   nextSpecies?: number;
   nextShiny?: boolean;
+
+  // -- Town areas (only set in layouts with meadow / center Area roles) --
+  /** Where the character is headed this frame (see townBehavior.ts); undefined
+   *  when the upstream FSM drives it. */
+  townGoal?: TownGoal;
+  /** Seconds until the next try at heading toward `townGoal`'s area. */
+  townRetryTimer?: number;
 }
+
+/** Where an inactive character belongs in a layout with Area roles. */
+export type TownGoal = 'meadow' | 'center' | 'stay';
 
 /** One-shot animations: a tool burst, sending a message, a finished turn,
  *  waking up, and the hurt flinch that leads into a faint. */

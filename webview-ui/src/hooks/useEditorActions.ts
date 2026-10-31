@@ -36,6 +36,8 @@ import {
 } from '../office/editor/editorActions.js';
 import type { EditorState } from '../office/editor/editorState.js';
 import type { OfficeState } from '../office/engine/officeState.js';
+import type { BundledLayoutId } from '../office/layout/bundledLayouts.js';
+import { BUNDLED_LAYOUTS, prepareBundledLayout } from '../office/layout/bundledLayouts.js';
 import { getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js';
 import type {
   EditTool as EditToolType,
@@ -96,6 +98,8 @@ interface EditorActions extends Omit<FurnitureColorActions, 'pickColorAt'> {
   handleRemoveArea: (label: string) => void;
   handleRenameArea: (oldLabel: string, newLabel: string) => void;
   handleAreaColorChange: (label: string, color: string) => void;
+  /** Replace the layout with a bundled one (Pokémon Town, Classic Office). Undoable. */
+  handleLoadBundledLayout: (id: BundledLayoutId) => Promise<void>;
 }
 
 /** Default integer zoom (device pixels per sprite pixel) for a fresh session.
@@ -456,19 +460,35 @@ export function useEditorActions(
     }
   }, [getOfficeState, editorState, applyEdit, bumpTick]);
 
+  /**
+   * After a layout of another size replaced the current one (a template, or
+   * undoing one): nobody may stand inside a wall or the void, and the camera
+   * re-centers on the new layout.
+   */
+  const settleResizedLayout = useCallback(
+    (before: OfficeLayout, after: OfficeLayout) => {
+      if (before.cols === after.cols && before.rows === after.rows) return;
+      getOfficeState().relocateStrandedCharacters();
+      panRef.current = { x: 0, y: 0 };
+    },
+    [getOfficeState],
+  );
+
   const handleUndo = useCallback(() => {
     const prev = editorState.popUndo();
     if (!prev) return;
     editorState.endStroke(); // the next edit can't extend an entry that's been undone
     const os = getOfficeState();
     // Push current layout to redo stack before restoring
-    editorState.pushRedo(os.getLayout());
+    const current = os.getLayout();
+    editorState.pushRedo(current);
     os.rebuildFromLayout(prev);
+    settleResizedLayout(current, prev);
     saveLayout(prev);
     editorState.isDirty = true;
     setIsDirty(true);
     setEditorTick((n) => n + 1);
-  }, [getOfficeState, editorState, saveLayout]);
+  }, [getOfficeState, editorState, saveLayout, settleResizedLayout]);
 
   const handleRedo = useCallback(() => {
     const next = editorState.popRedo();
@@ -476,21 +496,45 @@ export function useEditorActions(
     editorState.endStroke();
     const os = getOfficeState();
     // Push current layout to undo stack before restoring
-    editorState.pushUndo(os.getLayout());
+    const current = os.getLayout();
+    editorState.pushUndo(current);
     os.rebuildFromLayout(next);
+    settleResizedLayout(current, next);
     saveLayout(next);
     editorState.isDirty = true;
     setIsDirty(true);
     setEditorTick((n) => n + 1);
-  }, [getOfficeState, editorState, saveLayout]);
+  }, [getOfficeState, editorState, saveLayout, settleResizedLayout]);
+
+  const handleLoadBundledLayout = useCallback(
+    async (id: BundledLayoutId) => {
+      const bundled = BUNDLED_LAYOUTS.find((l) => l.id === id);
+      if (!bundled) return;
+      let loaded: OfficeLayout;
+      try {
+        loaded = await bundled.load();
+      } catch (err) {
+        console.error(`[Webview] Failed to load the ${bundled.label} layout:`, err);
+        return;
+      }
+      const current = getOfficeState().getLayout();
+      const next = prepareBundledLayout(loaded, current);
+      editorState.endStroke();
+      applyEdit(next);
+      settleResizedLayout(current, next);
+    },
+    [getOfficeState, editorState, applyEdit, settleResizedLayout],
+  );
 
   const handleReset = useCallback(() => {
     if (!lastSavedLayoutRef.current) return;
     const saved = structuredClone(lastSavedLayoutRef.current);
+    const current = getOfficeState().getLayout();
     applyEdit(saved);
+    settleResizedLayout(current, saved);
     editorState.reset();
     setIsDirty(false);
-  }, [editorState, applyEdit]);
+  }, [getOfficeState, editorState, applyEdit, settleResizedLayout]);
 
   const handleSave = useCallback(() => {
     // Flush any pending debounced save immediately
@@ -793,5 +837,6 @@ export function useEditorActions(
     handleRemoveArea,
     handleRenameArea,
     handleAreaColorChange,
+    handleLoadBundledLayout,
   };
 }

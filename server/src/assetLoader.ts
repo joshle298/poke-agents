@@ -38,7 +38,7 @@ import type {
 export type { CharacterDirectionSprites } from '../../core/src/assets/types.js';
 export type { PetManifest, PetSpriteFrames } from '../../core/src/assets/types.js';
 
-import { LAYOUT_REVISION_KEY } from './constants.js';
+import { LAYOUT_REVISION_KEY, TOWN_LAYOUT_FILE } from './constants.js';
 
 export type { FurnitureAsset };
 
@@ -249,6 +249,33 @@ export function loadDefaultLayout(assetsRoot: string): Record<string, unknown> |
     );
     return null;
   }
+}
+
+/**
+ * The standalone office's default layout: the bundled Pokémon Town, falling
+ * back to the classic default when the town is missing or unreadable. Only a
+ * user without a saved ~/.pixel-agents/layout.json ever sees it (the server
+ * sends the saved layout first and never writes this default on its own).
+ */
+export function loadStandaloneDefaultLayout(assetsRoot: string): Record<string, unknown> | null {
+  const townPath = path.join(assetsRoot, 'assets', TOWN_LAYOUT_FILE);
+  try {
+    if (fs.existsSync(townPath)) {
+      const layout = JSON.parse(fs.readFileSync(townPath, 'utf-8')) as Record<string, unknown>;
+      if (layout.version === 1 && Array.isArray(layout.tiles) && Array.isArray(layout.furniture)) {
+        console.log(
+          `[AssetLoader] Loaded default layout (${layout.cols}×${layout.rows}) from ${TOWN_LAYOUT_FILE}`,
+        );
+        return layout;
+      }
+      console.warn(`[AssetLoader] ${TOWN_LAYOUT_FILE} is not a layout; using the classic default`);
+    }
+  } catch (err) {
+    console.error(
+      `[AssetLoader] Error loading ${TOWN_LAYOUT_FILE}: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+  return loadDefaultLayout(assetsRoot);
 }
 
 // ── Wall tile loading ────────────────────────────────────────

@@ -21,7 +21,7 @@ vi.mock('../src/assetLoader.js', () => ({
   loadFloorTiles: vi.fn((dir: string) => Promise.resolve({ sprites: [[`floor:${dir}`]] })),
   loadWallTiles: vi.fn((dir: string) => Promise.resolve({ sets: [[`wall:${dir}`]] })),
   loadCarpetTiles: vi.fn((dir: string) => Promise.resolve({ sets: [[`carpet:${dir}`]] })),
-  loadDefaultLayout: vi.fn((dir: string) => ({ version: 1, marker: dir })),
+  loadStandaloneDefaultLayout: vi.fn((dir: string) => ({ version: 1, marker: dir })),
   mergeLoadedAssets: vi.fn((a, b) => ({
     catalog: [...a.catalog, ...b.catalog],
     sprites: new Map([...a.sprites, ...b.sprites]),

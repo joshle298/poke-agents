@@ -3,6 +3,7 @@ import { pickDiversePalette } from '../../../../core/src/paletteUtils.js';
 import {
   AGENT_NOTICE_MAX_CHARS,
   AGENT_NOTICE_SEC,
+  AMBIENT_ANIM_INTERVAL_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
   CHARACTER_HIT_HALF_WIDTH,
@@ -25,9 +26,16 @@ import {
   PROJECTILE_MIN_SEC,
   PROJECTILE_SPEED_PX_PER_SEC,
   TEAMMATE_CLUSTER_MAX_CHILDREN,
+  TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
-import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js';
+import { areaRoleTiles, tileKey } from '../layout/areaRoles.js';
+import {
+  getAmbientAnimationFrames,
+  getAnimationFrames,
+  getCatalogEntry,
+  getOnStateType,
+} from '../layout/furnitureCatalog.js';
 import {
   createDefaultLayout,
   getBlockedTiles,
@@ -71,6 +79,8 @@ import {
   pokemonHitBox,
 } from './pokemonCharacter.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
+import type { TownWorld } from './townBehavior.js';
+import { pickTownTile, setTownGoal, stepTownCharacter, townGoalFor } from './townBehavior.js';
 
 /** Pokémon identity and display facts carried by agentCreated / agentDetails.
  *  Absent fields are unknown, never a reason to clear what is known. */
@@ -105,6 +115,9 @@ export class OfficeState {
   blockedTiles: Set<string>;
   furniture: FurnitureInstance[];
   walkableTiles: Array<{ col: number; row: number }>;
+  /** Meadow / Center tiles when the layout has Area roles (the Pokémon Town),
+   *  else null and every character runs the upstream FSM. */
+  town: TownWorld | null = null;
   characters: Map<number, Character> = new Map();
   pets: Pet[] = [];
   /** Accumulated time for furniture animation frame cycling */
@@ -187,8 +200,27 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(this.layout.furniture);
     this.furniture = layoutToFurnitureInstances(this.layout.furniture);
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.rebuildTown();
     // Pets are built last because they need walkableTiles populated for spawn.
     this.rebuildPetsFromLayout(this.layout);
+  }
+
+  /** Derive the Meadow / Center tiles from the layout's Area roles. */
+  private rebuildTown(): void {
+    const roles = areaRoleTiles(this.layout);
+    if (!roles) {
+      this.town = null;
+      return;
+    }
+    const walkableIn = (keys: ReadonlySet<string>) =>
+      this.walkableTiles.filter((t) => keys.has(tileKey(t.col, t.row)));
+    this.town = {
+      roles,
+      meadowTiles: walkableIn(roles.meadow),
+      centerTiles: walkableIn(roles.center),
+      tileMap: this.tileMap,
+      blockedTiles: this.blockedTiles,
+    };
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -200,6 +232,7 @@ export class OfficeState {
     this.blockedTiles = getBlockedTiles(layout.furniture);
     this.rebuildFurnitureInstances();
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles);
+    this.rebuildTown();
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -309,10 +342,46 @@ export class OfficeState {
     this.rebuildPetsFromLayout(layout);
   }
 
+  /** Tiles other characters stand on or are walking to (town destinations avoid them). */
+  private occupiedTiles(excludeId: number): Set<string> {
+    const out = new Set<string>();
+    for (const other of this.characters.values()) {
+      if (other.id === excludeId || other.matrixEffect === 'despawn') continue;
+      out.add(tileKey(other.tileCol, other.tileRow));
+      const end = other.path[other.path.length - 1];
+      if (end) out.add(tileKey(end.col, end.row));
+    }
+    return out;
+  }
+
+  /**
+   * After the whole layout is swapped (a template loaded), move every
+   * character without a seat off tiles the new layout made unwalkable (walls,
+   * VOID, furniture). Seated characters were already snapped to their seats.
+   */
+  relocateStrandedCharacters(): void {
+    for (const ch of this.characters.values()) {
+      if (ch.seatId) continue;
+      if (isWalkable(ch.tileCol, ch.tileRow, this.tileMap, this.blockedTiles)) continue;
+      this.relocateCharacterToWalkable(ch);
+      ch.state = CharacterState.IDLE;
+    }
+  }
+
+  /** Where a character without a seat appears: a free Meadow tile in the
+   *  Pokémon Town, otherwise any walkable tile. Null when nothing is walkable. */
+  private randomSpawnTile(excludeId?: number): { col: number; row: number } | null {
+    if (this.town && this.town.meadowTiles.length > 0) {
+      return pickTownTile(this.town.meadowTiles, this.occupiedTiles(excludeId ?? Number.NaN));
+    }
+    if (this.walkableTiles.length === 0) return null;
+    return this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
+  }
+
   /** Move a character to a random walkable tile */
   private relocateCharacterToWalkable(ch: Character): void {
-    if (this.walkableTiles.length === 0) return;
-    const spawn = this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
+    const spawn = this.randomSpawnTile(ch.id);
+    if (!spawn) return;
     ch.tileCol = spawn.col;
     ch.tileRow = spawn.row;
     ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2;
@@ -547,12 +616,7 @@ export class OfficeState {
     } else {
       // No seats — teammates spawn beside their anchor, others at a random walkable tile
       let spawn = anchorAt ? this.closestFreeWalkableTile(anchorAt.col, anchorAt.row) : null;
-      if (!spawn) {
-        spawn =
-          this.walkableTiles.length > 0
-            ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
-            : { col: 1, row: 1 };
-      }
+      if (!spawn) spawn = this.randomSpawnTile() ?? { col: 1, row: 1 };
       ch = createCharacter(id, palette, null, null, hueShift);
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2;
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2;
@@ -778,6 +842,9 @@ export class OfficeState {
     ch.state = CharacterState.WALK;
     ch.frame = 0;
     ch.frameTimer = 0;
+    // In the town, the spot the user picked holds for a while before the
+    // character heads back to its area.
+    if (this.town) ch.townRetryTimer = TOWN_USER_WALK_HOLD_SEC;
     return true;
   }
 
@@ -945,7 +1012,13 @@ export class OfficeState {
       }
     }
 
-    if (autoOnTiles.size === 0) {
+    // Ambient animations (a pond's shimmer) loop whether or not anyone is near.
+    const ambientFrame = Math.floor(this.furnitureAnimTimer / AMBIENT_ANIM_INTERVAL_SEC);
+    const hasAmbient = this.layout.furniture.some(
+      (item) => getAmbientAnimationFrames(item.type) !== null,
+    );
+
+    if (autoOnTiles.size === 0 && !hasAmbient) {
       this.furniture = layoutToFurnitureInstances(this.layout.furniture);
       return;
     }
@@ -953,6 +1026,9 @@ export class OfficeState {
     // Build modified furniture list with auto-state and animation applied
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC);
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
+      const ambient = getAmbientAnimationFrames(item.type);
+      if (ambient) return { ...item, type: ambient[ambientFrame % ambient.length] };
+      if (autoOnTiles.size === 0) return item;
       const entry = getCatalogEntry(item.type);
       if (!entry) return item;
       // Check if any tile of this furniture overlaps an auto-on tile
@@ -1484,16 +1560,36 @@ export class OfficeState {
       const pokemon = isPokemonCharacter(ch);
       const anims = pokemonAnimSourceOf(ch);
       const holdStill = pokemon && anims !== null && isOneShotPlaying(ch, anims.has);
+      // In the Pokémon Town an inactive character heads for its area (Meadow,
+      // Center); everywhere else, and for active agents, the upstream FSM runs.
+      const town = this.town;
+      const goal = town ? townGoalFor(ch, town.roles) : null;
+      if (town || ch.townGoal !== undefined) setTownGoal(ch, goal);
       const restInPlace =
+        goal === null &&
         pokemon &&
         ch.state === CharacterState.IDLE &&
         !ch.isActive &&
         (ch.isErrored === true || isPokemonAsleep(ch));
       if (!holdStill && !restInPlace) {
-        // Temporarily unblock own seat so character can pathfind to it
-        this.withOwnSeatUnblocked(ch, () =>
-          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles),
-        );
+        if (town && goal) {
+          stepTownCharacter(ch, dt, goal, town, {
+            asleep: pokemon && isPokemonAsleep(ch),
+            occupied: () => this.occupiedTiles(ch.id),
+          });
+        } else {
+          // Temporarily unblock own seat so character can pathfind to it
+          this.withOwnSeatUnblocked(ch, () =>
+            updateCharacter(
+              ch,
+              dt,
+              this.walkableTiles,
+              this.seats,
+              this.tileMap,
+              this.blockedTiles,
+            ),
+          );
+        }
       }
       if (anims) {
         advancePokemonAnim(ch, dt, anims);
