@@ -28,7 +28,7 @@ import {
   shortAge,
   workspaceLabel,
 } from '../conductor/format.js';
-import { useNow } from '../conductor/hooks.js';
+import { useSleepClock } from '../conductor/hooks.js';
 import type { PartyCondition } from '../conductor/party.js';
 import {
   agentCondition,
@@ -50,12 +50,13 @@ import {
 } from '../constants.js';
 import { useEscapeLayer } from '../hooks/useEscapeLayer.js';
 import { usePokedexRefresh } from '../hooks/usePokedexRefresh.js';
+import { usePokemonOffice } from '../hooks/usePokemonOffice.js';
 import type { AgentAppearance } from './AgentCard.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { HpBar } from './HpBar.js';
 import { PokedexChat } from './PokedexChat.js';
-import { PokemonPortrait } from './PokemonPortrait.js';
+import { CapsuleIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { ReplyBox } from './ReplyBox.js';
 import { Button } from './ui/Button.js';
 
@@ -218,7 +219,8 @@ export function SessionPanel({
   const speciesMap = useConductor((s) => s.species);
   const sessions = useConductor((s) => s.sessions);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
-  const now = useNow(CONDUCTOR_UI_TICK_MS);
+  const now = useSleepClock(CONDUCTOR_UI_TICK_MS, true, agentId);
+  const pokemonOffice = usePokemonOffice();
 
   const [draft, setDraft] = useState('');
   const [confirm, setConfirm] = useState<'stop' | 'deposit' | null>(null);
@@ -308,9 +310,12 @@ export function SessionPanel({
     />
   );
 
-  const fallbackPortrait = (size: number) => (
-    <CharacterMugShot palette={appearance.palette} hueShift={appearance.hueShift} size={size} />
-  );
+  const fallbackPortrait = (size: number) =>
+    pokemonOffice ? (
+      <CapsuleIcon size={size} />
+    ) : (
+      <CharacterMugShot palette={appearance.palette} hueShift={appearance.hueShift} size={size} />
+    );
   const speciesLine = [
     species
       ? `${species.name}${agent?.shiny ? ' (shiny)' : ''}`

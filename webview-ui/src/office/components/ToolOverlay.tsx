@@ -24,6 +24,7 @@ import {
   SPEECH_BUBBLE_MAX_WIDTH_PX,
   SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
   SPEECH_BUBBLE_RISE_PX,
+  SPRITE_UNAVAILABLE_TEXT,
   STATUS_BADGE_COLORS,
   STATUS_BADGE_TEXT_COLOR,
   TOWN_COMPACT_LABEL_BADGE_FONT_PX,
@@ -42,6 +43,7 @@ import {
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
+import { isPokemonAsleep } from '../engine/pokemonAnim.js';
 import {
   bodyTopY,
   isPokemonCharacter,
@@ -54,7 +56,11 @@ import { BUBBLE_ALERT_SPRITE, BUBBLE_SLEEP_SPRITE } from '../sprites/pokemonUiSp
 import { getCachedSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js';
 import type { Character, SpriteData, ToolActivity } from '../types.js';
-import { getActivityText, WAITING_INPUT_ACTIVITY_TEXT } from './activityText.js';
+import {
+  ASLEEP_ACTIVITY_TEXT,
+  getActivityText,
+  WAITING_INPUT_ACTIVITY_TEXT,
+} from './activityText.js';
 import type { OverlayBox } from './overlayLayout.js';
 import { liftOverlapping } from './overlayLayout.js';
 import {
@@ -407,9 +413,11 @@ function ThemedLabel({
           >
             {activityText}
           </span>
-          {(label.species || ch.directoryName) && (
+          {(label.species || label.spriteUnavailable || ch.directoryName) && (
             <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
-              {[label.species, ch.directoryName].filter(Boolean).join(' · ')}
+              {[label.spriteUnavailable ? SPRITE_UNAVAILABLE_TEXT : label.species, ch.directoryName]
+                .filter(Boolean)
+                .join(' · ')}
             </span>
           )}
         </div>
@@ -707,6 +715,9 @@ export function ToolOverlay({
               isSelected && rows ? [...rows].reverse().find((t) => !t.done) : undefined;
             activityText = activeRow?.status ?? (sub?.label || 'Subtask');
           }
+        } else if (themed && isPokemonAsleep(ch)) {
+          // The party slot and the Pokédex say the same.
+          activityText = ASLEEP_ACTIVITY_TEXT;
         } else {
           activityText = getActivityText(
             id,

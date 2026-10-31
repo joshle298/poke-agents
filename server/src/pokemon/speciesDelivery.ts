@@ -6,13 +6,17 @@
  * - after `existingAgents`, every species in use;
  * - when an `agentCreated` or `agentDetails` introduces a species: ahead of
  *   that message when the species is already loaded, otherwise as soon as its
- *   load completes (the office draws the upstream character until then);
+ *   load completes (the office shows a closed capsule until then);
  * - when the theme is switched on (`pokemonThemeUpdated`), every species in use.
- * A species whose load fails is tried again once its backoff passes
+ * A species whose load fails is announced as `pokemonSpeciesFailed` (once,
+ * until it loads: the office keeps its capsule closed, "Sprite unavailable")
+ * and tried again once its backoff passes
  * (pokemonAssets.speciesRetryAt), for as long as an agent still shows it: an
  * idle session sends nothing new that would ask again, and would otherwise stay
- * an upstream character until the page reloads.
+ * a closed capsule until the page reloads.
  * Nothing is fetched or sent while sprites are off or the theme is off.
+ * `settingsLoaded` is marked `pokemonSprites` (sprites on): this connection
+ * gets a species for every agent, so the office draws only Pokémon.
  *
  * The theme state is read from the messages this connection is sent
  * (`settingsLoaded.pokemonTheme`, `pokemonThemeUpdated`); before one arrives
@@ -45,6 +49,7 @@ export function createSpeciesDelivery(
   send: (message: OutgoingMessage) => void,
 ): SpeciesDelivery {
   const sent = new Set<string>();
+  const failed = new Set<string>();
   const loading = new Set<string>();
   const retries = new Map<string, ReturnType<typeof setTimeout>>();
   let themeOn: boolean | undefined;
@@ -62,6 +67,7 @@ export function createSpeciesDelivery(
     const payload = getLoadedSpecies(dex, shiny);
     if (payload) {
       sent.add(key);
+      failed.delete(key);
       send({ type: 'pokemonSpeciesLoaded', ...payload });
       return;
     }
@@ -70,8 +76,15 @@ export function createSpeciesDelivery(
     void ensureSpeciesLoaded(dex, shiny, store).then((ready) => {
       loading.delete(key);
       if (!enabled()) return;
-      if (ready) deliver(dex, shiny);
-      else scheduleRetry(dex, shiny);
+      if (ready) {
+        deliver(dex, shiny);
+        return;
+      }
+      if (!failed.has(key) && inUse(dex, shiny)) {
+        failed.add(key);
+        send({ type: 'pokemonSpeciesFailed', dex, shiny });
+      }
+      scheduleRetry(dex, shiny);
     });
   };
 
@@ -118,11 +131,17 @@ export function createSpeciesDelivery(
       switch (message.type) {
         case 'settingsLoaded':
           if (typeof message.pokemonTheme === 'boolean') themeOn = message.pokemonTheme;
-          break;
+          // Every agent's species comes through this connection: the office
+          // may draw only Pokémon (closed capsules while they load).
+          send({ ...message, pokemonSprites: arePokemonSpritesEnabled() });
+          return;
         case 'pokemonThemeUpdated':
           themeOn = message.enabled === true;
           // Switching back on re-sends everything in use, whatever the office dropped meanwhile.
-          if (!themeOn) sent.clear();
+          if (!themeOn) {
+            sent.clear();
+            failed.clear();
+          }
           break;
         case 'agentCreated':
         case 'agentDetails': {

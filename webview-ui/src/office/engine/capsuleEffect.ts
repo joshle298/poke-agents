@@ -10,11 +10,17 @@
  * Despawn (recall): a teal beam from the open capsule over the head shrinks
  * the body to a teal point, then the closed capsule flies up and away.
  *
- * Works on any frame: a Pokémon sheet frame, or the upstream character while
- * its species' sheets are still decoding.
+ * Works on any frame: a Pokémon sheet frame, or Promptling (the greeter).
+ *
+ * Waiting: while a Pokémon's sheets are still loading (or failed) its capsule
+ * rests closed on its ground point with a gentle bob (renderRestingCapsule),
+ * and flies off closed if the session leaves before it ever opened.
  */
 
 import {
+  CAPSULE_BOB_PERIOD_SEC,
+  CAPSULE_BOB_PX,
+  CAPSULE_BOB_STAGGER_SEC,
   CAPSULE_BURST_POINTS,
   CAPSULE_BURST_RADIUS_PX,
   CAPSULE_DROP_HEIGHT_PX,
@@ -177,6 +183,57 @@ export function renderCapsuleEffect(
       alpha,
       white,
       POKEMON_SILHOUETTE_COLOR,
+    );
+  }
+  ctx.restore();
+}
+
+/** World px the waiting capsule is lifted `t` seconds into its bob (0 or up to
+ *  CAPSULE_BOB_PX, a smooth rise and fall each CAPSULE_BOB_PERIOD_SEC). */
+export function capsuleBobPx(t: number): number {
+  const phase = (1 - Math.cos((2 * Math.PI * t) / CAPSULE_BOB_PERIOD_SEC)) / 2;
+  return Math.round(phase * CAPSULE_BOB_PX);
+}
+
+/** Centre of the waiting capsule resting on `ground`, lifted by its bob
+ *  (neighbouring capsules bob out of step). */
+export function restingCapsuleCenter(ch: Character, ground: Point): Point {
+  const t =
+    (ch.spawnHoldSec ?? 0) + (ch.capsuleWaitSec ?? 0) + Math.abs(ch.id) * CAPSULE_BOB_STAGGER_SEC;
+  return { x: ground.x, y: ground.y - CAPSULE_CLOSED_SPRITE.length / 2 - capsuleBobPx(t) };
+}
+
+/**
+ * The closed capsule standing in for a Pokémon whose sprites aren't ready:
+ * resting on `ground` with a gentle bob, or (despawn) flying up and away,
+ * closed, the way a recall ends.
+ */
+export function renderRestingCapsule(
+  ctx: CanvasRenderingContext2D,
+  ch: Character,
+  ground: Point,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  alpha: number,
+): void {
+  const capsuleHalf = CAPSULE_CLOSED_SPRITE.length / 2;
+  const rest = { x: ground.x, y: ground.y - capsuleHalf };
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (ch.matrixEffect === 'despawn') {
+    const q = Math.min(1, Math.max(0, ch.matrixEffectTimer / matrixEffectDurationSec(ch)));
+    ctx.globalAlpha = alpha * (1 - q);
+    const at = { x: rest.x, y: rest.y - CAPSULE_RECALL_EXIT_PX * q * q };
+    drawCenteredSprite(ctx, CAPSULE_CLOSED_SPRITE, at, offsetX, offsetY, zoom);
+  } else {
+    drawCenteredSprite(
+      ctx,
+      CAPSULE_CLOSED_SPRITE,
+      restingCapsuleCenter(ch, ground),
+      offsetX,
+      offsetY,
+      zoom,
     );
   }
   ctx.restore();

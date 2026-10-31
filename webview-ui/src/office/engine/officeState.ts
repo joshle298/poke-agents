@@ -6,6 +6,7 @@ import {
   AMBIENT_ANIM_INTERVAL_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
+  CAPSULE_OPEN_MIN_WAIT_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
@@ -20,6 +21,7 @@ import {
   MESSAGE_PREVIEW_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  POKEMON_EVOLVE_HOLD_MAX_SEC,
   POKEMON_EVOLVE_SEC,
   POKEMON_SHEET_SWEEP_SEC,
   PROJECTILE_MAX_IN_FLIGHT,
@@ -32,6 +34,7 @@ import {
   TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
+import { isAsleep, isDrowsy } from '../asleep.js';
 import { foregroundSprite } from '../floorForeground.js';
 import { floorPatternHasForeground } from '../floorTiles.js';
 import type { AreaRoleTiles } from '../layout/areaRoles.js';
@@ -54,6 +57,7 @@ import {
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import {
+  isPokemonReady,
   pokemonSpeciesKey,
   retainPokemonSpecies,
   sweepPokemonSheets,
@@ -76,7 +80,7 @@ import type {
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE, TileType } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
-import { advanceMatrixEffect, startMatrixEffect } from './matrixEffectState.js';
+import { advanceMatrixEffect, startCapsuleOpen, startMatrixEffect } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import {
   advancePokemonAnim,
@@ -84,11 +88,13 @@ import {
   isPokemonAsleep,
   pmdRowToward,
   startPokemonOneShot,
+  toolOneShot,
 } from './pokemonAnim.js';
 import {
   characterChest,
   drawnBody,
   isPokemonCharacter,
+  isPokemonPlaceholder,
   pokemonAnimSourceOf,
   pokemonGeometryOf,
   pokemonRestPose,
@@ -234,6 +240,20 @@ export class OfficeState {
   /** Simulated seconds since the last sweep of unused Pokémon sheets. */
   private speciesSweepTimer = 0;
   private nextOverlayId = 1;
+  /** Ms until each agent falls asleep (0 = asleep, null = it can't), from
+   *  the very facts the party bar reads (App installs conductorStore's, see
+   *  conductor/party.ts agentMsUntilAsleep). Unset: nobody sleeps. */
+  private msUntilAsleep: (id: number, now: number) => number | null = () => null;
+  /** Wall clock (epoch ms) the asleep rule runs on; tests pin it. */
+  wallClock: () => number = Date.now;
+
+  /** Read when each agent falls asleep from `source` (the party's), so the
+   *  office's sleeping Pokémon and the party's SLP come from one rule and one
+   *  set of facts. Asked for every character on every frame: it returns a
+   *  number, never an object. */
+  setSleepClock(source: (id: number, now: number) => number | null): void {
+    this.msUntilAsleep = source;
+  }
 
   setAreaMappings(mappings: Record<string, string[]>): void {
     this.areaMappings = mappings;
@@ -1344,9 +1364,8 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       if (active) {
-        // A Pokémon roused from sleep plays Wake before it walks to its desk.
-        if (!ch.isActive && isPokemonAsleep(ch)) this.playOneShot(ch, 'wake', { force: true });
-        ch.idleSec = 0;
+        // A sleeping Pokémon wakes (Wake, then its desk) on the next update:
+        // an active agent is never asleep.
         ch.awaitingInput = false;
         if (ch.isErrored) this.clearError(ch);
       }
@@ -1488,6 +1507,7 @@ export class OfficeState {
       ch.nextSpecies = species;
       ch.nextShiny = shiny;
       ch.evolveTimer = 0;
+      ch.evolveHoldSec = undefined;
       return;
     }
     ch.species = species;
@@ -1495,7 +1515,22 @@ export class OfficeState {
     ch.nextSpecies = undefined;
     ch.nextShiny = undefined;
     ch.evolveTimer = undefined;
+    ch.evolveHoldSec = undefined;
     ch.pmdAnimKey = undefined;
+    this.shareSpeciesWithSubagents(ch);
+  }
+
+  /** A sub-agent is its parent's Pokémon: it follows the parent's species. */
+  private shareSpeciesWithSubagents(parent: Character): void {
+    if (parent.isSubagent || parent.species === undefined) return;
+    for (const [subId, meta] of this.subagentMeta) {
+      if (meta.parentAgentId !== parent.id) continue;
+      const sub = this.characters.get(subId);
+      if (!sub || (sub.species === parent.species && sub.shiny === parent.shiny)) continue;
+      sub.species = parent.species;
+      sub.shiny = parent.shiny;
+      sub.pmdAnimKey = undefined;
+    }
   }
 
   /**
@@ -1517,16 +1552,35 @@ export class OfficeState {
     sweepPokemonSheets(inUse, nowMs);
   }
 
-  /** The species swaps at the flash's midpoint; the flash ends at its end. */
+  /**
+   * The species swaps at the flash's midpoint; the flash ends at its end.
+   * When the next species can't be drawn yet (agentDetails can arrive while
+   * its sheets still decode), the flash holds solid white at its midpoint
+   * until it can, at most POKEMON_EVOLVE_HOLD_MAX_SEC: an evolution never
+   * turns into a closed capsule halfway, then opens as if just sent out.
+   */
   private advanceEvolution(ch: Character, dt: number): void {
     if (ch.evolveTimer === undefined) return;
+    const midpoint = POKEMON_EVOLVE_SEC / 2;
+    const next = ch.nextSpecies;
+    if (
+      next !== undefined &&
+      ch.evolveTimer + dt >= midpoint &&
+      !isPokemonReady(next, ch.nextShiny === true)
+    ) {
+      ch.evolveTimer = Math.max(ch.evolveTimer, midpoint);
+      ch.evolveHoldSec = (ch.evolveHoldSec ?? 0) + dt;
+      if (ch.evolveHoldSec < POKEMON_EVOLVE_HOLD_MAX_SEC) return;
+    }
     ch.evolveTimer += dt;
-    if (ch.nextSpecies !== undefined && ch.evolveTimer >= POKEMON_EVOLVE_SEC / 2) {
-      ch.species = ch.nextSpecies;
+    if (next !== undefined && ch.evolveTimer >= midpoint) {
+      ch.species = next;
       ch.shiny = ch.nextShiny;
       ch.nextSpecies = undefined;
       ch.nextShiny = undefined;
+      ch.evolveHoldSec = undefined;
       ch.pmdAnimKey = undefined;
+      this.shareSpeciesWithSubagents(ch);
     }
     if (ch.evolveTimer >= POKEMON_EVOLVE_SEC) ch.evolveTimer = undefined;
   }
@@ -1560,7 +1614,8 @@ export class OfficeState {
     if (ch) ch.awaitingInput = awaiting;
   }
 
-  /** One-shots only start on characters drawn as Pokémon. */
+  /** One-shots only start on characters drawn as Pokémon (and rate-limited
+   *  ones only now and then, see startPokemonOneShot). */
   private playOneShot(
     ch: Character,
     kind: PokemonOneShot,
@@ -1570,18 +1625,19 @@ export class OfficeState {
     return startPokemonOneShot(ch, kind, opts);
   }
 
-  /** agentToolStart: a burst of energy at the desk. Ignored mid-walk so a run
-   *  of tool calls never stalls the walk to the desk. */
+  /** agentToolStart: now and then a short gesture at the desk (Nod reading,
+   *  Shoot or Attack writing or running a command), never a run of them.
+   *  Ignored mid-walk so a run of tool calls never stalls the walk to the desk. */
   playToolBurst(id: number): void {
     const ch = this.characters.get(id);
     if (!ch || ch.state === CharacterState.WALK) return;
-    this.playOneShot(ch, 'toolBurst');
+    this.playOneShot(ch, toolOneShot(ch.currentTool));
   }
 
-  /** A turn ended: a little hop. */
+  /** A turn ended: a little hop (unless it gestured moments ago). */
   playTurnEnd(id: number): void {
     const ch = this.characters.get(id);
-    if (ch) this.playOneShot(ch, 'turnEnd', { force: true });
+    if (ch) this.playOneShot(ch, 'turnEnd');
   }
 
   /** The Lead (or whoever created it) throws the capsule a new character pops
@@ -1684,10 +1740,7 @@ export class OfficeState {
       t: 0,
       dur,
     });
-    this.playOneShot(from, 'message', {
-      force: true,
-      faceRow: pmdRowToward(b.x - a.x, b.y - a.y),
-    });
+    this.playOneShot(from, 'message', { faceRow: pmdRowToward(b.x - a.x, b.y - a.y) });
     return true;
   }
 
@@ -1970,6 +2023,7 @@ export class OfficeState {
 
     this.keepStaticLayerHonest();
     const toDelete: number[] = [];
+    const now = this.wallClock();
     for (const ch of this.characters.values()) {
       if (this.town && ch.townSpawnGrace !== undefined) this.placeFreshInTown(ch, this.town, dt);
       const effect = advanceMatrixEffect(ch, dt);
@@ -1978,12 +2032,53 @@ export class OfficeState {
         continue; // skip normal FSM while the effect is (or just was) active
       }
 
-      // A Pokémon holds still while a one-shot plays (Wake before walking to
-      // its desk, Attack while messaging), and stays put while asleep or
-      // fainted instead of wandering. Upstream characters always run the FSM.
+      // A Pokémon office never draws an upstream character: until its sheets
+      // are ready a Pokémon is a closed capsule that holds still. Once they
+      // are, a capsule that rested a while opens in place; one seen only for
+      // a moment (a reload decoding cached sheets) just gives way to its
+      // Pokémon, as it was before the reload.
       const pokemon = isPokemonCharacter(ch);
+      const placeholder = !pokemon && isPokemonPlaceholder(ch);
+      if (placeholder) {
+        ch.capsuleWaitSec = (ch.capsuleWaitSec ?? 0) + dt;
+      } else if (ch.capsuleWaitSec !== undefined) {
+        const waited = ch.capsuleWaitSec;
+        ch.capsuleWaitSec = undefined;
+        if (pokemon && waited >= CAPSULE_OPEN_MIN_WAIT_SEC) {
+          startCapsuleOpen(ch);
+          continue;
+        }
+      }
+
+      // Asleep: the party bar's facts through the shared rule (asleep.ts),
+      // never while working or fainted (isPokemonAsleep reads ch.asleep the
+      // same way). Waking (a turn, a tool, a message, a question) plays Wake
+      // first.
+      const msLeft = this.msUntilAsleep(ch.id, now);
+      const wasAsleep = ch.asleep === true;
+      ch.asleep = isAsleep(msLeft) && !ch.isActive && !ch.isErrored;
+      if (wasAsleep && !ch.asleep && pokemon) this.playOneShot(ch, 'wake', { force: true });
+      const asleep = pokemon && isPokemonAsleep(ch);
+      // About to fall asleep: no new strolls (the town may still walk it to
+      // the Meadow to nap), so it is standing still when it does.
+      const drowsy = pokemon && !asleep && !ch.isActive && !ch.isErrored && isDrowsy(msLeft);
+      if (asleep && ch.state === CharacterState.WALK) {
+        // Fell asleep mid-step: it stops right there and never moves again
+        // until it wakes.
+        ch.path = [];
+        ch.moveProgress = 0;
+        ch.state = CharacterState.IDLE;
+        ch.frame = 0;
+        ch.frameTimer = 0;
+      }
+
+      // A Pokémon holds still while a one-shot plays (Wake before walking to
+      // its desk, Attack while messaging), and while asleep; it stays put
+      // while fainted or drowsy instead of wandering. Upstream characters
+      // always run the FSM.
       const anims = pokemonAnimSourceOf(ch);
-      const holdStill = pokemon && anims !== null && isOneShotPlaying(ch, anims.has);
+      const holdStill =
+        placeholder || asleep || (pokemon && anims !== null && isOneShotPlaying(ch, anims.has));
       // In the Pokémon Town an inactive character heads for its area (Meadow,
       // Center); everywhere else, and for active agents, the upstream FSM runs.
       const town = this.town;
@@ -1996,11 +2091,11 @@ export class OfficeState {
         pokemon &&
         ch.state === CharacterState.IDLE &&
         !ch.isActive &&
-        (ch.isErrored === true || isPokemonAsleep(ch));
+        (ch.isErrored === true || drowsy);
       if (!holdStill && !restInPlace) {
         if (town && goal) {
           stepTownCharacter(ch, dt, goal, town, {
-            asleep: pokemon && isPokemonAsleep(ch),
+            asleep: drowsy,
             occupied: () => this.occupiedTiles(ch.id),
             fit: goal === 'center' ? this.townRestFit(ch) : NO_REST_FIT,
           });
@@ -2018,11 +2113,7 @@ export class OfficeState {
           );
         }
       }
-      if (anims) {
-        advancePokemonAnim(ch, dt, anims);
-      } else {
-        ch.idleSec = ch.isActive ? 0 : (ch.idleSec ?? 0) + dt;
-      }
+      if (anims) advancePokemonAnim(ch, dt, anims);
       this.advanceEvolution(ch, dt);
 
       // Tick bubble timer for waiting bubbles

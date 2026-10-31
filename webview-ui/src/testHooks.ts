@@ -1,6 +1,14 @@
 import type { ColorValue } from './components/ui/types.js';
 import { OfficeState } from './office/engine/officeState.js';
-import { isGhostHeadlessAgentsEnabled } from './office/engine/renderer.js';
+import { isPokemonAsleep } from './office/engine/pokemonAnim.js';
+import { isPokemonPlaceholder } from './office/engine/pokemonCharacter.js';
+import type { PokemonFramePick } from './office/engine/pokemonRender.js';
+import { resolvePokemonFrame } from './office/engine/pokemonRender.js';
+import {
+  getCharacterDrawStats,
+  isGhostHeadlessAgentsEnabled,
+  resetCharacterDrawStats,
+} from './office/engine/renderer.js';
 import { carpetJunctionCase } from './office/sprites/carpetTiles.js';
 
 declare global {
@@ -19,7 +27,28 @@ declare global {
         col: number;
         row: number;
         townGoal?: 'meadow' | 'center' | 'stay';
+        /** World position (px), the FSM state, and whether it works. */
+        x: number;
+        y: number;
+        state: 'idle' | 'walk' | 'type';
+        isActive: boolean;
+        /** Asleep as the office shows it (Sleep anim, Zzz, SLP). */
+        asleep: boolean;
+        /** Drawn as a closed capsule waiting for its Pokémon. */
+        capsule: boolean;
+        /** The PMD frame drawn now, when drawn as a Pokémon. */
+        pmd: { anim: string; situation: string; loop: boolean; frame: number; row: number } | null;
+        /** The one-shot playing, if any. */
+        oneShot: string | null;
       }>;
+      /** Characters drawn as upstream humans, counted by the renderer. */
+      getCharacterDrawStats?: () => {
+        frames: number;
+        humanDraws: number;
+        framesWithHumans: number;
+        maxHumansInFrame: number;
+      };
+      resetCharacterDrawStats?: () => void;
       /** The character the camera follows (null = free camera). */
       getCameraFollowId?: () => number | null;
       /** Effective "Display headless as ghosts" setting the renderer is using. */
@@ -124,7 +153,10 @@ declare global {
  * state and changes no production logic. Called once at module-load from
  * App.tsx with the singleton officeStateRef.
  *
- * - getCharacters(): point-in-time snapshot of every character's matrix, team, and bubble state.
+ * - getCharacters(): point-in-time snapshot of every character's matrix, team,
+ *   bubble, sleep and drawn-frame state.
+ * - getCharacterDrawStats(): how many characters each frame drew as upstream
+ *   humans (zero in a Pokémon office).
  * - addAgentLog: append-only history of every OfficeState.addAgent call. The
  *   log captures matrixEffect AT addAgent time (synchronously inside the
  *   wrapper), eliminating the ~300ms matrix-effect lifetime race that would
@@ -159,8 +191,30 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
       col: ch.tileCol,
       row: ch.tileRow,
       townGoal: ch.townGoal,
+      x: ch.x,
+      y: ch.y,
+      state: ch.state,
+      isActive: ch.isActive,
+      asleep: isPokemonAsleep(ch),
+      capsule: isPokemonPlaceholder(ch),
+      pmd: (() => {
+        const pick: PokemonFramePick = { anim: '', situation: 'idle', loop: true, col: 0, row: 0 };
+        if (!resolvePokemonFrame(ch, pick)) return null;
+        return {
+          anim: pick.anim,
+          situation: pick.situation,
+          loop: pick.loop,
+          frame: pick.col,
+          row: pick.row,
+        };
+      })(),
+      oneShot: ch.pmdAnim ?? null,
     }));
   };
+
+  // Human draws per frame, from the renderer: a Pokémon office keeps it at 0.
+  hooks.getCharacterDrawStats = () => getCharacterDrawStats();
+  hooks.resetCharacterDrawStats = () => resetCharacterDrawStats();
 
   // The ghost setting lives in the renderer module (read every rAF frame), not
   // in OfficeState, so e2e reads it from there to assert what is actually drawn.

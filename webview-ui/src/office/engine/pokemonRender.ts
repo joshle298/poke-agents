@@ -2,8 +2,9 @@
  * The renderer's Pokémon branch: resolve the PMD frame a character shows
  * right now, and queue its z-sorted drawables (outline, body, faint tint,
  * evolution flash, capsule effect). Returns null whenever the character
- * should stay upstream — theme off, no species, sheets not decoded — so it
- * never disappears while sprites load.
+ * isn't drawn as a Pokémon — theme off, no species, sheets not decoded — and
+ * the renderer draws the closed capsule instead (a Pokémon office) or the
+ * upstream character (theme off, hosts without sprites).
  */
 
 import {
@@ -26,11 +27,13 @@ import { TILE_SIZE } from '../types.js';
 import { renderCapsuleEffect } from './capsuleEffect.js';
 import type { FrameRef } from './frameCanvas.js';
 import { frameGreyed, frameOutline, frameSilhouette } from './frameCanvas.js';
+import type { PokemonAnimSituation } from './pokemonAnim.js';
 import {
   choosePokemonAnim,
   evolutionFlashAlpha,
   pmdFrameIndex,
-  pmdRow,
+  pmdPlayDurations,
+  pmdRowFor,
   pokemonAnimKey,
 } from './pokemonAnim.js';
 import { isPokemonCharacter, pokemonDrawPlace, pokemonGeometryOf } from './pokemonCharacter.js';
@@ -40,8 +43,22 @@ export interface ZDrawable {
   draw: (ctx: CanvasRenderingContext2D) => void;
 }
 
-/** The sheet frame a character drawn as a Pokémon shows this frame, or null. */
-export function resolvePokemonFrame(ch: Character): FrameRef | null {
+/** Which PMD frame resolvePokemonFrame picked: its anim, the frame index in
+ *  it and the sheet row (the e2e test hooks ask; the render loop doesn't). */
+export interface PokemonFramePick {
+  anim: string;
+  situation: PokemonAnimSituation;
+  loop: boolean;
+  col: number;
+  row: number;
+}
+
+/**
+ * The sheet frame a character drawn as a Pokémon shows this frame, or null.
+ * Fills `pick`, when given, with which anim, frame and row that is; the
+ * render loop passes none.
+ */
+export function resolvePokemonFrame(ch: Character, pick?: PokemonFramePick): FrameRef | null {
   if (!isPokemonCharacter(ch) || ch.species === undefined) return null;
   const shiny = ch.shiny === true;
   const anims = getPokemonAnimSource(ch.species, shiny);
@@ -54,8 +71,16 @@ export function resolvePokemonFrame(ch: Character): FrameRef | null {
   // The clock belongs to the anim OfficeState last advanced; a different
   // choice this frame (theme just toggled, sheet just decoded) starts at 0.
   const t = ch.pmdAnimKey === pokemonAnimKey(chosen) ? (ch.pmdAnimTime ?? 0) : 0;
-  const col = Math.min(pmdFrameIndex(meta.durations, t, chosen.loop), meta.frames - 1);
-  const row = Math.min(pmdRow(ch, meta.directions), meta.directions - 1);
+  const durations = pmdPlayDurations(meta.durations, chosen.loop);
+  const col = Math.min(pmdFrameIndex(durations, t, chosen.loop), meta.frames - 1);
+  const row = Math.min(pmdRowFor(ch, chosen, meta.directions), meta.directions - 1);
+  if (pick) {
+    pick.anim = chosen.anim;
+    pick.situation = chosen.situation;
+    pick.loop = chosen.loop;
+    pick.col = col;
+    pick.row = row;
+  }
   return {
     image: sheet.image as CanvasImageSource,
     sx: col * meta.frameWidth,

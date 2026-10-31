@@ -14,6 +14,8 @@
 import {
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
+  CAPSULE_HIT_HALF_WIDTH_PX,
+  CAPSULE_HIT_RISE_PX,
   CHARACTER_SITTING_OFFSET_PX,
   POKEMON_BUBBLE_GAP_PX,
   POKEMON_FEET_BELOW_GROUND_PX,
@@ -31,6 +33,7 @@ import {
   getPokemonRestPose,
   getPokemonSpeciesInfo,
   isPokemonReady,
+  isPokemonSpeciesUnavailable,
 } from '../sprites/pokemonSprites.js';
 import { getCharacterSprites } from '../sprites/spriteData.js';
 import type { Character } from '../types.js';
@@ -38,20 +41,40 @@ import { CharacterState, Direction } from '../types.js';
 import type { BedLie, PoseBox, QuarterTurn } from './bedLie.js';
 import { lieInBed, spritePoseBox } from './bedLie.js';
 import type { PokemonAnimSource } from './pokemonAnim.js';
-import { choosePokemonAnim, pmdRow } from './pokemonAnim.js';
-import { isPokemonThemeEnabled } from './pokemonTheme.js';
+import { choosePokemonAnim, pmdRowFor } from './pokemonAnim.js';
+import { arePokemonSpritesDelivered, isPokemonThemeEnabled } from './pokemonTheme.js';
 
 /**
- * A Pokémon as far as the UI is concerned: the theme is on and the server
- * sent this character's species (pokemonSpeciesLoaded), even if its sheets
- * are still decoding. Drives the capsule spawn and the themed label. Hosts
- * that never send species (VS Code, `--no-sprites`) stay upstream throughout.
+ * A Pokémon as far as the UI is concerned, even if its sheets are still
+ * decoding (or its species isn't known yet): the theme is on and either the
+ * host delivers sprites (every agent is a Pokémon there) or the server sent
+ * this character's species. Drives the capsule spawn and the themed label.
+ * Hosts that never send species (VS Code, `--no-sprites`) stay upstream
+ * throughout. The greeter is never one (it is Promptling, see renderer.ts).
  */
 export function hasPokemonIdentity(ch: Character): boolean {
+  if (!isPokemonThemeEnabled() || ch.isGreeter) return false;
+  if (arePokemonSpritesDelivered()) return true;
   return (
-    isPokemonThemeEnabled() &&
+    ch.species !== undefined && getPokemonSpeciesInfo(ch.species, ch.shiny === true) !== undefined
+  );
+}
+
+/**
+ * A Pokémon that can't be drawn yet: its species is unknown, or its sheets
+ * are still loading or failed. Drawn as a closed capsule resting where it
+ * stands, never as an upstream character; it holds still until it opens.
+ */
+export function isPokemonPlaceholder(ch: Character): boolean {
+  return hasPokemonIdentity(ch) && !isPokemonCharacter(ch);
+}
+
+/** A placeholder whose species can't load for now ("Sprite unavailable"). */
+export function isPokemonSpriteUnavailable(ch: Character): boolean {
+  return (
+    isPokemonPlaceholder(ch) &&
     ch.species !== undefined &&
-    getPokemonSpeciesInfo(ch.species, ch.shiny === true) !== undefined
+    isPokemonSpeciesUnavailable(ch.species, ch.shiny === true)
   );
 }
 
@@ -103,7 +126,13 @@ function pokemonBedPose(ch: Character): PoseBox | null {
   const meta = chosen ? getPokemonAnimMeta(ch.species, shiny, chosen.anim) : undefined;
   if (!chosen || !meta) return null;
   const frame = chosen.loop ? 0 : meta.frames - 1;
-  return getPokemonPose(ch.species, shiny, chosen.anim, pmdRow(ch, meta.directions), frame);
+  return getPokemonPose(
+    ch.species,
+    shiny,
+    chosen.anim,
+    pmdRowFor(ch, chosen, meta.directions),
+    frame,
+  );
 }
 
 /**
@@ -113,6 +142,8 @@ function pokemonBedPose(ch: Character): PoseBox | null {
  */
 export function bedLieOf(ch: Character): BedLie | null {
   if (!ch.bedRest || ch.matrixEffect) return null;
+  // A capsule waiting for its Pokémon rests on the bed, not in it.
+  if (isPokemonPlaceholder(ch)) return null;
   if (isPokemonCharacter(ch)) {
     const pose = pokemonBedPose(ch);
     return pose ? lieInBed(pose, ch.bedRest) : null;
@@ -148,7 +179,7 @@ function drawnPose(ch: Character): { halfW: number; rise: number } | null {
   const chosen = anims ? choosePokemonAnim(ch, anims.has) : null;
   const meta = chosen ? getPokemonAnimMeta(ch.species, shiny, chosen.anim) : undefined;
   if (chosen && meta) {
-    const row = pmdRow(ch, meta.directions);
+    const row = pmdRowFor(ch, chosen, meta.directions);
     const pose =
       chosen.situation === 'faint'
         ? getPokemonRestPose(ch.species, shiny, row)
@@ -176,6 +207,16 @@ export function drawnBody(
       right: lie.x + lie.box.right,
       top: lie.y - lie.box.rise,
       bottom: lie.y + lie.box.drop,
+    };
+  }
+  if (isPokemonPlaceholder(ch)) {
+    // The closed capsule resting on its ground point.
+    const groundY = standingGroundY(ch);
+    return {
+      left: ch.x - CAPSULE_HIT_HALF_WIDTH_PX,
+      right: ch.x + CAPSULE_HIT_HALF_WIDTH_PX,
+      top: groundY - CAPSULE_HIT_RISE_PX,
+      bottom: groundY + POKEMON_FEET_BELOW_GROUND_PX,
     };
   }
   const pose = drawnPose(ch);
@@ -238,7 +279,9 @@ export function characterChest(ch: Character): { x: number; y: number } {
  * sprite and not the empty chair under it.
  */
 export function linkEnd(ch: Character): { x: number; y: number } {
-  const seatedPokemon = ch.state === CharacterState.TYPE && pokemonGeometryOf(ch) !== null;
+  const seatedPokemon =
+    ch.state === CharacterState.TYPE &&
+    (pokemonGeometryOf(ch) !== null || isPokemonPlaceholder(ch));
   if (seatedPokemon || bedLieOf(ch)) return characterChest(ch);
   return { x: ch.x, y: ch.y };
 }

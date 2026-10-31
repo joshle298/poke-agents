@@ -4,10 +4,11 @@ import { splitNameTail } from '../conductor/format.js';
 import type { PartyCondition, PartySlot } from '../conductor/party.js';
 import { conditionBadge, needsAttention } from '../conductor/party.js';
 import { PARTY_CHILD_INDENT_PX, PORTRAIT_SOURCE_PX } from '../constants.js';
+import { usePokemonOffice } from '../hooks/usePokemonOffice.js';
 import type { CardVariant } from './cardBar.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { HpBar } from './HpBar.js';
-import { PokemonPortrait } from './PokemonPortrait.js';
+import { CapsuleIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 
 /** How a given agent's character looks, for the tab mug shot. */
@@ -121,6 +122,7 @@ export function AgentCard({
   onSelect,
   onClose,
 }: AgentCardProps) {
+  const pokemonOffice = usePokemonOffice();
   const closeTitle = closeTitleProp ?? (slot?.isStream ? 'Hide session' : 'Close agent');
   const closeButton = (
     <Button
@@ -188,7 +190,13 @@ export function AgentCard({
       url={slot.portraitUrl}
       size={PORTRAIT_SOURCE_PX}
       alt={slot.speciesName ?? ''}
-      fallback={<CharacterMugShot palette={appearance.palette} hueShift={appearance.hueShift} />}
+      fallback={
+        pokemonOffice ? (
+          <CapsuleIcon size={PORTRAIT_SOURCE_PX} />
+        ) : (
+          <CharacterMugShot palette={appearance.palette} hueShift={appearance.hueShift} />
+        )
+      }
     />
   );
 

@@ -16,8 +16,8 @@ interface PokemonPortraitProps {
 
 /**
  * A PMD portrait, scaled with nearest-neighbour so it stays crisp. Falls back
- * (to the upstream mug shot, or the capsule) whenever the image is missing,
- * so a slot never shows a broken image.
+ * (to the capsule in a Pokémon office, else the upstream mug shot) whenever
+ * the image is missing, so a slot never shows a broken image.
  */
 export function PokemonPortrait({ url, size, fallback, alt = '' }: PokemonPortraitProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);

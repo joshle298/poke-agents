@@ -101,6 +101,8 @@ interface SpeciesEntry {
 }
 
 const entries = new Map<string, SpeciesEntry>();
+/** Species the server could not load (pokemonSpeciesFailed), until it sends them. */
+const unavailable = new Set<string>();
 const listeners = new Set<() => void>();
 let version = 0;
 let loader: PokemonSheetLoader | null = null;
@@ -212,7 +214,30 @@ function closeSheet(sheet: DecodedSheet): void {
 export function clearPokemonSpecies(): void {
   for (const entry of entries.values()) entry.sheets.forEach(closeSheet);
   entries.clear();
+  unavailable.clear();
   notify();
+}
+
+/** The server could not load this species (pokemonSpeciesFailed); it tries
+ *  again later and sends pokemonSpeciesLoaded when it succeeds. */
+export function markPokemonSpeciesFailed(dex: number, shiny: boolean): void {
+  if (!Number.isInteger(dex)) return;
+  const key = pokemonSpeciesKey(dex, shiny);
+  if (unavailable.has(key) || entries.get(key)?.geometry) return;
+  unavailable.add(key);
+  notify();
+}
+
+/**
+ * Whether this species can't be drawn for now: the server failed to load it,
+ * or neither its Idle nor its Walk sheet could be decoded. Its characters
+ * stay closed capsules ("Sprite unavailable").
+ */
+export function isPokemonSpeciesUnavailable(dex: number, shiny: boolean): boolean {
+  const key = pokemonSpeciesKey(dex, shiny);
+  if (unavailable.has(key)) return true;
+  const entry = entries.get(key);
+  return entry !== undefined && !entry.released && !entry.geometry && geometryAnim(entry) === null;
 }
 
 function isValidAnim(anim: PokemonAnim | undefined): anim is PokemonAnim {
@@ -347,6 +372,7 @@ export function setPokemonSpecies(msg: PokemonSpeciesLoaded): void {
     }
   }
   entries.set(key, entry);
+  unavailable.delete(key);
   notify();
   for (const name of decodeOrder(anims)) {
     if (!entry.sheets.has(name)) void decode(key, entry, name);

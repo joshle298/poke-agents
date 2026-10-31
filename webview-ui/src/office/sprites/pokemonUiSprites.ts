@@ -1,9 +1,11 @@
 /**
  * In-house pixel art for the Pokémon office (no Pokémon art: these are drawn
  * here, as JSON palettes + pixels like the speech bubbles): the capsule the
- * spawn effect and message projectiles use, the envelope flown when the theme
- * is off, and the needs-you "!" and sleeping "z" bubbles. The capsule is an
- * original design, not a rendition of any official ball.
+ * spawn effect and message projectiles use and that stands in for a Pokémon
+ * whose sprites are still loading, Promptling (our mascot, the greeter), the
+ * envelope flown when the theme is off, and the needs-you "!" and sleeping
+ * "z" bubbles. The capsule and Promptling are original designs, not
+ * renditions of any official ball or Pokémon.
  */
 
 import type { SpriteData } from '../types.js';
@@ -11,6 +13,7 @@ import bubbleAlertData from './bubble-alert.json';
 import bubbleSleepData from './bubble-sleep.json';
 import capsuleData from './capsule.json';
 import envelopeData from './envelope.json';
+import promptlingData from './promptling.json';
 
 type Palette = Record<string, string>;
 
@@ -46,4 +49,11 @@ export const BUBBLE_ALERT_SPRITE: SpriteData = resolve(
 export const BUBBLE_SLEEP_SPRITE: SpriteData = resolve(
   bubbleSleepData.palette,
   bubbleSleepData.pixels,
+);
+
+/** Promptling (22x23), Poke Agents' mascot: the Intro's greeter while the
+ *  Pokémon theme is on, in place of an upstream character. */
+export const PROMPTLING_SPRITE: SpriteData = resolve(
+  promptlingData.palette,
+  rows(promptlingData.pixels),
 );

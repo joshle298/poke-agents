@@ -61,6 +61,7 @@ export const changelogEntries: ChangelogEntry[] = [
           'A new app icon, Promptling, and an original capsule for throws, recalls and messages',
           'New flags --no-sounds and --no-radio',
           'Working sessions read Working, fainted Pokémon turn grey, and a Lead with many sessions keeps them in place',
+          'Pokémon breathe calmly at their desks, asleep ones lie still with SLP everywhere, and loading sprites wait as a capsule instead of a person',
         ],
       },
     ],

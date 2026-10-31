@@ -20,8 +20,9 @@ import {
   POKEMON_EVOLVE_SEC,
   POKEMON_FEET_BELOW_GROUND_PX,
   POKEMON_GROUND_OFFSET_PX,
-  POKEMON_SLEEP_AFTER_SEC,
+  SLEEP_AFTER_MS,
 } from '../src/constants.js';
+import { msUntilAsleep } from '../src/office/asleep.js';
 import { reconcileExistingAgents } from '../src/office/engine/existingAgents.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { characterChest, isPokemonCharacter } from '../src/office/engine/pokemonCharacter.js';
@@ -386,19 +387,37 @@ test('an error faints the Pokémon (Hurt first) until the agent turns active', a
   assert.equal(ch.errorMessage, undefined);
 });
 
+interface SleepFacts {
+  resting: boolean;
+  lastActivityAt: number;
+}
+
+/** Sleep facts per agent, settable from the test (the party's in the app). */
+function sleepClock(os: OfficeState, start = 1_000_000) {
+  const clock = { now: start, facts: new Map<number, SleepFacts>() };
+  os.wallClock = () => clock.now;
+  os.setSleepClock((id, now) => {
+    const facts = clock.facts.get(id);
+    return facts ? msUntilAsleep(facts.resting, facts.lastActivityAt, now) : null;
+  });
+  return clock;
+}
+
 test('a sleeping or fainted Pokémon stays put; an upstream character wanders', async () => {
   await loadSpecies(25);
   Math.random = () => 0; // wander target: tile (0,0)
   const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
   const ch = placeAgent(os, 1, 6, 6);
   os.setAgentIdentity(1, { species: 25 });
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS });
   ch.wanderTimer = 0;
   for (let i = 0; i < 20; i++) os.update(0.1);
+  assert.equal(ch.asleep, true);
   assert.equal(ch.state, CharacterState.IDLE);
   assert.deepEqual([ch.tileCol, ch.tileRow], [6, 6], 'asleep in place');
 
-  ch.idleSec = 0;
+  clock.facts.set(1, { resting: false, lastActivityAt: clock.now });
   os.setAgentError(1, 'boom');
   ch.wanderTimer = 0;
   os.update(0.1);
@@ -410,23 +429,125 @@ test('a sleeping or fainted Pokémon stays put; an upstream character wanders', 
   assert.equal(ch.state, CharacterState.WALK, 'theme off: the upstream wander runs');
 });
 
+test('asleep, a Pokémon never moves: a walk stops where it is and none starts for minutes', async () => {
+  await loadSpecies(25);
+  Math.random = () => 0; // wander target: tile (0,0)
+  const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
+  const ch = placeAgent(os, 1, 6, 6);
+  os.setAgentIdentity(1, { species: 25 });
+  // Done 10 s ago: awake, strolling.
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - 10_000 });
+  ch.wanderTimer = 0;
+  os.update(0.1);
+  assert.equal(ch.state, CharacterState.WALK, 'awake and done: it strolls');
+  os.update(0.1);
+  // The threshold passes mid-step: it stops right there.
+  clock.now += SLEEP_AFTER_MS;
+  const at = { x: ch.x, y: ch.y, col: ch.tileCol, row: ch.tileRow };
+  os.update(0.1);
+  assert.equal(ch.asleep, true);
+  assert.equal(ch.state, CharacterState.IDLE);
+  for (let i = 0; i < 3_000; i++) {
+    clock.now += 100;
+    ch.wanderTimer = 0;
+    os.update(0.1);
+    assert.deepEqual({ x: ch.x, y: ch.y, col: ch.tileCol, row: ch.tileRow }, at, `step ${i}`);
+  }
+  assert.equal(ch.asleep, true, 'still asleep after 5 minutes');
+});
+
+test('about to fall asleep, a Pokémon starts no new stroll, so it is still when it does', async () => {
+  await loadSpecies(25);
+  Math.random = () => 0;
+  const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
+  const ch = placeAgent(os, 1, 6, 6);
+  os.setAgentIdentity(1, { species: 25 });
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS + 5_000 });
+  ch.wanderTimer = 0;
+  for (let i = 0; i < 80; i++) {
+    clock.now += 100;
+    os.update(0.1);
+    assert.equal(ch.state, CharacterState.IDLE, `drowsy, then asleep: no walk (${i})`);
+  }
+  assert.equal(ch.asleep, true);
+  assert.deepEqual([ch.tileCol, ch.tileRow], [6, 6]);
+});
+
 test('woken from sleep, a Pokémon plays Wake before walking to its desk', async () => {
   await loadSpecies(25);
   const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
   const ch = placeAgent(os, 1, 6, 6);
   os.setAgentIdentity(1, { species: 25 });
   os.seats.set('desk', { uid: 'desk', seatCol: 1, seatRow: 1, facingDir: 0, assigned: true });
   ch.seatId = 'desk';
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC + 1;
-
-  os.setAgentActive(1, true);
-  assert.equal(ch.pmdAnim, 'wake');
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS - 1_000 });
   os.update(0.05);
+  assert.equal(ch.asleep, true);
+
+  // A turn starts: the party's facts say active, and the agent turns active.
+  clock.facts.set(1, { resting: false, lastActivityAt: clock.now });
+  os.setAgentActive(1, true);
+  os.update(0.05);
+  assert.equal(ch.asleep, false);
+  assert.equal(ch.pmdAnim, 'wake');
   assert.equal(ch.state, CharacterState.IDLE, 'holds still while waking');
   os.update(0.2); // Wake is 10 ticks ≈ 0.17 s
   assert.equal(ch.pmdAnim, null);
   os.update(0.05);
   assert.equal(ch.state, CharacterState.WALK, 'then heads for its desk');
+});
+
+test('a message, a question or a tool wakes a sleeper too (whatever ends its rest)', async () => {
+  await loadSpecies(25);
+  const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
+  const ch = placeAgent(os, 1, 6, 6);
+  os.setAgentIdentity(1, { species: 25 });
+  const asleep = { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS };
+  for (const wake of [
+    { resting: true, lastActivityAt: clock.now }, // a message received: fresh activity
+    { resting: false, lastActivityAt: asleep.lastActivityAt }, // needs you, or a tool opened
+  ]) {
+    clock.facts.set(1, asleep);
+    os.update(1);
+    assert.equal(ch.asleep, true);
+    clock.facts.set(1, wake);
+    os.update(0.01);
+    assert.equal(ch.asleep, false);
+    assert.equal(ch.pmdAnim, 'wake');
+    os.update(1);
+  }
+});
+
+test('an active Pokémon is never asleep: lagging facts never freeze it mid-walk', async () => {
+  // One rule (isPokemonAsleep): if the party's facts still say asleep while
+  // the agent works, the office neither holds it still nor shows SLP.
+  await loadSpecies(25);
+  const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
+  const ch = placeAgent(os, 1, 6, 6);
+  os.setAgentIdentity(1, { species: 25 });
+  os.seats.set('desk', { uid: 'desk', seatCol: 1, seatRow: 1, facingDir: 0, assigned: true });
+  ch.seatId = 'desk';
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS - 1_000 });
+  os.update(0.05);
+  assert.equal(ch.asleep, true);
+
+  os.setAgentActive(1, true); // the facts still say asleep
+  os.update(0.05);
+  assert.equal(ch.asleep, false);
+  assert.equal(ch.pmdAnim, 'wake');
+  os.update(0.25);
+  const moved: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    os.update(0.05);
+    assert.equal(ch.asleep, false, `awake while working (${i})`);
+    moved.push(`${ch.x},${ch.y}`);
+  }
+  assert.ok(new Set(moved).size > 10, 'it walks to its desk');
 });
 
 test('one-shots only start on characters drawn as Pokémon', () => {
@@ -447,7 +568,12 @@ test('a tool burst is ignored mid-walk so it never stalls the walk to the desk',
   ch.state = CharacterState.TYPE;
   ch.isActive = true;
   os.playToolBurst(1);
-  assert.equal(ch.pmdAnim, 'toolBurst', 'seated: the burst plays (Charge, no Shoot here)');
+  assert.equal(ch.pmdAnim, 'toolWrite', 'seated: a gesture plays (Attack, no Shoot here)');
+  os.update(0.05);
+  os.update(0.5); // Attack plays through
+  assert.equal(ch.pmdAnim, null);
+  os.playToolBurst(1);
+  assert.equal(ch.pmdAnim, null, 'not again within the gap');
 });
 
 // ── restore ─────────────────────────────────────────────────────

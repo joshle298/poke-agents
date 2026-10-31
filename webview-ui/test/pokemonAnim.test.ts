@@ -9,7 +9,12 @@ import assert from 'node:assert/strict';
 
 import { afterEach, test } from 'vitest';
 
-import { PMD_FPS, POKEMON_EVOLVE_SEC, POKEMON_SLEEP_AFTER_SEC } from '../src/constants.js';
+import {
+  PMD_FPS,
+  POKEMON_EVOLVE_SEC,
+  POKEMON_LOOP_MIN_AVG_TICKS,
+  POKEMON_ONE_SHOT_GAP_SEC,
+} from '../src/constants.js';
 import { createCharacter } from '../src/office/engine/characters.js';
 import type { PokemonAnimSource } from '../src/office/engine/pokemonAnim.js';
 import {
@@ -20,10 +25,13 @@ import {
   PMD_ROW,
   pmdDurationSec,
   pmdFrameIndex,
+  pmdPlayDurations,
   pmdRow,
+  pmdRowFor,
   pmdRowToward,
   pokemonCondition,
   startPokemonOneShot,
+  toolOneShot,
 } from '../src/office/engine/pokemonAnim.js';
 import { setProviderCapabilities } from '../src/office/toolUtils.js';
 import type { Character } from '../src/office/types.js';
@@ -60,7 +68,7 @@ function idleChar(): Character {
   const ch = createCharacter(1, 0, null, null);
   ch.state = CharacterState.IDLE;
   ch.isActive = false;
-  ch.idleSec = 0;
+  ch.asleep = false;
   return ch;
 }
 
@@ -143,45 +151,47 @@ test('walking plays Walk, standing awake plays Idle (Walk when Idle is missing)'
   assert.equal(anim(ch, without('Idle'))?.anim, 'Walk');
   ch.state = CharacterState.WALK;
   assert.deepEqual(anim(ch), { situation: 'walk', anim: 'Walk', loop: true });
+  // Its Walk sheet still decoding (sheets arrive one by one): it walks in
+  // its Idle pose, never without a frame (that would be a capsule mid-walk).
+  assert.deepEqual(anim(ch, without('Walk')), { situation: 'walk', anim: 'Idle', loop: true });
 });
 
-test('working with a writing tool: Charge, falling back to Shoot, Attack, Idle', () => {
-  const ch = seatedWorking('Write');
-  assert.deepEqual(anim(ch), { situation: 'work', anim: 'Charge', loop: true });
-  assert.equal(anim(ch, without('Charge'))?.anim, 'Shoot');
-  assert.equal(anim(ch, without('Charge', 'Shoot'))?.anim, 'Attack');
-  assert.equal(anim(ch, without('Charge', 'Shoot', 'Attack'))?.anim, 'Idle');
-});
-
-test('working with a reading tool: Nod, falling back to Idle', () => {
+test('working at the desk breathes: Idle whatever the tool, never a shaking loop', () => {
   setProviderCapabilities({ readingTools: ['Read'], subagentToolNames: [] });
-  const ch = seatedWorking('Read');
-  assert.deepEqual(anim(ch), { situation: 'read', anim: 'Nod', loop: true });
-  assert.equal(anim(ch, without('Nod'))?.anim, 'Idle');
+  for (const tool of ['Write', 'Bash', 'Read', null]) {
+    const ch = seatedWorking(tool as string);
+    assert.deepEqual(anim(ch), { situation: 'work', anim: 'Idle', loop: true }, `tool ${tool}`);
+    assert.equal(anim(ch, without('Idle'))?.anim, 'Walk');
+  }
 });
 
-test('asleep after POKEMON_SLEEP_AFTER_SEC not active, or while resting in its seat', () => {
+test('asleep is what OfficeState worked out (the shared rule), never while working', () => {
   const ch = idleChar();
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC - 0.1;
   assert.equal(anim(ch)?.anim, 'Idle');
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  ch.asleep = true;
   assert.deepEqual(anim(ch), { situation: 'sleep', anim: 'Sleep', loop: true });
 
   const resting = idleChar();
   resting.state = CharacterState.TYPE;
-  resting.seatTimer = 90; // the 2-4 min rest after a stroll
-  assert.equal(anim(resting)?.anim, 'Sleep');
-  resting.seatTimer = -1; // a turn just ended: standing up, not dozing off
+  resting.seatTimer = 90; // the 2-4 min rest after a stroll is not sleep
   assert.equal(anim(resting)?.anim, 'Idle');
 
   const active = seatedWorking('Write');
-  active.idleSec = 1_000;
-  assert.equal(anim(active)?.anim, 'Charge', 'an active agent never sleeps');
+  active.asleep = true; // a stale flag the next update clears
+  assert.equal(anim(active)?.anim, 'Idle', 'an active agent never sleeps');
+});
+
+test('Sleep lies in row 0 whatever it faces; other anims follow the direction', () => {
+  const ch = idleChar();
+  ch.dir = Direction.LEFT;
+  assert.equal(pmdRowFor(ch, { situation: 'sleep' }, 8), 0);
+  assert.equal(pmdRowFor(ch, { situation: 'idle' }, 8), PMD_ROW.LEFT);
+  assert.equal(pmdRowFor(ch, { situation: 'sleep' }, 1), 0);
 });
 
 test('needing you (permission or a question) plays Pose, ahead of sleep', () => {
   const ch = idleChar();
-  ch.idleSec = 1_000;
+  ch.asleep = true;
   ch.bubbleType = 'permission';
   assert.deepEqual(anim(ch), { situation: 'alert', anim: 'Pose', loop: true });
   ch.bubbleType = null;
@@ -202,14 +212,14 @@ test('errored: Hurt while the flinch plays, then Faint held; fallbacks when miss
   assert.equal(anim(ch)?.anim, 'Faint', 'fainted beats walking');
 });
 
-test('a species with none of a chain yields null (the upstream character draws)', () => {
+test('a species with none of a chain yields null (the renderer draws its capsule)', () => {
   assert.equal(anim(idleChar(), {}), null);
 });
 
 test('status condition: fainted, then needs-you, then asleep', () => {
   const ch = idleChar();
   assert.equal(pokemonCondition(ch), null);
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  ch.asleep = true;
   assert.equal(pokemonCondition(ch), 'asleep');
   ch.awaitingInput = true;
   assert.equal(pokemonCondition(ch), 'needsYou');
@@ -219,73 +229,175 @@ test('status condition: fainted, then needs-you, then asleep', () => {
 
 // ── one-shots and the clock ─────────────────────────────────────
 
-test('a tool burst plays Shoot once, then the working loop resumes', () => {
+test('a tool start plays one gesture: Nod reading, Shoot (else Attack) otherwise', () => {
+  setProviderCapabilities({ readingTools: ['Read', 'Grep'], subagentToolNames: [] });
+  assert.equal(toolOneShot('Read'), 'toolRead');
+  assert.equal(toolOneShot('Grep'), 'toolRead');
+  assert.equal(toolOneShot('Edit'), 'toolWrite');
+  assert.equal(toolOneShot('Bash'), 'toolWrite');
+  assert.equal(toolOneShot(null), 'toolWrite');
+
+  const ch = seatedWorking('Bash');
+  ch.pmdAnim = 'toolWrite';
+  assert.deepEqual(anim(ch), { situation: 'toolWrite', anim: 'Shoot', loop: false });
+  assert.equal(anim(ch, without('Shoot'))?.anim, 'Attack');
+  assert.equal(anim(ch, without('Shoot', 'Attack'))?.anim, 'Idle', 'none: the loop plays');
+  ch.pmdAnim = 'toolRead';
+  assert.deepEqual(anim(ch), { situation: 'toolRead', anim: 'Nod', loop: false });
+});
+
+test('a gesture plays once, then breathing resumes from its first frame', () => {
   const ch = seatedWorking('Bash');
   const src = source(FULL);
   advancePokemonAnim(ch, 0, src);
-  assert.equal(anim(ch)?.anim, 'Charge');
+  assert.equal(anim(ch)?.anim, 'Idle');
 
-  assert.equal(startPokemonOneShot(ch, 'toolBurst'), true);
+  assert.equal(startPokemonOneShot(ch, 'toolWrite'), true);
   advancePokemonAnim(ch, 0, src);
-  assert.deepEqual(anim(ch), { situation: 'toolBurst', anim: 'Shoot', loop: false });
+  assert.deepEqual(anim(ch), { situation: 'toolWrite', anim: 'Shoot', loop: false });
   assert.equal(ch.pmdAnimTime, 0, 'the clock restarts for the one-shot');
   assert.equal(isOneShotPlaying(ch, src.has), true);
 
   const shootSec = pmdDurationSec(FULL.Shoot);
   advancePokemonAnim(ch, shootSec / 2, src);
-  assert.equal(ch.pmdAnim, 'toolBurst', 'still playing halfway through');
+  assert.equal(ch.pmdAnim, 'toolWrite', 'still playing halfway through');
   advancePokemonAnim(ch, shootSec / 2 + 0.01, src);
   assert.equal(ch.pmdAnim, null, 'retired once it played through');
+  assert.equal(ch.oneShotCooldown, POKEMON_ONE_SHOT_GAP_SEC, 'the gap before the next starts');
   advancePokemonAnim(ch, 0.01, src);
-  assert.equal(anim(ch)?.anim, 'Charge');
+  assert.equal(anim(ch)?.anim, 'Idle');
   assert.equal(ch.pmdAnimTime, 0, 'the loop starts from its first frame');
 });
 
-test('one-shot fallbacks: Shoot → Charge for a burst, Wake → Hop when woken', () => {
+test('gestures, messages and hops wait POKEMON_ONE_SHOT_GAP_SEC after the last one', () => {
   const ch = seatedWorking('Bash');
-  ch.pmdAnim = 'toolBurst';
-  assert.equal(anim(ch, without('Shoot'))?.anim, 'Charge');
-  ch.pmdAnim = 'wake';
-  assert.equal(anim(ch)?.anim, 'Wake');
-  assert.equal(anim(ch, without('Wake'))?.anim, 'Hop');
-  ch.pmdAnim = 'message';
-  assert.equal(anim(ch, without('Attack'))?.anim, 'Shoot');
-  ch.pmdAnim = 'turnEnd';
-  assert.equal(anim(ch)?.anim, 'Hop');
+  const src = source(FULL);
+  assert.equal(startPokemonOneShot(ch, 'message', { faceRow: 2 }), true);
+  advancePokemonAnim(ch, 0, src);
+  assert.equal(ch.faceOverride, 2, 'faces the receiver');
+  assert.equal(startPokemonOneShot(ch, 'toolWrite'), false, 'never interrupts one playing');
+  assert.equal(startPokemonOneShot(ch, 'turnEnd', { force: true }), false, 'nor when forced');
+  advancePokemonAnim(ch, pmdDurationSec(FULL.Attack) + 0.01, src);
+  assert.equal(ch.pmdAnim, null);
+  assert.equal(ch.faceOverride, null, 'facing returns to its direction');
+
+  for (const kind of ['toolWrite', 'toolRead', 'message', 'turnEnd'] as const) {
+    assert.equal(startPokemonOneShot(ch, kind), false, `${kind} right after: refused`);
+  }
+  advancePokemonAnim(ch, POKEMON_ONE_SHOT_GAP_SEC - 0.1, src);
+  assert.equal(startPokemonOneShot(ch, 'turnEnd'), false, 'still inside the gap');
+  advancePokemonAnim(ch, 0.1, src);
+  assert.equal(startPokemonOneShot(ch, 'turnEnd'), true, 'the gap has passed');
 });
 
-test('a one-shot the species cannot play is dropped at once', () => {
+test('Wake and Hurt always play, restarting whatever plays; their end starts the gap', () => {
+  const ch = idleChar();
+  const src = source(FULL);
+  startPokemonOneShot(ch, 'turnEnd');
+  advancePokemonAnim(ch, 0, src);
+  advancePokemonAnim(ch, 0.02, src);
+  assert.equal(startPokemonOneShot(ch, 'wake'), false, 'not forced: left alone');
+  assert.equal(startPokemonOneShot(ch, 'wake', { force: true }), true);
+  advancePokemonAnim(ch, 0, src);
+  assert.equal(ch.pmdAnim, 'wake');
+  assert.equal(ch.pmdAnimTime, 0, 'rewound');
+  assert.equal(anim(ch)?.anim, 'Wake');
+  assert.equal(anim(ch, without('Wake'))?.anim, 'Hop');
+  advancePokemonAnim(ch, pmdDurationSec(FULL.Wake) + 0.01, src);
+  assert.equal(ch.pmdAnim, null);
+  assert.equal(startPokemonOneShot(ch, 'toolWrite'), false, 'no gesture right after waking');
+});
+
+test('a one-shot the species cannot play is dropped at once, with no gap', () => {
   const ch = idleChar();
   const src = source(without('Hop'));
   startPokemonOneShot(ch, 'turnEnd');
   assert.equal(isOneShotPlaying(ch, src.has), false);
   advancePokemonAnim(ch, 0.016, src);
   assert.equal(ch.pmdAnim, null);
+  assert.equal(ch.oneShotCooldown ?? 0, 0);
   assert.equal(anim(ch, without('Hop'))?.anim, 'Idle');
 });
 
-test('a running one-shot is kept unless forced; a forced restart rewinds it', () => {
-  const ch = idleChar();
+test('a busy session: tool starts every 0.4-1.6 s for 2 min never loop a fast anim', () => {
+  // The owner's report: at the desk they shook. Drive a working Pokémon with
+  // a tool start (Write, Bash, Read, Grep, Edit) every 0.4-1.6 s, a message
+  // now and then and a turn end each 20 s, at 60 fps, and watch every frame.
+  setProviderCapabilities({ readingTools: ['Read', 'Grep'], subagentToolNames: [] });
+  const ch = seatedWorking('Bash');
   const src = source(FULL);
-  startPokemonOneShot(ch, 'turnEnd');
-  advancePokemonAnim(ch, 0, src);
-  advancePokemonAnim(ch, 0.05, src);
-  assert.equal(startPokemonOneShot(ch, 'toolBurst'), false);
-  assert.equal(ch.pmdAnim, 'turnEnd');
-  assert.equal(startPokemonOneShot(ch, 'message', { force: true, faceRow: 2 }), true);
-  advancePokemonAnim(ch, 0, src);
-  assert.equal(ch.pmdAnim, 'message');
-  assert.equal(ch.faceOverride, 2, 'faces the receiver');
-  assert.equal(ch.pmdAnimTime, 0);
-  advancePokemonAnim(ch, pmdDurationSec(FULL.Attack) + 0.01, src);
-  assert.equal(ch.pmdAnim, null);
-  assert.equal(ch.faceOverride, null, 'facing returns to the walking direction');
+  const dt = 1 / 60;
+  const tools = ['Write', 'Bash', 'Read', 'Grep', 'Edit'];
+  let seed = 7;
+  const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let nextTool = 0;
+  let nextMessage = 3;
+  let toolStarts = 0;
+  const starts: Array<{ t: number; kind: string }> = [];
+  const loops = new Set<string>();
+  let last: string | null = null;
+  for (let t = 0; t < 120; t += dt) {
+    ch.isActive = t % 20 < 19; // a turn ends every 20 s, the next starts 1 s later
+    if (ch.isActive && t >= nextTool) {
+      ch.currentTool = tools[Math.floor(random() * tools.length)];
+      toolStarts++;
+      if (startPokemonOneShot(ch, toolOneShot(ch.currentTool))) {
+        starts.push({ t, kind: ch.pmdAnim! });
+      }
+      nextTool = t + 0.4 + random() * 1.2;
+    }
+    if (t >= nextMessage) {
+      if (startPokemonOneShot(ch, 'message', { faceRow: 2 })) starts.push({ t, kind: 'message' });
+      nextMessage = t + 5;
+    }
+    if (!ch.isActive && last !== 'turnEnd' && t % 20 >= 19 && t % 20 < 19 + dt) {
+      if (startPokemonOneShot(ch, 'turnEnd')) starts.push({ t, kind: 'turnEnd' });
+    }
+    advancePokemonAnim(ch, dt, src);
+    const chosen = choosePokemonAnim(ch, src.has)!;
+    if (chosen.loop) {
+      loops.add(chosen.anim);
+      const durations = pmdPlayDurations(FULL[chosen.anim], true);
+      const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+      assert.ok(avg >= POKEMON_LOOP_MIN_AVG_TICKS, `${chosen.anim} loops at ${avg} ticks`);
+    }
+    last = ch.pmdAnim ?? null;
+  }
+  assert.ok(toolStarts > 100, `a busy session (${toolStarts} tool starts)`);
+  for (const fast of ['Charge', 'Shoot', 'Attack']) assert.ok(!loops.has(fast), `no ${fast} loop`);
+  assert.deepEqual([...loops].sort(), ['Idle']);
+  // At most one one-shot per POKEMON_ONE_SHOT_GAP_SEC, and none back to back.
+  for (let i = 1; i < starts.length; i++) {
+    const gap = starts[i].t - starts[i - 1].t;
+    assert.ok(gap >= POKEMON_ONE_SHOT_GAP_SEC, `one-shots ${gap.toFixed(2)} s apart`);
+  }
+  assert.ok(starts.length <= 120 / POKEMON_ONE_SHOT_GAP_SEC + 1, `${starts.length} one-shots`);
+  assert.ok(starts.length >= 10, 'gestures still happen now and then');
+});
+
+test('loop guard: a loop under POKEMON_LOOP_MIN_AVG_TICKS is slowed; one-shots play as authored', () => {
+  const charge = [2, 2, 2, 2, 2, 2, 2, 2, 2, 2];
+  const slowed = pmdPlayDurations(charge, true);
+  assert.deepEqual(
+    slowed,
+    charge.map(() => POKEMON_LOOP_MIN_AVG_TICKS),
+  );
+  assert.equal(pmdPlayDurations(charge, true), slowed, 'worked out once per sheet, not per frame');
+  assert.equal(pmdPlayDurations(charge, false), charge, 'a one-shot keeps its timing');
+  const walk = [4, 4, 4, 4, 6, 2, 2]; // average 3.7: slowed, in proportion
+  const w = pmdPlayDurations(walk, true);
+  assert.ok(Math.abs(w.reduce((a, b) => a + b, 0) / w.length - POKEMON_LOOP_MIN_AVG_TICKS) < 1e-9);
+  assert.ok(w[4] > w[5], 'the long frame stays the long frame');
+  const idle = [40, 2, 3, 3, 3, 2]; // average 8.8: as authored
+  assert.equal(pmdPlayDurations(idle, true), idle);
+  assert.equal(pmdFrameIndex(slowed, 3.9 / PMD_FPS, true), 0, 'frame 0 holds 4 ticks now');
+  assert.equal(pmdFrameIndex(slowed, 4 / PMD_FPS, true), 1);
 });
 
 test('a fainted Pokémon takes only the hurt flinch', () => {
   const ch = idleChar();
   ch.isErrored = true;
-  assert.equal(startPokemonOneShot(ch, 'toolBurst', { force: true }), false);
+  assert.equal(startPokemonOneShot(ch, 'toolWrite', { force: true }), false);
   assert.equal(startPokemonOneShot(ch, 'hurt', { force: true }), true);
 });
 
@@ -314,27 +426,23 @@ test('errored: Hurt once, then Faint holds its last frame for good', () => {
   assert.equal(ch.pmdAnim, null, 'a stale flinch ends once the error clears');
 });
 
-test('the clock counts time not active and restarts when the animation changes', () => {
+test('the clock restarts when the animation changes', () => {
   const ch = idleChar();
   const src = source(FULL);
   advancePokemonAnim(ch, 0, src);
   advancePokemonAnim(ch, 1, src);
   advancePokemonAnim(ch, 1, src);
-  assert.equal(ch.idleSec, 2);
   assert.equal(ch.pmdAnimTime, 2, 'Idle has been playing for 2 s');
 
   ch.state = CharacterState.WALK;
   advancePokemonAnim(ch, 0.5, src);
   assert.equal(ch.pmdAnimTime, 0, 'Walk starts from frame 0');
 
-  advancePokemonAnim(ch, POKEMON_SLEEP_AFTER_SEC, src);
   ch.state = CharacterState.IDLE;
+  ch.asleep = true;
   advancePokemonAnim(ch, 0.1, src);
   assert.equal(anim(ch)?.anim, 'Sleep');
-
-  ch.isActive = true;
-  advancePokemonAnim(ch, 0.1, src);
-  assert.equal(ch.idleSec, 0, 'activity resets the sleep clock');
+  assert.equal(ch.pmdAnimTime, 0, 'Sleep starts from frame 0');
 });
 
 test('the evolution flash flickers up to solid white across the midpoint and back', () => {

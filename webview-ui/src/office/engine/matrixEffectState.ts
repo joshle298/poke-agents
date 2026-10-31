@@ -14,19 +14,28 @@
  * despawn. Each has its own duration.
  */
 
-import { CAPSULE_RECALL_SEC, CAPSULE_SPAWN_SEC, MATRIX_SPRITE_COLS } from '../../constants.js';
+import {
+  CAPSULE_RECALL_SEC,
+  CAPSULE_SPAWN_SEC,
+  CAPSULE_THROW_END,
+  CAPSULE_WAIT_MAX_SEC,
+  MATRIX_SPRITE_COLS,
+} from '../../constants.js';
 import type { Character } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
-import { hasPokemonIdentity } from './pokemonCharacter.js';
+import { hasPokemonIdentity, isPokemonPlaceholder } from './pokemonCharacter.js';
+import { isPokemonOffice } from './pokemonTheme.js';
 
 export type SpawnEffectStyle = 'matrix' | 'capsule';
 
-/** The capsule for a known Pokémon while the theme is on (even before its
- *  sheets decode — the capsule then opens on the upstream character). The
- *  greeter, theme-off characters and hosts without species keep the matrix
- *  rain. */
+/** The capsule for a Pokémon while the theme is on (even before its species
+ *  or sheets arrive: the capsule then lands closed and waits), and for the
+ *  greeter in a Pokémon office (Promptling steps out of it). Theme-off
+ *  characters, hosts without species and the greeter elsewhere keep the
+ *  matrix rain. */
 export function spawnEffectStyle(ch: Character): SpawnEffectStyle {
-  return hasPokemonIdentity(ch) ? 'capsule' : 'matrix';
+  if (hasPokemonIdentity(ch)) return 'capsule';
+  return ch.isGreeter && isPokemonOffice() ? 'capsule' : 'matrix';
 }
 
 /** How long the character's current effect runs. */
@@ -45,13 +54,15 @@ export function matrixEffectSeeds(count = MATRIX_SPRITE_COLS): number[] {
   return seeds;
 }
 
-/** Begin (or restart) a materialization on `ch`. The three fields always move
+/** Begin (or restart) a materialization on `ch`. The fields always move
  *  together — setting the effect without fresh seeds replays the last one's
  *  column timing, and without a zeroed timer it finishes early. */
 export function startMatrixEffect(ch: Character, kind: 'spawn' | 'despawn'): void {
   ch.matrixEffect = kind;
   ch.matrixEffectTimer = 0;
   ch.matrixEffectSeeds = matrixEffectSeeds();
+  ch.spawnHoldSec = undefined;
+  ch.capsuleWaitSec = undefined;
 }
 
 /** What one frame of `advanceMatrixEffect` did.
@@ -63,14 +74,46 @@ export function startMatrixEffect(ch: Character, kind: 'spawn' | 'despawn'): voi
  *    character keeps rendering as gone, and removing it is the caller's job. */
 export type MatrixEffectTick = 'none' | 'running' | 'spawned' | 'despawned';
 
+/** Seconds into a capsule spawn where the capsule has landed, closed. */
+export const CAPSULE_LANDED_SEC = CAPSULE_SPAWN_SEC * CAPSULE_THROW_END;
+
+/**
+ * Advance the effect by `dt`. A capsule whose Pokémon can't be drawn yet
+ * (species or sheets still on their way) lands and stays closed: its spawn
+ * holds at the landing until the sheets are ready, at most
+ * CAPSULE_WAIT_MAX_SEC; after that the spawn ends and the closed capsule
+ * just stays (OfficeState opens it once the sheets arrive).
+ */
 export function advanceMatrixEffect(ch: Character, dt: number): MatrixEffectTick {
   if (!ch.matrixEffect) return 'none';
-  ch.matrixEffectTimer += dt;
-  if (ch.matrixEffectTimer < matrixEffectDurationSec(ch)) return 'running';
+  const waiting =
+    ch.matrixEffect === 'spawn' &&
+    ch.matrixEffectTimer + dt >= CAPSULE_LANDED_SEC &&
+    isPokemonPlaceholder(ch);
+  if (waiting) {
+    ch.matrixEffectTimer = Math.max(ch.matrixEffectTimer, CAPSULE_LANDED_SEC);
+    ch.spawnHoldSec = (ch.spawnHoldSec ?? 0) + dt;
+    if (ch.spawnHoldSec < CAPSULE_WAIT_MAX_SEC) return 'running';
+    // It goes on resting closed: its wait (and bob) carries on from here,
+    // so it opens rather than pops once the sheets arrive.
+    ch.capsuleWaitSec = ch.spawnHoldSec;
+  } else {
+    ch.matrixEffectTimer += dt;
+    if (ch.matrixEffectTimer < matrixEffectDurationSec(ch)) return 'running';
+  }
   if (ch.matrixEffect === 'despawn') return 'despawned';
   ch.matrixEffect = null;
   ch.matrixEffectTimer = 0;
   ch.matrixEffectSeeds = [];
   ch.effectOrigin = undefined;
+  ch.spawnHoldSec = undefined;
   return 'spawned';
+}
+
+/** Open a closed capsule in place: the spawn from its landing on (the burst,
+ *  then the Pokémon grows out), no throw. */
+export function startCapsuleOpen(ch: Character): void {
+  startMatrixEffect(ch, 'spawn');
+  ch.matrixEffectTimer = CAPSULE_LANDED_SEC;
+  ch.effectOrigin = undefined;
 }

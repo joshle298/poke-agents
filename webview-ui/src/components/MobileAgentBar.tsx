@@ -1,7 +1,7 @@
 import type { TouchEvent as ReactTouchEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { useNow } from '../conductor/hooks.js';
+import { useSleepClock } from '../conductor/hooks.js';
 import type { PartySlot } from '../conductor/party.js';
 import {
   CARD_REORDER_LONG_PRESS_MS,
@@ -104,7 +104,7 @@ export function MobileAgentBar({
   showLaunch = true,
   slotFor,
 }: MobileAgentBarProps) {
-  const now = useNow(CONDUCTOR_UI_TICK_MS, slotFor !== undefined);
+  const now = useSleepClock(CONDUCTOR_UI_TICK_MS, slotFor !== undefined);
   const [savedOrder, setSavedOrder] = useState<number[]>(loadSavedOrder);
   const displayIds = useMemo(() => mergeOrder(savedOrder, agentIds), [savedOrder, agentIds]);
   const [draggingId, setDraggingId] = useState<number | null>(null);

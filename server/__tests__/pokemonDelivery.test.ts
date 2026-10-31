@@ -58,12 +58,14 @@ function addAgent(store: Store, id: number, species: number, shiny = false): Age
   return agent;
 }
 
-/** What a socket received, as `type` or `pokemonSpeciesLoaded:<dex>[s]`. */
+/** What a socket received, as `type`, `species:<dex>[s]` or `failed:<dex>[s]`. */
 function labels(messages: Message[]): string[] {
   return messages.map((m) =>
     m.type === 'pokemonSpeciesLoaded'
       ? `species:${String(m.dex)}${m.shiny ? 's' : ''}`
-      : `${String(m.type)}${typeof m.id === 'number' ? `:${m.id}` : ''}`,
+      : m.type === 'pokemonSpeciesFailed'
+        ? `failed:${String(m.dex)}${m.shiny ? 's' : ''}`
+        : `${String(m.type)}${typeof m.id === 'number' ? `:${m.id}` : ''}`,
   );
 }
 
@@ -160,25 +162,29 @@ describe('createSpeciesDelivery', () => {
       const out: Message[] = [];
       const delivery = createSpeciesDelivery(store, (m) => out.push(m));
 
-      // Offline at startup: the idle agent's species fails and nothing else
-      // will ever ask for it again.
+      // Offline at startup: the idle agent's species fails (the office is told,
+      // so its capsule reads "Sprite unavailable") and nothing else will ever
+      // ask for it again.
       delivery.send({ type: 'existingAgents', agents: [1] });
       await until(() => speciesRetryAt(7, false) !== undefined);
-      expect(labels(out)).toEqual(['existingAgents']);
+      await until(() => labels(out).includes('failed:7'));
+      expect(labels(out)).toEqual(['existingAgents', 'failed:7']);
+      expect(out[1]).toEqual({ type: 'pokemonSpeciesFailed', dex: 7, shiny: false });
       expect(speciesRetryAt(7, false)).toBe(Date.now() + PMD_SPECIES_RETRY_MS);
 
-      // Still offline at the first retry: the wait doubles.
+      // Still offline at the first retry: the wait doubles, and the office
+      // isn't told again.
       const firstRetryAt = speciesRetryAt(7, false);
       await vi.advanceTimersByTimeAsync(PMD_SPECIES_RETRY_MS);
       await until(() => speciesRetryAt(7, false) !== firstRetryAt);
-      expect(labels(out)).toEqual(['existingAgents']);
+      expect(labels(out)).toEqual(['existingAgents', 'failed:7']);
       expect(speciesRetryAt(7, false)).toBe(Date.now() + 2 * PMD_SPECIES_RETRY_MS);
 
       // Back online: the next retry delivers it without any new message.
       upstream.failHosts.clear();
       await vi.advanceTimersByTimeAsync(2 * PMD_SPECIES_RETRY_MS);
       await until(() => labels(out).includes('species:7'));
-      expect(labels(out)).toEqual(['existingAgents', 'species:7']);
+      expect(labels(out)).toEqual(['existingAgents', 'failed:7', 'species:7']);
       delivery.dispose();
     } finally {
       vi.useRealTimers();
@@ -254,6 +260,21 @@ describe('createSpeciesDelivery', () => {
     await settle();
     expect(labels(out)).toEqual(['agentCreated:1']);
     expect(upstream.calls).toHaveLength(0);
+  });
+
+  it('marks settingsLoaded with pokemonSprites: whether every agent gets a species', () => {
+    const store = storeWithTheme();
+    const out: Message[] = [];
+    createSpeciesDelivery(store, (m) => out.push(m)).send({
+      type: 'settingsLoaded',
+      pokemonTheme: true,
+    });
+    expect(out).toEqual([{ type: 'settingsLoaded', pokemonTheme: true, pokemonSprites: true }]);
+
+    setPokemonSpritesEnabled(false);
+    const off: Message[] = [];
+    createSpeciesDelivery(store, (m) => off.push(m)).send({ type: 'settingsLoaded' });
+    expect(off).toEqual([{ type: 'settingsLoaded', pokemonSprites: false }]);
   });
 
   it('sends and fetches nothing while sprites are off', async () => {

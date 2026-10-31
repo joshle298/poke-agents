@@ -66,6 +66,11 @@ export interface ConductorAgent {
   /** Epoch ms of the newest live activity this client saw (turn start, tool,
    *  turn end). Seeding and reconnect resends never move it. */
   lastActiveAt?: number;
+  /** Epoch ms this client first heard of the agent: where the sleep clock
+   *  starts when nothing says when it was last active (a Claude Code agent
+   *  replayed after a reload carries no provider time, and its resend is
+   *  silent). */
+  seenAt?: number;
   status?: 'active' | 'waiting' | 'error';
   awaitingInput: boolean;
   permission: boolean;
@@ -240,8 +245,8 @@ export function crossesEvolutionLevel(before: number | undefined, after: number 
   return EVOLUTION_LEVELS.some((level) => before < level && after >= level);
 }
 
-function newAgent(id: number): ConductorAgent {
-  return { id, awaitingInput: false, permission: false, tools: [] };
+function newAgent(id: number, now: number): ConductorAgent {
+  return { id, awaitingInput: false, permission: false, tools: [], seenAt: now };
 }
 
 function omit<T>(record: Readonly<Record<number, T>>, id: number): Readonly<Record<number, T>> {
@@ -349,7 +354,7 @@ export class ConductorStore {
     update: (agent: ConductorAgent) => ConductorAgent,
   ): ConductorState {
     const prev = state.agents[id];
-    const base = prev ?? newAgent(id);
+    const base = prev ?? newAgent(id, this.now());
     const next = update(base);
     if (prev && next === prev) return state;
     return {
@@ -546,8 +551,13 @@ export class ConductorStore {
         if (msg.kind === 'watched') return state;
         const from = agentBattleName(state, msg.fromId);
         const to = agentBattleName(state, msg.toId);
+        // A message received is activity: it wakes a sleeping receiver.
+        const next =
+          msg.toId in state.agents
+            ? this.withAgent(state, msg.toId, (a) => ({ ...a, lastActiveAt: now }))
+            : state;
         return this.log(
-          state,
+          next,
           msg.kind === 'spawned' ? `${from} sent out ${to}!` : `${from} sent ${to} a message!`,
         );
       }

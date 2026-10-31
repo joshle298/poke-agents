@@ -13,7 +13,6 @@ import {
   HP_COLOR_HIGH,
   HP_COLOR_LOW,
   HP_COLOR_MID,
-  POKEMON_SLEEP_AFTER_SEC,
   SHOW_CONNECTIONS_STORAGE_KEY,
 } from '../src/constants.js';
 import {
@@ -64,11 +63,13 @@ test('the label: nickname and Lv on line 1, the species in small text', () => {
   const ch = pokemon();
   ch.label = 'Fix login bug';
   ch.level = 12;
+  // A species with no sheets at all can't be drawn: its capsule stays closed.
   assert.deepEqual(pokemonLabel(ch), {
     nickname: 'Fix login bug',
     level: 'Lv 12',
     species: 'Sparky',
     condition: null,
+    spriteUnavailable: true,
   });
   ch.label = undefined;
   ch.level = undefined;
@@ -77,6 +78,7 @@ test('the label: nickname and Lv on line 1, the species in small text', () => {
     level: null,
     species: null,
     condition: null,
+    spriteUnavailable: true,
   });
 });
 
@@ -100,7 +102,7 @@ test('a spawned session shows its name once; a Lead says LEAD', () => {
 
 test('badges: SLP asleep, ! needs you, FNT fainted', () => {
   const ch = pokemon();
-  ch.idleSec = POKEMON_SLEEP_AFTER_SEC;
+  ch.asleep = true;
   assert.equal(pokemonLabel(ch).condition, 'asleep');
   ch.awaitingInput = true;
   assert.equal(pokemonLabel(ch).condition, 'needsYou');

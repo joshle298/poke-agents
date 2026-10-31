@@ -4,6 +4,9 @@
 
 ### Changes
 
+- **Calm desks.** A Pokémon at work breathes at its desk instead of shaking: no looping power-up shiver, and a tool start, a message or a turn end plays at most one short gesture every 6 seconds.
+- **Asleep means asleep.** The office and the party bar decide `SLP` with one rule (done or idle, no activity for two minutes), so they always agree; an asleep Pokémon lies still with a Zzz until something wakes it.
+- **Only Pokémon.** With the Pokémon theme on, no Pixel Agents person appears any more: a session whose sprites are still loading waits as a closed capsule that opens when they arrive, one whose sprites can't load stays a capsule ("Sprite unavailable"), sub-agents are their parent's Pokémon, and the first-run greeter is Promptling.
 - A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor in place of its collar, replacing Promptling in the Mac app, the favicon and the installed web app. At 16 and 48 px it shows a dark C on a gold collar.
 - The browser and installed web app's window colour is the office's night blue instead of red, to match the icon.
 

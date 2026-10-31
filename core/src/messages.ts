@@ -39,6 +39,7 @@ export type ServerMessage =
   | CharacterSpritesLoaded
   | PetSpritesLoaded
   | PokemonSpeciesLoaded
+  | PokemonSpeciesFailed
   | FloorTilesLoaded
   | WallTilesLoaded
   | CarpetTilesLoaded
@@ -521,6 +522,12 @@ export interface PokemonCredits {
   pageUrl: string;
 }
 
+export interface PokemonSpeciesFailed {
+  type: 'pokemonSpeciesFailed';
+  dex: number;
+  shiny: boolean;
+}
+
 export interface FloorTilesLoaded {
   type: 'floorTilesLoaded';
   sprites: string[][][];
@@ -556,6 +563,7 @@ export interface SettingsLoaded {
   bypassPermissions: boolean;
   showHostDirectories: boolean;
   pokemonTheme?: boolean;
+  pokemonSprites?: boolean;
 }
 
 export interface BypassPermissionsUpdated {
