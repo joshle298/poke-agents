@@ -6,7 +6,6 @@ import { Checkbox } from '../components/ui/Checkbox.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
-import { audioEngine } from './audioEngine.js';
 import { SOUND_PACK_FOLDER_LABEL } from './constants.js';
 import type { SfxName, SoundCategory } from './soundEvents.js';
 import { getSoundPack, refreshSoundPack, subscribeSoundPack } from './soundPack.js';
@@ -16,7 +15,7 @@ import {
   setSoundVolume,
   subscribeSoundPrefs,
 } from './soundPrefs.js';
-import { testSound } from './usePokemonSounds.js';
+import { canTestSound, stopAllSounds, testSound } from './usePokemonSounds.js';
 
 const CATEGORIES: ReadonlyArray<{ category: SoundCategory; label: string }> = [
   { category: 'cries', label: 'Cries' },
@@ -67,7 +66,7 @@ export function SoundSettings() {
           const next = !isSoundEnabled();
           setSoundEnabled(next);
           setSoundOn(next);
-          if (!next) audioEngine.stopAll();
+          if (!next) stopAllSounds();
           transport.send({ type: 'setSoundEnabled', enabled: next });
         }}
       />
@@ -80,7 +79,7 @@ export function SoundSettings() {
           value={volumePct}
           aria-label="Volume"
           onChange={(e) => setSoundVolume(Number(e.target.value) / 100)}
-          // A blip at the new level once the slider is let go.
+          // A blip at the new level once the slider is let go (Sounds and Effects on).
           onPointerUp={() => testSound('blip')}
           onKeyUp={() => testSound('blip')}
           className="pixel-range flex-1 min-w-0"
@@ -99,11 +98,21 @@ export function SoundSettings() {
       <div className="flex flex-col gap-4 py-4 px-10">
         <span>Test sounds</span>
         <div className="flex flex-wrap gap-4">
-          {TESTS.map(({ sound, label }) => (
-            <Button key={sound} variant="default" size="sm" onClick={() => testSound(sound)}>
-              {label}
-            </Button>
-          ))}
+          {TESTS.map(({ sound, label }) => {
+            // Off with the Sounds switch or the sound's category toggle.
+            const playable = soundOn && canTestSound(sound);
+            return (
+              <Button
+                key={sound}
+                variant={playable ? 'default' : 'disabled'}
+                size="sm"
+                disabled={!playable}
+                onClick={() => testSound(sound)}
+              >
+                {label}
+              </Button>
+            );
+          })}
         </div>
       </div>
       {isBrowserRuntime && (

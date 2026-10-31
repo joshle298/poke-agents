@@ -1,6 +1,7 @@
 /**
  * Plays the office's Pokémon sounds on the shared AudioContext
- * (notificationSound.sharedAudioContext), which only a user gesture unlocks.
+ * (notificationSound.sharedAudioContext, passed in by usePokemonSounds.ts),
+ * which only a user gesture unlocks.
  * Until it runs, every sound is dropped: nothing is queued to burst out
  * after the first click.
  *
@@ -11,11 +12,10 @@
  *   cry ─────────────────────────→ cries bus ────────────┘
  *
  * Cries play one at a time through a CryQueue (soundLimiter.ts) and duck the
- * effects bus while they sound. Cry and sound-pack files are fetched from
- * the local server, decoded once and kept.
+ * effects bus while they sound; a cry cut short fades out. Cry and
+ * sound-pack files are fetched from the local server, decoded once and kept.
  */
 
-import { sharedAudioContext, unlockAudio } from '../notificationSound.js';
 import {
   SOUND_BUFFER_FADE_SEC,
   SOUND_BUS_GAIN_ALERTS,
@@ -23,6 +23,7 @@ import {
   SOUND_BUS_GAIN_EFFECTS,
   SOUND_CRUSH_LEVELS,
   SOUND_CRY_LOAD_WAIT_MS,
+  SOUND_CRY_STOP_FADE_SEC,
   SOUND_DEFAULT_VOLUME,
   SOUND_DUCK_ATTACK_SEC,
   SOUND_DUCK_GAIN,
@@ -34,12 +35,40 @@ import { loudnessGain } from './loudness.js';
 import { isSameOriginUrl, pageOrigin } from './sameOrigin.js';
 import { SFX_RECIPES } from './sfxRecipes.js';
 import type { SfxName, SoundCue, SoundEvent } from './soundEvents.js';
-import { SFX_CATEGORY } from './soundEvents.js';
+import { keepCues, SFX_CATEGORY } from './soundEvents.js';
 import type { CryRequest } from './soundLimiter.js';
 import { CryQueue } from './soundLimiter.js';
 import type { SoundPackOverride } from './soundPack.js';
 import { soundPackFileUrl } from './soundPack.js';
 import { createCrusher, playRecipe } from './synth.js';
+
+/** What the engine needs from the page; tests pass fakes. */
+export interface AudioEngineDeps {
+  /** The office's AudioContext, or null until a gesture (or a chime) made one. */
+  context: () => AudioContext | null;
+  /** Create or resume the context: call inside a user gesture. */
+  unlock: () => void;
+  fetch: (url: string) => Promise<Response>;
+  /** The page's origin: cry URLs must match it. */
+  origin: () => string | undefined;
+  /** Schedule a synthesized effect into `destination` at audio time `when`. */
+  renderSfx: (ctx: AudioContext, destination: AudioNode, name: SfxName, when: number) => void;
+}
+
+const PAGE_DEFAULTS: Omit<AudioEngineDeps, 'context' | 'unlock'> = {
+  fetch: (url) => fetch(url),
+  origin: pageOrigin,
+  renderSfx: (ctx, destination, name, when) => {
+    playRecipe(ctx, destination, SFX_RECIPES[name], when);
+  },
+};
+
+/** The cry sounding now: its source, and the envelope a cut fades out. */
+interface PlayingCry {
+  g: Graph;
+  source: AudioBufferSourceNode;
+  env: GainNode;
+}
 
 interface Graph {
   ctx: AudioContext;
@@ -69,6 +98,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 export class AudioEngine {
+  private readonly deps: AudioEngineDeps;
   private g: Graph | null = null;
   private volume = SOUND_DEFAULT_VOLUME;
   private readonly cryUrls = new Map<number, string>();
@@ -83,14 +113,18 @@ export class AudioEngine {
   private readonly undecodable = new Set<string>();
   private readonly cryQueue = new CryQueue();
   private cryToken = 0;
-  private currentCry: AudioBufferSourceNode | null = null;
+  private currentCry: PlayingCry | null = null;
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
+
+  constructor(deps: Pick<AudioEngineDeps, 'context' | 'unlock'> & Partial<AudioEngineDeps>) {
+    this.deps = { ...PAGE_DEFAULTS, ...deps };
+  }
 
   // ── Inputs ─────────────────────────────────────────────────
 
   /** The species payload's cry URL. Same-origin only. */
   setCryUrl(dex: number, url: string): void {
-    if (isSameOriginUrl(url, pageOrigin())) this.cryUrls.set(dex, url);
+    if (isSameOriginUrl(url, this.deps.origin())) this.cryUrls.set(dex, url);
   }
 
   hasCry(dex: number): boolean {
@@ -100,6 +134,11 @@ export class AudioEngine {
   /** Any species whose cry the office could play (the Settings test). */
   anyCryDex(): number | undefined {
     return this.cryUrls.keys().next().value;
+  }
+
+  /** Every species whose cry the office could play. */
+  cryDexes(): number[] {
+    return [...this.cryUrls.keys()];
   }
 
   /** Fetch a cry's bytes ahead of its first use (decoded when it plays). */
@@ -128,22 +167,27 @@ export class AudioEngine {
 
   /** The AudioContext has been unlocked by a gesture and is running. */
   isRunning(): boolean {
-    return sharedAudioContext()?.state === 'running';
+    return this.deps.context()?.state === 'running';
   }
 
   // ── Playing ────────────────────────────────────────────────
 
-  /** Play the cues of an admitted event that `allow` lets through. */
+  /**
+   * Play the cues of an admitted event that `allow` lets through. A delayed
+   * cry plays only if its URL is known when its turn comes: a species new to
+   * the office gets its URL (pokemonSpeciesLoaded) just after its arrival.
+   */
   playEvent(event: SoundEvent, allow: (cue: SoundCue) => boolean): void {
     const g = this.graph();
     if (!g) return;
-    for (const cue of event.cues) {
-      if (!allow(cue)) continue;
+    for (const cue of keepCues(event.cues, allow)) {
       if (cue.kind === 'sfx') {
         this.playSfx(g, cue.name, g.ctx.currentTime + cue.delayMs / 1000);
       } else {
         const request = { dex: cue.dex, semitones: cue.semitones, user: event.user === true };
-        this.later(cue.delayMs, () => this.requestCry({ ...request, at: Date.now() }));
+        this.later(cue.delayMs, () => {
+          if (this.hasCry(cue.dex)) this.requestCry({ ...request, at: Date.now() });
+        });
       }
     }
   }
@@ -165,7 +209,7 @@ export class AudioEngine {
     if (g) this.requestCry({ dex, semitones, at: Date.now(), user: true });
   }
 
-  /** Sound switched off: drop everything pending and silence the cry. */
+  /** Sound switched off: drop everything pending and fade the cry out. */
   stopAll(): void {
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
@@ -189,7 +233,7 @@ export class AudioEngine {
   }
 
   private graph(): Graph | null {
-    const ctx = sharedAudioContext();
+    const ctx = this.deps.context();
     if (!ctx || ctx.state !== 'running') return null;
     if (this.g?.ctx === ctx) return this.g;
     const gain = (value: number, to: AudioNode) => {
@@ -212,8 +256,8 @@ export class AudioEngine {
   }
 
   private async unlockedGraph(): Promise<Graph | null> {
-    unlockAudio();
-    const ctx = sharedAudioContext();
+    this.deps.unlock();
+    const ctx = this.deps.context();
     if (!ctx) return null;
     if (ctx.state !== 'running') {
       try {
@@ -229,7 +273,7 @@ export class AudioEngine {
     const alerts = SFX_CATEGORY[name] === 'alerts';
     const bus = alerts ? g.alerts : g.effects;
     const synth = (at: number) =>
-      playRecipe(g.ctx, alerts ? g.alertsSynth : g.effectsSynth, SFX_RECIPES[name], at);
+      this.deps.renderSfx(g.ctx, alerts ? g.alertsSynth : g.effectsSynth, name, at);
     const override = this.pack.get(name);
     const url = override ? soundPackFileUrl(override) : null;
     if (!url || this.recentlyFailed(url)) {
@@ -256,7 +300,7 @@ export class AudioEngine {
     destination: AudioNode,
     when: number,
     rate: number,
-  ): { source: AudioBufferSourceNode; duration: number } {
+  ): { source: AudioBufferSourceNode; env: GainNode; duration: number } {
     let level = this.levels.get(buffer);
     if (level === undefined) {
       level = loudnessGain(buffer.getChannelData(0));
@@ -276,14 +320,16 @@ export class AudioEngine {
     source.connect(env);
     source.start(when);
     source.addEventListener('ended', () => env.disconnect());
-    return { source, duration };
+    return { source, env, duration };
   }
 
   private requestCry(request: CryRequest): void {
     if (!this.graph()) return;
     const verdict = this.cryQueue.request(request, Date.now());
     if (verdict !== 'play') return;
-    if (request.user) this.stopCurrentCry();
+    // A user's cry interrupts; any other 'play' means the cry before it
+    // overran its watchdog. Either way only one cry sounds.
+    this.stopCurrentCry();
     void this.startCry(request);
   }
 
@@ -304,8 +350,9 @@ export class AudioEngine {
     }
     const when = g.ctx.currentTime;
     const rate = 2 ** (request.semitones / 12);
-    const { source, duration } = this.playBuffer(g, buffer, g.cries, when, rate);
-    this.currentCry = source;
+    const { source, env, duration } = this.playBuffer(g, buffer, g.cries, when, rate);
+    this.currentCry = { g, source, env };
+    this.cryQueue.started(Date.now(), duration * 1000);
     this.duck(g, when, duration);
     source.addEventListener('ended', () => this.cryEnded(token));
   }
@@ -317,15 +364,27 @@ export class AudioEngine {
     if (next) void this.startCry(next);
   }
 
+  /** Fade the sounding cry out (stopping it at full level would click) and
+   *  let the effects back up. */
   private stopCurrentCry(): void {
-    const source = this.currentCry;
+    const playing = this.currentCry;
     this.currentCry = null;
-    if (!source) return;
+    if (!playing) return;
+    const { g, source, env } = playing;
+    const now = g.ctx.currentTime;
+    const end = now + SOUND_CRY_STOP_FADE_SEC;
+    env.gain.cancelScheduledValues(now);
+    env.gain.setValueAtTime(env.gain.value, now);
+    env.gain.linearRampToValueAtTime(0, end);
     try {
-      source.stop();
+      source.stop(end);
     } catch {
       // Already stopped.
     }
+    const duck = g.duck.gain;
+    duck.cancelScheduledValues(now);
+    duck.setValueAtTime(duck.value, now);
+    duck.linearRampToValueAtTime(1, now + SOUND_DUCK_RELEASE_SEC);
   }
 
   /** Effects step back while a cry sounds. */
@@ -352,7 +411,8 @@ export class AudioEngine {
     const existing = this.bytes.get(url);
     if (existing) return existing;
     if (this.recentlyFailed(url)) return Promise.resolve(null);
-    const pending = fetch(url)
+    const pending = this.deps
+      .fetch(url)
       .then((res) => (res.ok ? res.arrayBuffer() : null))
       .catch(() => null)
       .then((data) => {
@@ -385,6 +445,3 @@ export class AudioEngine {
     }
   }
 }
-
-/** The office's one engine. */
-export const audioEngine = new AudioEngine();

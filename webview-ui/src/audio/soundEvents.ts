@@ -41,7 +41,14 @@ export const SFX_CATEGORY: Readonly<Record<SfxName, SoundCategory>> = {
 
 /** One sound, `delayMs` after its event fires. */
 export type SoundCue =
-  | { kind: 'sfx'; name: SfxName; delayMs: number }
+  | {
+      kind: 'sfx';
+      name: SfxName;
+      delayMs: number;
+      /** The delay only lets the event's cry go first: with no cry left
+       *  (Cries off, theme off, no cry for the species) it plays at once. */
+      afterCry?: boolean;
+    }
   | { kind: 'cry'; dex: number; semitones: number; delayMs: number };
 
 export function cueCategory(cue: SoundCue): SoundCategory {
@@ -80,6 +87,22 @@ export interface SoundEvent {
 }
 
 export const sfx = (name: SfxName, delayMs = 0): SoundCue => ({ kind: 'sfx', name, delayMs });
+
+/** An effect that waits `delayMs` for the event's cry, and only for it. */
+export const sfxAfterCry = (name: SfxName, delayMs: number): SoundCue => ({
+  kind: 'sfx',
+  name,
+  delayMs,
+  afterCry: true,
+});
+
+/** The cues `keep` lets through. When no cry is left, a cue that only
+ *  waited for one (`afterCry`) plays at once instead. */
+export function keepCues(cues: readonly SoundCue[], keep: (cue: SoundCue) => boolean): SoundCue[] {
+  const kept = cues.filter(keep);
+  if (kept.some((c) => c.kind === 'cry')) return kept;
+  return kept.map((c) => (c.kind === 'sfx' && c.afterCry ? sfx(c.name) : c));
+}
 
 export const cry = (dex: number, delayMs = 0, semitones = 0): SoundCue => ({
   kind: 'cry',

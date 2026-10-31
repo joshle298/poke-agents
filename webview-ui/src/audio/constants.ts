@@ -41,8 +41,12 @@ export const SOUND_RATE_WINDOW_MS = 1_000;
 export const SOUND_CRY_QUEUE_MAX = 2;
 /** A queued cry older than this is dropped instead of played late. */
 export const SOUND_CRY_STALE_MS = 2_500;
-/** A cry that never reported its end is considered over after this long. */
+/** A cry that got its turn but never started (or never reported its end)
+ *  frees the queue after this long. Longer than SOUND_CRY_LOAD_WAIT_MS. */
 export const SOUND_CRY_MAX_PLAY_MS = 3_000;
+/** A playing cry holds the queue for its duration plus this much, in case
+ *  its `ended` event never comes. */
+export const SOUND_CRY_END_GRACE_MS = 500;
 /** Per agent: the same event for the same agent stays quiet this long. */
 export const SOUND_AGENT_COOLDOWN_MS: Readonly<Partial<Record<SoundEventName, number>>> = {
   needsYou: 10_000,
@@ -85,6 +89,8 @@ export const SOUND_DUCK_ATTACK_SEC = 0.04;
 export const SOUND_DUCK_RELEASE_SEC = 0.18;
 /** Fade at both ends of a cry or pack file, against clicks. */
 export const SOUND_BUFFER_FADE_SEC = 0.006;
+/** Fade-out of a cry cut short (a click on another Pokémon, Sounds off). */
+export const SOUND_CRY_STOP_FADE_SEC = 0.012;
 /** Gain ramps for volume changes. */
 export const SOUND_VOLUME_RAMP_SEC = 0.05;
 /** Quantization levels of the synth's bit-crush shaper. */

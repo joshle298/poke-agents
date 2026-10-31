@@ -49,6 +49,23 @@ describe('SoundLimiter', () => {
     expect(limiter.admit(event('arrived', 5), 1_700)).toBe(true);
   });
 
+  it('forgets per-agent cooldowns once they can no longer hold anything back', () => {
+    const limiter = new SoundLimiter({
+      maxEventsPerWindow: 1_000,
+      eventMinGapMs: {},
+      agentCooldownMs: { faint: 1_000, recall: 2_000 },
+    });
+    for (let id = 0; id < 50; id++) limiter.admit(event('recall', id), id * 10);
+    expect(limiter.trackedAgentCount).toBe(50);
+    // At 2.3 s the recalls from 0-300 ms are past the longest cooldown (2 s).
+    expect(limiter.admit(event('faint', 99), 2_300)).toBe(true);
+    expect(limiter.trackedAgentCount).toBe(50 - 31 + 1);
+    expect(limiter.admit(event('faint', 100), 5_000)).toBe(true);
+    expect(limiter.trackedAgentCount).toBe(1);
+    // Pruning never lifts a cooldown early.
+    expect(limiter.admit(event('faint', 100), 5_500)).toBe(false);
+  });
+
   it('always admits what a user started, and counts it', () => {
     const limiter = new SoundLimiter();
     for (let i = 0; i < 4; i++) expect(limiter.admit(event('pokedex', 1, true), i)).toBe(true);
@@ -92,6 +109,16 @@ describe('CryQueue', () => {
     queue.request(req(1, 0), 0);
     expect(queue.request(req(2, 100), 100)).toBe('queued');
     expect(queue.request(req(3, 3_100), 3_100)).toBe('play');
+  });
+
+  it('a cry that loaded slowly holds the queue for its whole duration', () => {
+    const queue = new CryQueue({ maxPlayMs: 3_000, endGraceMs: 500 });
+    queue.request(req(1, 0), 0);
+    // Loaded after 1.4 s; a faint cry slowed down to 2.5 s sounds until 3.9 s.
+    queue.started(1_400, 2_500);
+    expect(queue.request(req(2, 3_100), 3_100)).toBe('queued');
+    expect(queue.isPlaying(4_350)).toBe(true);
+    expect(queue.isPlaying(4_400)).toBe(false);
   });
 
   it('clear forgets the queue and the playing cry', () => {

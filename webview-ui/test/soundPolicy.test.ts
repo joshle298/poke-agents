@@ -19,7 +19,7 @@ import {
   SOUND_THROW_POP_DELAY_MS,
 } from '../src/audio/constants.js';
 import type { SoundEvent } from '../src/audio/soundEvents.js';
-import { cry, sfx } from '../src/audio/soundEvents.js';
+import { cry, keepCues, sfx, sfxAfterCry } from '../src/audio/soundEvents.js';
 import { SoundDirector } from '../src/audio/soundPolicy.js';
 
 const PIKACHU = 25;
@@ -136,10 +136,22 @@ describe('faint and revive', () => {
       {
         name: 'faint',
         agentId: 1,
-        cues: [cry(PIKACHU, 0, SOUND_FAINT_CRY_SEMITONES), sfx('faint', SOUND_FAINT_SFX_DELAY_MS)],
+        cues: [
+          cry(PIKACHU, 0, SOUND_FAINT_CRY_SEMITONES),
+          sfxAfterCry('faint', SOUND_FAINT_SFX_DELAY_MS),
+        ],
       },
     ]);
     expect(send(status(1, 'error'))).toEqual([]);
+  });
+
+  it('without its cry (Cries off, no cry for the species) the faint slide plays at once', () => {
+    liveOffice(1);
+    send(status(1, 'active'));
+    const [faint] = send(status(1, 'error'));
+    expect(keepCues(faint.cues, (c) => c.kind === 'sfx')).toEqual([sfx('faint')]);
+    // With the cry kept, the slide still waits for it.
+    expect(keepCues(faint.cues, () => true)).toEqual(faint.cues);
   });
 
   it('activity after an error heals', () => {
@@ -213,6 +225,20 @@ describe('quiet window after a connect', () => {
     expect(send({ type: 'agentMessage', fromId: 1, toId: 2, kind: 'messaged', at: now })).toEqual(
       [],
     );
+  });
+
+  it('a replay forgets agents that left while the socket was down', () => {
+    liveOffice(1, 2);
+    send({
+      type: 'existingAgents',
+      agents: [2],
+      agentMeta: {},
+      directoryNames: {},
+      externalAgents: {},
+    });
+    expect(director.isPresent(1)).toBe(false);
+    expect(director.isPresent(2)).toBe(true);
+    expect(director.speciesOf(2)).toBe(PIKACHU);
   });
 });
 
@@ -368,9 +394,7 @@ describe('theme off', () => {
       { name: 'needsYou', agentId: 1, cues: [sfx('alert')] },
     ]);
     send(status(1, 'active'));
-    expect(send(status(1, 'error'))).toEqual([
-      { name: 'faint', agentId: 1, cues: [sfx('faint', SOUND_FAINT_SFX_DELAY_MS)] },
-    ]);
+    expect(send(status(1, 'error'))).toEqual([{ name: 'faint', agentId: 1, cues: [sfx('faint')] }]);
     expect(send(created(2))).toEqual([]);
     expect(send({ type: 'agentClosed', id: 2 })).toEqual([]);
   });

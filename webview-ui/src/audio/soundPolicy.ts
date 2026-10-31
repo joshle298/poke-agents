@@ -45,7 +45,7 @@ import {
   SOUND_THROW_POP_DELAY_MS,
 } from './constants.js';
 import type { SoundCue, SoundEvent } from './soundEvents.js';
-import { cry, sfx, SFX_CATEGORY } from './soundEvents.js';
+import { cry, keepCues, sfx, SFX_CATEGORY, sfxAfterCry } from './soundEvents.js';
 
 export interface DirectorContext {
   now: number;
@@ -152,7 +152,10 @@ export class SoundDirector {
       }
       case 'existingAgents': {
         this.startQuiet(now);
-        for (const id of Array.isArray(msg.agents) ? msg.agents : []) {
+        const listed = new Set(Array.isArray(msg.agents) ? msg.agents : []);
+        // The office as it is now: forget agents that left while we weren't looking.
+        for (const id of this.agents.keys()) if (!listed.has(id)) this.agents.delete(id);
+        for (const id of listed) {
           const mem = this.memory(id, now);
           const meta = msg.agentMeta?.[String(id)];
           if (meta?.species !== undefined) mem.species = meta.species;
@@ -300,9 +303,13 @@ export class SoundDirector {
     if (msg.silent === true || !mem.stream || this.isQuiet(now)) return [];
     if (mem.awaiting && !neededYou) return [this.needsYou(msg.id, mem)];
     if (msg.status === 'error' && prevStatus !== 'error') {
-      const cues: SoundCue[] = [];
-      if (mem.species !== undefined) cues.push(cry(mem.species, 0, SOUND_FAINT_CRY_SEMITONES));
-      cues.push(sfx('faint', mem.species !== undefined ? SOUND_FAINT_SFX_DELAY_MS : 0));
+      const cues: SoundCue[] =
+        mem.species !== undefined
+          ? [
+              cry(mem.species, 0, SOUND_FAINT_CRY_SEMITONES),
+              sfxAfterCry('faint', SOUND_FAINT_SFX_DELAY_MS),
+            ]
+          : [sfx('faint')];
       return [{ name: 'faint', agentId: msg.id, cues }];
     }
     if (msg.status === 'active' && prevStatus === 'error') {
@@ -359,7 +366,7 @@ export class SoundDirector {
 function alertsOnly(events: SoundEvent[]): SoundEvent[] {
   const out: SoundEvent[] = [];
   for (const event of events) {
-    const cues = event.cues.filter((c) => c.kind === 'sfx' && SFX_CATEGORY[c.name] === 'alerts');
+    const cues = keepCues(event.cues, (c) => c.kind === 'sfx' && SFX_CATEGORY[c.name] === 'alerts');
     if (cues.length > 0) out.push({ ...event, cues });
   }
   return out;

@@ -7,6 +7,7 @@ import type {
   HooksConsentRequest,
   PokemonSpeciesLoaded,
 } from '../../../core/src/messages.js';
+import { upstreamPermissionChimes, upstreamStatusChime } from '../audio/chimeHandoff.js';
 import { playDoneSound, playPermissionSound, setSoundEnabled } from '../notificationSound.js';
 import { statusChimeFor } from '../office/chimePolicy.js';
 import type { ExistingAgentMeta, PendingAgent } from '../office/engine/existingAgents.js';
@@ -720,9 +721,9 @@ export function useExtensionMessages(
           changed,
         });
         // A stream agent's sounds are audio/usePokemonSounds.ts's (alert + cry, faint, done).
-        const chimes = ch?.providerId === undefined;
-        if (chime === 'done' && chimes) playDoneSound();
-        else if (chime === 'attention' && chimes) playPermissionSound();
+        const played = upstreamStatusChime(chime, ch?.providerId);
+        if (played === 'done') playDoneSound();
+        else if (played === 'attention') playPermissionSound();
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
         setAgentTools((prev) => {
@@ -735,7 +736,7 @@ export function useExtensionMessages(
         });
         os.showPermissionBubble(id);
         // Stream agents: audio/usePokemonSounds.ts plays the alert and the cry.
-        if (os.characters.get(id)?.providerId === undefined) playPermissionSound();
+        if (upstreamPermissionChimes(os.characters.get(id)?.providerId)) playPermissionSound();
       } else if (msg.type === 'subagentToolPermission') {
         const id = msg.id as number;
         const parentToolId = msg.parentToolId as string;

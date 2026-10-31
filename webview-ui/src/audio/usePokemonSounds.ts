@@ -1,30 +1,27 @@
 /**
- * Wires the office's Pokémon sounds: every ServerMessage goes through the
- * SoundDirector (what deserves a sound), the SoundLimiter (how many play)
- * and the AudioEngine (playing them), gated by the server's sound switch
- * and the per-device Cries / Alerts / Effects toggles.
+ * Wires the office's Pokémon sounds to the page: the transport's messages,
+ * the selected character, the Sounds switch, the per-device preferences and
+ * the sound pack go into one SoundController (soundController.ts), which
+ * plays through the office's AudioEngine.
  *
  * Subscribes to the transport itself, so the message handlers in
  * useExtensionMessages stay untouched apart from leaving stream agents'
- * status chimes to this module.
+ * status chimes to this module (audio/chimeHandoff.ts).
  */
 
 import { useEffect, useRef } from 'react';
 
-import type { ServerMessage } from '../../../core/src/messages.js';
-import { isSoundEnabled, unlockAudio } from '../notificationSound.js';
+import { isSoundEnabled, sharedAudioContext, unlockAudio } from '../notificationSound.js';
 import { isBrowserRuntime, isE2E } from '../runtime.js';
 import { transport } from '../transport/index.js';
-import { audioEngine } from './audioEngine.js';
-import type { SfxName, SoundCue, SoundEvent } from './soundEvents.js';
-import { cueCategory } from './soundEvents.js';
+import { AudioEngine } from './audioEngine.js';
+import { SoundController } from './soundController.js';
+import type { SfxName, SoundEvent } from './soundEvents.js';
 import { SoundLimiter } from './soundLimiter.js';
 import { getSoundPack, refreshSoundPack, subscribeSoundPack } from './soundPack.js';
 import { SoundDirector } from './soundPolicy.js';
 import { getSoundPrefs, subscribeSoundPrefs } from './soundPrefs.js';
 
-const director = new SoundDirector();
-const limiter = new SoundLimiter();
 let selectedAgentId: () => number | null = () => null;
 
 /** E2E: log each played event beside the chime log (testHooks.ts). */
@@ -34,44 +31,24 @@ function recordForTests(event: SoundEvent): void {
   (hooks.playedSounds ??= []).push({ kind: `pokemon:${event.name}`, at: Date.now() });
 }
 
-/** A cue the user's toggles allow and the engine can play. */
-function allowed(cue: SoundCue): boolean {
-  if (!getSoundPrefs()[cueCategory(cue)]) return false;
-  return cue.kind !== 'cry' || audioEngine.hasCry(cue.dex);
-}
+/** The office's one engine, on the AudioContext the chimes share. */
+const audioEngine = new AudioEngine({ context: sharedAudioContext, unlock: unlockAudio });
 
-function dispatch(events: SoundEvent[]): void {
-  if (events.length === 0 || !isSoundEnabled()) return;
-  for (const event of events) {
-    // Nothing playable: don't spend the event's cooldown on silence.
-    if (!event.cues.some(allowed)) continue;
-    if (event.user) {
-      if (!limiter.admit(event, Date.now())) continue;
-      recordForTests(event);
-      void audioEngine.playUserEvent(event, allowed);
-      continue;
-    }
-    // Before the first click the context is locked: drop, never queue.
-    if (!audioEngine.isRunning() || !limiter.admit(event, Date.now())) continue;
-    recordForTests(event);
-    audioEngine.playEvent(event, allowed);
-  }
-}
+const controller = new SoundController({
+  director: new SoundDirector(),
+  limiter: new SoundLimiter(),
+  engine: audioEngine,
+  soundEnabled: isSoundEnabled,
+  prefs: getSoundPrefs,
+  selectedAgentId: () => selectedAgentId(),
+  onPlayed: recordForTests,
+});
 
-function onMessage(msg: ServerMessage): void {
-  if (msg.type === 'pokemonSpeciesLoaded' && typeof msg.cry === 'string') {
-    audioEngine.setCryUrl(msg.dex, msg.cry);
-    if (isSoundEnabled() && getSoundPrefs().cries) audioEngine.prefetchCry(msg.dex);
-  }
-  dispatch(director.handle(msg, { now: Date.now(), selectedAgentId: selectedAgentId() }));
-}
-
-/** The cry the Settings "Cry" test plays: the selected Pokémon's, else any. */
-export function testCryDex(): number | undefined {
-  const selected = selectedAgentId();
-  const species = selected !== null ? director.speciesOf(selected) : undefined;
-  return species !== undefined && audioEngine.hasCry(species) ? species : audioEngine.anyCryDex();
-}
+/**
+ * Activation-triggering events. A touch `pointerdown` isn't one in Chrome or
+ * WebKit; its `pointerup`, `touchend` and `click` are.
+ */
+const GESTURE_EVENTS = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'] as const;
 
 /**
  * Play a UI blip (a Pokédex tab, a panel), if effects are on. For the
@@ -79,17 +56,23 @@ export function testCryDex(): number | undefined {
  * @public
  */
 export function playUiBlip(): void {
-  dispatch([{ name: 'uiBlip', cues: [{ kind: 'sfx', name: 'blip', delayMs: 0 }], user: true }]);
+  controller.blip();
 }
 
-/** Settings → Test sounds. Plays whatever the toggles say. */
+/** Settings → Test sounds: plays only what the Sounds switch and the
+ *  Cries / Alerts / Effects toggles allow. */
 export function testSound(name: SfxName | 'cry'): void {
-  if (name !== 'cry') {
-    void audioEngine.testSfx(name);
-    return;
-  }
-  const dex = testCryDex();
-  if (dex !== undefined) void audioEngine.testCry(dex);
+  controller.test(name);
+}
+
+/** Silence every Pokémon sound now (Sounds switched off). */
+export function stopAllSounds(): void {
+  audioEngine.stopAll();
+}
+
+/** Whether testSound(name) can make a sound right now. */
+export function canTestSound(name: SfxName | 'cry'): boolean {
+  return controller.canTest(name);
 }
 
 /**
@@ -100,17 +83,19 @@ export function testSound(name: SfxName | 'cry'): void {
 export function usePokemonSounds(getSelectedAgentId: () => number | null): void {
   useEffect(() => {
     selectedAgentId = getSelectedAgentId;
-    const offMessage = transport.onMessage(onMessage);
+    const offMessage = transport.onMessage((msg) => controller.handle(msg));
     // A (re)connect is followed by a replay: keep it quiet.
-    if (transport.state === 'connected') director.connected(Date.now());
+    if (transport.state === 'connected') controller.connected();
     const offState = transport.onStateChange((state) => {
-      if (state === 'connected') director.connected(Date.now());
+      if (state === 'connected') controller.connected();
       else audioEngine.stopAll();
     });
     // Any gesture unlocks the AudioContext (the canvas does too).
-    const unlock = () => unlockAudio();
-    window.addEventListener('pointerdown', unlock, { capture: true });
-    window.addEventListener('keydown', unlock, { capture: true });
+    const unlock = () => {
+      unlockAudio();
+      controller.gesture();
+    };
+    for (const type of GESTURE_EVENTS) window.addEventListener(type, unlock, { capture: true });
     audioEngine.setVolume(getSoundPrefs().volume);
     const offPrefs = subscribeSoundPrefs(() => audioEngine.setVolume(getSoundPrefs().volume));
     const offPack = subscribeSoundPack(() => audioEngine.setPackOverrides(getSoundPack()));
@@ -120,8 +105,9 @@ export function usePokemonSounds(getSelectedAgentId: () => number | null): void 
       offState();
       offPrefs();
       offPack();
-      window.removeEventListener('pointerdown', unlock, { capture: true });
-      window.removeEventListener('keydown', unlock, { capture: true });
+      for (const type of GESTURE_EVENTS) {
+        window.removeEventListener(type, unlock, { capture: true });
+      }
       audioEngine.stopAll();
     };
   }, [getSelectedAgentId]);
@@ -133,8 +119,6 @@ export function usePokedexSounds(detailAgentId: number | null): void {
   useEffect(() => {
     const before = previous.current;
     previous.current = detailAgentId;
-    if (detailAgentId === before) return;
-    if (detailAgentId !== null) dispatch(director.pokedexOpened(detailAgentId));
-    else if (before !== null && director.isPresent(before)) dispatch(director.pokedexClosed());
+    controller.pokedexChanged(detailAgentId, before);
   }, [detailAgentId]);
 }
