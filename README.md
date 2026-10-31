@@ -6,7 +6,7 @@ Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel
 
 ## Features
 
-- **A Pokémon per session.** Every visible Conductor session is a Pokémon whose species stays with that session. It works at a desk while the session runs tools, reads on read tools, and wanders when the turn is done.
+- **A Pokémon per session.** Every visible cloud session is a Pokémon whose species stays with that session. It works at a desk while the session runs tools, reads on read tools, and wanders when the turn is done.
 - **Levels and evolution.** `Lv` grows with session activity. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it needs your answer or a permission.
 - **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon. Its new sessions are thrown out of a Poké Ball from where it stands.
@@ -52,7 +52,7 @@ npx --allow-git=all github:joshle298/poke-agents --open
 
 The first run downloads about 150 MB of build tools and builds the app, which takes 20 seconds or more. Later runs of the same commit start in about a second. Don't run `npx poke-agents`: that npm name belongs to an unrelated package.
 
-The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can send messages to your sessions from the office. A browser without the token can only watch.
+The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
 
 ## Using the Office
 
