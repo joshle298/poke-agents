@@ -1,5 +1,12 @@
 # Changelog
 
+## Poke Agents (unreleased)
+
+### Changes
+
+- A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor in place of its collar, replacing Promptling in the Mac app, the favicon and the installed web app. At 16 and 48 px it shows a dark C on a gold collar.
+- The browser and installed web app's window colour is the office's night blue instead of red, to match the icon.
+
 ## Poke Agents v0.3.1
 
 Connect to Conductor from inside the app.
