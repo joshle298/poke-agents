@@ -101,6 +101,17 @@ describe('MusicStore', () => {
     expect(store.getState().notice).toBeNull();
   });
 
+  it('drops pending commands when the connection drops (their replies are lost)', () => {
+    const store = new MusicStore(PREFS);
+    store.markPending('apple', 'scanLibrary');
+    store.markPending('folder', 'openFolder');
+    store.clearPending();
+    expect(store.getState().pending).toEqual({});
+    const before = store.getState();
+    store.clearPending();
+    expect(store.getState()).toBe(before);
+  });
+
   it('ignores messages that are not about music', () => {
     const store = new MusicStore(PREFS);
     const before = store.getState();

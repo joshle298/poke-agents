@@ -16,6 +16,14 @@ export const MUSIC_CROSSFADE_MAX_SHARE = 1 / 3;
 export const MUSIC_RAMP_TICK_MS = 40;
 /** Previous restarts the track instead when it has played this long. */
 export const MUSIC_RESTART_THRESHOLD_SEC = 3;
+/** <audio> elements the folder player cycles through: the one playing, one
+ *  fading out, and one buffering the next track. A skip during a crossfade
+ *  starts the new track on the third, so no sounding deck is cut off. */
+export const MUSIC_DECK_COUNT = 3;
+/** MediaError codes (HTMLMediaElement.error.code): the connection dropped
+ *  mid-load, or the file could not be decoded. */
+export const MEDIA_ERR_NETWORK = 2;
+export const MEDIA_ERR_DECODE = 3;
 /** Folder volume when nothing is remembered (0..1). */
 export const MUSIC_DEFAULT_VOLUME = 0.6;
 
@@ -40,6 +48,9 @@ export const MUSIC_APP_VOLUME_DEBOUNCE_MS = 300;
 export const MUSIC_PILL_Z_INDEX = 46;
 /** The pill sits above the bottom toolbar on desktop. */
 export const MUSIC_PILL_BOTTOM_PX = 76;
+/** On a phone the pill sits this far below the top buttons' line, clear of
+ *  the connection pill that shows there while the socket reconnects. */
+export const MUSIC_PILL_MOBILE_OFFSET_PX = 52;
 export const MUSIC_PILL_MAX_WIDTH_PX = 280;
 /** Marquee scroll speed (px per second) and the pause at each end. */
 export const MUSIC_MARQUEE_PX_PER_SEC = 30;

@@ -1,8 +1,12 @@
 /**
- * Plays music folder tracks in the page: two <audio> elements ("decks") so the
- * next track can preload on the idle one and crossfade in (1.5 s, equal power)
- * as the current one ends. Volume = user volume × fade × duck (duck.ts).
+ * Plays music folder tracks in the page: a few <audio> elements ("decks") so
+ * the next track can preload on an idle one and crossfade in (1.5 s, equal
+ * power) as the current one ends. Volume = user volume × fade × duck (duck.ts).
  * Media Session metadata and actions make the OS media keys work.
+ *
+ * Every fade starts from the gains the decks have at that moment, and a skip
+ * during a fade starts the new track on a deck that isn't sounding, so a
+ * double tap on Next never jumps a fading track back up or cuts it off.
  *
  * Browsers start audio only after a user gesture; a blocked start leaves the
  * player paused with a notice instead of throwing.
@@ -10,6 +14,9 @@
 
 import type { MusicLibrary } from '../../../core/src/messages.js';
 import {
+  MEDIA_ERR_DECODE,
+  MEDIA_ERR_NETWORK,
+  MUSIC_DECK_COUNT,
   MUSIC_RAMP_TICK_MS,
   MUSIC_RESTART_THRESHOLD_SEC,
   MUSIC_SKIP_FADE_MS,
@@ -18,7 +25,7 @@ import {
 } from './constants.js';
 import { duckFactor, subscribeDuck } from './duck.js';
 import { indexTracks, stationTrackIds, type TrackRef } from './format.js';
-import { crossfadeGains, crossfadeMsFor, deckVolume } from './mix.js';
+import { crossfadeMsFor, deckVolume, fadeInGain, fadeOutGain } from './mix.js';
 import type { FolderPlayback } from './musicStore.js';
 import type { PlayQueue, Rng } from './queue.js';
 import {
@@ -39,6 +46,8 @@ export interface AudioDeck {
   readonly duration: number;
   volume: number;
   preload: string;
+  /** Why the last load failed (MediaError), or null. */
+  readonly error: { readonly code: number } | null;
   play(): Promise<void> | undefined;
   pause(): void;
   canPlayType(type: string): string;
@@ -58,6 +67,10 @@ export interface FolderPlayerEnv {
   createAudio(): AudioDeck;
   mediaSession?: MediaSessionPort;
   urlFor(trackId: string): string;
+  /** Whether the server still serves this track (a HEAD request). A file the
+   *  server serves but the browser rejects can't play here; a track the
+   *  server doesn't serve (offline, restarted, token changed) may play later. */
+  isServed(trackId: string): Promise<boolean>;
   now(): number;
   rng: Rng;
   /** Every state change (for the store). */
@@ -68,21 +81,31 @@ export interface FolderPlayerEnv {
   persist(state: { station: string | null; track: string | null; playing: boolean }): void;
 }
 
+export interface ResumeOptions {
+  /** Called instead of the "press play" notice when the browser blocks the
+   *  start (no user activation yet). The remembered "playing" is kept, so the
+   *  caller can try again on the next gesture. */
+  onBlocked?: () => void;
+}
+
 interface Fade {
-  /** The deck fading out, or null for a fade-in from silence. */
-  from: number | null;
+  /** Decks fading out, each from the gain it had when the fade began. */
+  out: { deck: number; from: number }[];
+  /** The deck fading in, from `toFrom`. */
   to: number;
+  toFrom: number;
   startedAt: number;
   ms: number;
 }
 
 const BLOCKED_NOTICE = 'Press play to start the music.';
 const NOTHING_PLAYABLE_NOTICE = "These files can't play in this browser.";
+const UNREACHABLE_NOTICE = "Couldn't load the track from Poke Agents. Press play to try again.";
 
 export class FolderPlayer {
   private readonly decks: AudioDeck[];
-  private readonly deckTrack: (string | null)[] = [null, null];
-  private readonly fadeGain = [1, 0];
+  private readonly deckTrack: (string | null)[];
+  private readonly fadeGain: number[];
   private active = 0;
   private fade: Fade | null = null;
   private ticker: ReturnType<typeof setInterval> | null = null;
@@ -94,6 +117,11 @@ export class FolderPlayer {
   /** Consecutive tracks that failed to load: past the queue's size, stop. */
   private failures = 0;
   private playing = false;
+  /** Bumped on every start, so a late play() rejection from an earlier start
+   *  can't stop what plays now. */
+  private startSeq = 0;
+  /** Set only while resume() runs (see ResumeOptions). */
+  private onBlocked: (() => void) | null = null;
 
   private readonly env: FolderPlayerEnv;
   private state: Pick<FolderPlayback, 'station' | 'trackId' | 'shuffle' | 'volume'>;
@@ -109,7 +137,9 @@ export class FolderPlayer {
       shuffle: state.shuffle,
       volume: state.volume,
     };
-    this.decks = [env.createAudio(), env.createAudio()];
+    this.decks = Array.from({ length: MUSIC_DECK_COUNT }, () => env.createAudio());
+    this.deckTrack = this.decks.map(() => null);
+    this.fadeGain = this.decks.map((_, i) => (i === 0 ? 1 : 0));
     this.decks.forEach((deck, i) => {
       deck.preload = 'auto';
       deck.volume = 0;
@@ -171,7 +201,17 @@ export class FolderPlayer {
   }
 
   /** Resume, or start the remembered station when nothing is queued. */
-  resume(): void {
+  resume(options: ResumeOptions = {}): void {
+    if (this.playing) return;
+    this.onBlocked = options.onBlocked ?? null;
+    try {
+      this.resumeNow();
+    } finally {
+      this.onBlocked = null;
+    }
+  }
+
+  private resumeNow(): void {
     if (!this.queue) {
       // The remembered album, or every album when it is gone from the folder.
       const remembered = this.state.station;
@@ -183,24 +223,22 @@ export class FolderPlayer {
       this.playStation(station, { startId: this.state.trackId ?? undefined });
       return;
     }
+    if (this.deckTrack[this.active] !== currentTrack(this.queue)) {
+      // The track failed to load (connection lost): load it again.
+      this.playing = false;
+      this.startCurrent(MUSIC_START_FADE_MS);
+      return;
+    }
     this.playing = true;
-    this.fadeGain[1 - this.active] = 0;
-    this.fadeGain[this.active] = 0;
-    this.beginFade(null, this.active, MUSIC_START_FADE_MS);
+    this.fadeGain.fill(0);
+    this.beginFade([], this.active, MUSIC_START_FADE_MS);
     this.playDeck(this.active);
     this.persist();
     this.emit();
   }
 
   pause(): void {
-    if (!this.playing) return;
-    this.playing = false;
-    this.fade = null;
-    for (const deck of this.decks) deck.pause();
-    this.fadeGain[1 - this.active] = 0;
-    this.fadeGain[this.active] = 1;
-    this.persist();
-    this.emit();
+    if (this.playing) this.halt(true);
   }
 
   toggle(): void {
@@ -229,7 +267,7 @@ export class FolderPlayer {
     this.state = { ...this.state, shuffle };
     if (this.queue) {
       this.queue = setQueueShuffle(this.queue, shuffle, this.env.rng);
-      if (!this.fade) this.preloadUpcoming();
+      this.preloadUpcoming();
     }
     this.emit();
   }
@@ -247,13 +285,35 @@ export class FolderPlayer {
 
   // ── Decks ───────────────────────────────────────────────────
 
-  /** Start the queue's current track on the idle deck, fading the other out. */
+  /** Decks making sound: the active one and any still fading out. */
+  private soundingDecks(): number[] {
+    if (!this.playing) return [];
+    const out = this.fade?.out.map((o) => o.deck) ?? [];
+    return [this.active, ...out.filter((d) => d !== this.active)];
+  }
+
+  /** A deck for `trackId`: an idle one, preferring one that already buffered
+   *  it; with every deck sounding (a third skip inside one fade), the quietest. */
+  private pickDeck(trackId: string, sounding: readonly number[]): number {
+    const idle = this.decks.map((_, i) => i).filter((i) => !sounding.includes(i));
+    const buffered = idle.find((i) => this.deckTrack[i] === trackId);
+    if (buffered !== undefined) return buffered;
+    if (idle.length > 0) return idle[0];
+    return sounding.reduce((q, d) => (this.fadeGain[d] < this.fadeGain[q] ? d : q));
+  }
+
+  /** Start the queue's current track on an idle deck, fading the others out. */
   private startCurrent(fadeMs: number): void {
     if (!this.queue) return;
     const id = currentTrack(this.queue);
     const wasPlaying = this.playing;
-    const outgoing = this.active;
-    const incoming = 1 - outgoing;
+    const sounding = this.soundingDecks();
+    const incoming = this.pickDeck(id, sounding);
+    if (sounding.includes(incoming)) {
+      // Only when every deck is sounding: this one is cut, the rest fade.
+      this.decks[incoming].pause();
+      this.deckTrack[incoming] = null;
+    }
     this.loadDeck(incoming, id);
     const deck = this.decks[incoming];
     try {
@@ -264,11 +324,19 @@ export class FolderPlayer {
     this.active = incoming;
     this.playing = true;
     this.fadeGain[incoming] = 0;
-    if (wasPlaying) this.beginFade(outgoing, incoming, fadeMs);
-    else {
-      this.decks[outgoing].pause();
-      this.fadeGain[outgoing] = 0;
-      this.beginFade(null, incoming, MUSIC_START_FADE_MS);
+    if (wasPlaying) {
+      this.beginFade(
+        sounding.filter((d) => d !== incoming),
+        incoming,
+        fadeMs,
+      );
+    } else {
+      this.decks.forEach((d, i) => {
+        if (i === incoming) return;
+        d.pause();
+        this.fadeGain[i] = 0;
+      });
+      this.beginFade([], incoming, MUSIC_START_FADE_MS);
     }
     this.playDeck(incoming);
     this.state = { ...this.state, trackId: id };
@@ -278,17 +346,36 @@ export class FolderPlayer {
   }
 
   private playDeck(index: number): void {
+    const seq = ++this.startSeq;
+    const onBlocked = this.onBlocked;
     const result = this.decks[index].play();
     // Older engines return undefined; current ones a promise that rejects when
     // autoplay is blocked (NotAllowedError) or the source changed (AbortError).
     if (result && typeof result.catch === 'function') {
       result.catch((err: unknown) => {
-        if ((err as { name?: string } | null)?.name === 'NotAllowedError') {
-          this.pause();
+        if ((err as { name?: string } | null)?.name !== 'NotAllowedError') return;
+        if (seq !== this.startSeq || !this.playing) return;
+        if (onBlocked) {
+          this.halt(false);
+          onBlocked();
+        } else {
+          this.halt(true);
           this.env.onNotice(BLOCKED_NOTICE);
         }
       });
     }
+  }
+
+  /** Stop every deck. `persist`: remember that the music is off (a user's
+   *  pause); a stop the user didn't ask for keeps "playing" for a reload. */
+  private halt(persist: boolean): void {
+    this.playing = false;
+    this.fade = null;
+    for (const deck of this.decks) deck.pause();
+    this.fadeGain.fill(0);
+    this.fadeGain[this.active] = 1;
+    if (persist) this.persist();
+    this.emit();
   }
 
   private loadDeck(index: number, trackId: string | undefined): void {
@@ -297,14 +384,19 @@ export class FolderPlayer {
     this.decks[index].src = this.env.urlFor(trackId);
   }
 
-  /** Buffer what plays next on the idle deck. */
+  /** Buffer what plays next on a deck that isn't sounding. */
   private preloadUpcoming(): void {
     if (!this.queue) return;
-    this.loadDeck(1 - this.active, upcomingTrack(this.queue));
+    const upcoming = upcomingTrack(this.queue);
+    if (!upcoming) return;
+    const sounding = this.playing ? this.soundingDecks() : [this.active];
+    const idle = this.decks.map((_, i) => i).filter((i) => !sounding.includes(i));
+    if (idle.some((i) => this.deckTrack[i] === upcoming)) return;
+    if (idle.length > 0) this.loadDeck(idle[0], upcoming);
   }
 
   /** Near the end of the active track, crossfade into the next. Starting it
-   *  makes the other deck active, so the outgoing deck's later events are
+   *  makes another deck active, so the outgoing deck's later events are
    *  ignored here. */
   private onTimeUpdate(index: number): void {
     if (index !== this.active || !this.playing || !this.queue) return;
@@ -324,9 +416,40 @@ export class FolderPlayer {
     this.startCurrent(0);
   }
 
+  /**
+   * A deck failed to load or play its track. A decode error means this
+   * browser can't play the file. A network error, or a 403/404 or refused
+   * connection (which browsers report as "source not supported", like an
+   * unsupported file), is not the file's fault: the server is asked whether it
+   * still serves the track before the track is written off.
+   */
   private onDeckError(index: number): void {
     const id = this.deckTrack[index];
     if (!id || !this.queue) return;
+    const code = this.decks[index].error?.code;
+    if (code === MEDIA_ERR_DECODE) {
+      this.dropUnplayable(index, id);
+      return;
+    }
+    if (code === MEDIA_ERR_NETWORK) {
+      this.lostTrack(index, id);
+      return;
+    }
+    void this.env.isServed(id).then(
+      (served) => {
+        if (this.deckTrack[index] !== id) return;
+        if (served) this.dropUnplayable(index, id);
+        else this.lostTrack(index, id);
+      },
+      () => {
+        if (this.deckTrack[index] === id) this.lostTrack(index, id);
+      },
+    );
+  }
+
+  /** The file can't play in this browser: skip it for the rest of the session. */
+  private dropUnplayable(index: number, id: string): void {
+    if (!this.queue) return;
     this.unplayable.add(id);
     this.deckTrack[index] = null;
     const isCurrent = index === this.active && this.playing;
@@ -347,19 +470,35 @@ export class FolderPlayer {
       // withoutTracks moved the queue onto the next playable track.
       this.playing = false;
       this.startCurrent(0);
-    } else if (!this.fade) {
+    } else {
       this.preloadUpcoming();
     }
     this.emit();
   }
 
+  /** The server didn't deliver the track: forget the deck's load so the next
+   *  play loads it again, and stop if it was playing (the server may be gone).
+   *  The remembered "playing" is kept: the user didn't pause. */
+  private lostTrack(index: number, id: string): void {
+    if (this.deckTrack[index] !== id) return;
+    this.deckTrack[index] = null;
+    if (index === this.active && this.playing) {
+      this.halt(false);
+      this.env.onNotice(UNREACHABLE_NOTICE);
+    }
+  }
+
   // ── Volume ramp ─────────────────────────────────────────────
 
-  private beginFade(from: number | null, to: number, ms: number): void {
+  /** Fade `to` in and `outgoing` out, each from its gain right now. */
+  private beginFade(outgoing: readonly number[], to: number, ms: number): void {
+    const out = outgoing
+      .filter((d) => d !== to)
+      .map((deck) => ({ deck, from: this.fadeGain[deck] }));
     if (ms <= 0) {
-      if (from !== null) {
-        this.decks[from].pause();
-        this.fadeGain[from] = 0;
+      for (const { deck } of out) {
+        this.decks[deck].pause();
+        this.fadeGain[deck] = 0;
       }
       this.fadeGain[to] = 1;
       this.fade = null;
@@ -367,8 +506,9 @@ export class FolderPlayer {
       this.preloadUpcoming();
       return;
     }
-    this.fade = { from, to, startedAt: this.env.now(), ms };
+    this.fade = { out, to, toFrom: this.fadeGain[to], startedAt: this.env.now(), ms };
     this.applyVolumes();
+    this.preloadUpcoming();
     this.startTicker();
   }
 
@@ -381,13 +521,12 @@ export class FolderPlayer {
     const fade = this.fade;
     if (fade) {
       const progress = (this.env.now() - fade.startedAt) / fade.ms;
-      const gains = crossfadeGains(progress);
-      if (fade.from !== null) this.fadeGain[fade.from] = gains.out;
-      this.fadeGain[fade.to] = fade.from === null ? Math.min(1, Math.max(0, progress)) : gains.in;
+      for (const { deck, from } of fade.out) this.fadeGain[deck] = fadeOutGain(from, progress);
+      this.fadeGain[fade.to] = fadeInGain(fade.toFrom, progress, fade.out.length > 0);
       if (progress >= 1) {
-        if (fade.from !== null) {
-          this.decks[fade.from].pause();
-          this.fadeGain[fade.from] = 0;
+        for (const { deck } of fade.out) {
+          this.decks[deck].pause();
+          this.fadeGain[deck] = 0;
         }
         this.fadeGain[fade.to] = 1;
         this.fade = null;

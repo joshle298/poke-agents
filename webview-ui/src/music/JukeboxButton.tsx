@@ -2,7 +2,7 @@ import { Button } from '../components/ui/Button.js';
 import { MenuItem } from '../components/ui/MenuItem.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { musicStore, useMusic } from './musicStore.js';
-import { JUKEBOX_UI_ATTRIBUTE } from './useMusicFeed.js';
+import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 
 const attrs = { [JUKEBOX_UI_ATTRIBUTE]: '' };
 

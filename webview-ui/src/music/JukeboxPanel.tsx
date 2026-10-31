@@ -32,7 +32,7 @@ import {
 } from './format.js';
 import { Marquee } from './Marquee.js';
 import { type AppSource, musicStore, pendingKey, sourceAvailable, useMusic } from './musicStore.js';
-import { JUKEBOX_UI_ATTRIBUTE } from './useMusicFeed.js';
+import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 
 const SOURCES: readonly MusicSourceId[] = ['folder', 'apple', 'spotify'];
 const jukeboxAttrs = { [JUKEBOX_UI_ATTRIBUTE]: '' };
@@ -86,7 +86,7 @@ function MenuRow({
 
 function ListBox({ children }: { children: ReactNode }) {
   return (
-    <div className="border-2 border-border overflow-y-auto pixel-scrollbar h-[min(340px,42vh)] py-2">
+    <div className="border-2 border-border overflow-y-auto pixel-scrollbar h-[min(200px,24vh)] sm:h-[min(340px,42vh)] py-2">
       {children}
     </div>
   );
@@ -293,7 +293,7 @@ function AlbumTracks({
       </div>
       <div
         ref={list}
-        className="border-2 border-border overflow-y-auto pixel-scrollbar h-[min(240px,30vh)] py-2"
+        className="border-2 border-border overflow-y-auto pixel-scrollbar h-[min(160px,20vh)] sm:h-[min(240px,30vh)] py-2"
       >
         {album.tracks.map((track) => {
           const current = folder.trackId === track.id && folder.station !== null;
@@ -729,7 +729,9 @@ function NowPlayingFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-6 pt-6 border-t-2 border-border">
+    // Sticky: on a phone the lists above scroll under the controls instead of
+    // pushing them below the fold.
+    <div className="sticky bottom-0 z-10 bg-bg flex flex-col gap-6 pt-6 pb-4 border-t-2 border-border">
       <div
         className="flex items-center gap-6 py-3 px-8 border-2 border-border bg-btn-bg"
         data-testid="music-now-playing-line"

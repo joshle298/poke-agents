@@ -8,7 +8,13 @@ import {
   MUSIC_DUCK_RELEASE_MS,
 } from '../src/music/constants.js';
 import { createDucker } from '../src/music/duck.js';
-import { crossfadeGains, crossfadeMsFor, deckVolume } from '../src/music/mix.js';
+import {
+  crossfadeGains,
+  crossfadeMsFor,
+  deckVolume,
+  fadeInGain,
+  fadeOutGain,
+} from '../src/music/mix.js';
 
 function clocked() {
   let t = 10_000;
@@ -48,6 +54,17 @@ describe('duckMusic', () => {
     expect(at(700)).toBeCloseTo(0.2);
     expect(at(799)).toBeCloseTo(0.2);
     expect(at(800 + MUSIC_DUCK_RELEASE_MS)).toBe(1);
+  });
+
+  it('never cuts a long duck short when a short cry plays inside it', () => {
+    const { ducker, at } = clocked();
+    at(0);
+    ducker.duck(3_000);
+    at(500);
+    ducker.duck(200);
+    expect(at(1_000)).toBeCloseTo(MUSIC_DUCK_LEVEL);
+    expect(at(2_999)).toBeCloseTo(MUSIC_DUCK_LEVEL);
+    expect(at(3_000 + MUSIC_DUCK_RELEASE_MS)).toBe(1);
   });
 
   it('starts a new duck from where the last release had got to (no jump)', () => {
@@ -98,6 +115,22 @@ describe('crossfade math', () => {
     expect(crossfadeMsFor(180)).toBe(MUSIC_CROSSFADE_MS);
     expect(crossfadeMsFor(3)).toBe(1_000);
     expect(crossfadeMsFor(Number.NaN)).toBe(MUSIC_CROSSFADE_MS);
+  });
+
+  it('fades each deck from the gain it has, never back up', () => {
+    // Outgoing: down from where it was, along the equal-power curve.
+    expect(fadeOutGain(0.3, 0)).toBeCloseTo(0.3);
+    expect(fadeOutGain(0.3, 0.5)).toBeCloseTo(0.3 * Math.SQRT1_2);
+    expect(fadeOutGain(0.3, 1)).toBeCloseTo(0);
+    // Incoming: up from where it was; linear from silence, equal power across.
+    expect(fadeInGain(0.4, 0, true)).toBeCloseTo(0.4);
+    expect(fadeInGain(0.4, 1, true)).toBeCloseTo(1);
+    expect(fadeInGain(0, 0.5, false)).toBeCloseTo(0.5);
+    expect(fadeInGain(0, 0.5, true)).toBeCloseTo(Math.SQRT1_2);
+    for (let p = 0; p < 1; p += 0.05) {
+      expect(fadeOutGain(0.7, p + 0.05)).toBeLessThanOrEqual(fadeOutGain(0.7, p) + 1e-12);
+      expect(fadeInGain(0.2, p + 0.05, true)).toBeGreaterThanOrEqual(fadeInGain(0.2, p, true));
+    }
   });
 
   it('multiplies volume, fade and duck into 0..1', () => {

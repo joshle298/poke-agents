@@ -9,6 +9,7 @@ import { sendMusicCommand } from './actions.js';
 import { FolderPlayer, type MediaSessionPort } from './folderPlayer.js';
 import { type AppSource, musicStore } from './musicStore.js';
 import { writeMusicPrefs } from './preferences.js';
+import { activateSource } from './sourceSwitch.js';
 import { musicTrackUrl } from './trackUrl.js';
 
 let player: FolderPlayer | null = null;
@@ -21,6 +22,14 @@ export function folderPlayer(): FolderPlayer {
         createAudio: () => new Audio(),
         mediaSession: browserMediaSession(),
         urlFor: musicTrackUrl,
+        isServed: async (id) => {
+          try {
+            const res = await fetch(musicTrackUrl(id), { method: 'HEAD', cache: 'no-store' });
+            return res.ok;
+          } catch {
+            return false;
+          }
+        },
         now: () => performance.now(),
         rng: Math.random,
         onChange: (state) => {
@@ -65,13 +74,12 @@ export function existingFolderPlayer(): FolderPlayer | null {
 }
 
 function activate(source: MusicSourceId): void {
-  const { activeSource, apps } = musicStore.getState();
-  if (source !== 'folder') player?.pause();
-  if (source !== activeSource && activeSource !== 'folder' && apps[activeSource]?.playing) {
-    sendMusicCommand({ action: 'pause', source: activeSource });
-  }
-  musicStore.setActiveSource(source);
-  writeMusicPrefs({ source });
+  activateSource(source, {
+    store: musicStore,
+    pauseFolder: () => player?.pause(),
+    pauseApp: (app) => sendMusicCommand({ action: 'pause', source: app }),
+    remember: (s) => writeMusicPrefs({ source: s }),
+  });
 }
 
 /** Play a folder station ('all' or an album id), optionally from a track. */

@@ -1,8 +1,13 @@
-import { MUSIC_PILL_BOTTOM_PX, MUSIC_PILL_MAX_WIDTH_PX, MUSIC_PILL_Z_INDEX } from './constants.js';
+import {
+  MUSIC_PILL_BOTTOM_PX,
+  MUSIC_PILL_MAX_WIDTH_PX,
+  MUSIC_PILL_MOBILE_OFFSET_PX,
+  MUSIC_PILL_Z_INDEX,
+} from './constants.js';
 import { pillText } from './format.js';
 import { Marquee } from './Marquee.js';
 import { musicStore, useMusic } from './musicStore.js';
-import { JUKEBOX_UI_ATTRIBUTE } from './useMusicFeed.js';
+import { JUKEBOX_UI_ATTRIBUTE } from './resumeOnGesture.js';
 
 /**
  * While Jukebox music plays: a small pill with the track and album. Desktop:
@@ -26,7 +31,9 @@ export function NowPlayingPill({ isMobile }: { isMobile: boolean }) {
       style={{
         zIndex: MUSIC_PILL_Z_INDEX,
         maxWidth: MUSIC_PILL_MAX_WIDTH_PX,
-        ...(isMobile ? { marginTop: 40 } : { bottom: MUSIC_PILL_BOTTOM_PX }),
+        ...(isMobile
+          ? { marginTop: MUSIC_PILL_MOBILE_OFFSET_PX }
+          : { bottom: MUSIC_PILL_BOTTOM_PX }),
       }}
       title="Open the Jukebox"
       aria-label={`Now playing: ${text}. Open the Jukebox`}

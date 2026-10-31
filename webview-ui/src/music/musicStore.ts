@@ -148,6 +148,12 @@ export class MusicStore {
     });
   }
 
+  /** The connection dropped: replies to what was sent before are lost, so
+   *  nothing may stay pending (a stuck "Looking…" or disabled button). */
+  clearPending(): void {
+    if (Object.keys(this.state.pending).length > 0) this.set({ ...this.state, pending: {} });
+  }
+
   setOpen(open: boolean): void {
     if (this.state.open !== open) this.set({ ...this.state, open });
   }
