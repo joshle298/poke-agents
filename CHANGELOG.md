@@ -14,6 +14,8 @@
 
 - A working session with no tool running reads **Working** on its label instead of Idle.
 - Fainted Pokémon turn grey instead of a muddy brown.
+- A party slot whose name doesn't fit keeps the end of it in view ("recorder-pl…review-1"), so sessions that share a prefix stay apart.
+- A Lead's links start at the Lead, not at the chair under it.
 - **A Lead's children stay put.** A Lead with more than 12 children no longer swaps them in and out of the office as their activity re-ranks: a shown child stays until it falls 4 places past the cap.
 
 ### Changes

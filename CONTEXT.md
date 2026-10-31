@@ -162,7 +162,7 @@ What an Area does beyond directory mapping. A **Meadow** is where characters who
 _Avoid_: zone
 
 **Pokémon Town**:
-The bundled layout a new standalone office opens on: the Lab (desks for working agents and a lectern for Leads), the Meadow with tall grass and a fenced pond garden, and the Pokémon Center with its beds (its own heart-and-leaf emblem), inside a forest edge. The classic office is the other bundled layout; the editor's Templates panel switches between them.
+The bundled layout a new standalone office opens on: the Lab (desks for working agents and a lectern for Leads), the Meadow with tall grass and a fenced pond garden, and the Pokémon Center with its beds (its own pink-heart emblem), inside a forest edge. The classic office is the other bundled layout; the editor's Templates panel switches between them.
 _Avoid_: map
 
 **Area mapping**:
