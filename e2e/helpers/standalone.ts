@@ -159,6 +159,8 @@ function spawnStandaloneHost(args: {
     ...process.env,
     HOME: args.homeDir,
     USERPROFILE: args.homeDir,
+    // Never download Pokémon sprites from a test run.
+    POKE_AGENTS_SPRITES: 'off',
   };
   if (args.mockClaude) {
     // The host's PTYs inherit its env, so a browser-launched `claude` resolves
@@ -175,6 +177,11 @@ function spawnStandaloneHost(args: {
       args.hostPort.toString(),
       '--host',
       '127.0.0.1',
+      // Every standalone spec drives Claude Code (hooks, launches, the
+      // terminal, Directories), which is opt-in; and none may reach the
+      // Conductor API.
+      '--claude',
+      '--no-conductor',
       ...(args.cliArgs ?? []),
     ],
     {
@@ -249,7 +256,7 @@ async function drainRecordedMessages(page: Page): Promise<RecordedServerMessage[
 /** The trailing `\s` is load-bearing: stdout arrives in chunks, and without a
  *  terminator a half-delivered line would match and yield a truncated URL that
  *  still parses (`http://127.0.0.1:501`). */
-const PRINTED_URL_PATTERN = /Pixel Agents server running at (\S+)\s/;
+const PRINTED_URL_PATTERN = /(?:Pixel Agents server|Poke Agents) running at (\S+)\s/;
 
 /**
  * Wait for the URL line the CLI prints on its own stdout, and hand back exactly
