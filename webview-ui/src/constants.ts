@@ -560,3 +560,75 @@ export const VISUAL_VIEWPORT_FULL_EPSILON_PX = 1;
  *  (with an editable focused) = the software keyboard is up. Well above an
  *  address bar collapsing (~56 px), well below any on-screen keyboard. */
 export const KEYBOARD_MIN_HEIGHT_PX = 150;
+
+// ── Conductor UI ─────────────────────────────────────────────
+// Party bar, Pokédex panel, Sessions and PC Box modals, battle log and toasts
+// for stream-provider (Conductor) agents. Colors live in index.css.
+/** Window width (CSS px) from which the party bar shows full slots and the
+ *  Pokédex docks beside the office; below it the bar is portraits only and
+ *  the Pokédex opens as a drawer over the office. */
+export const PARTY_WIDE_MIN_WINDOW_PX = 900;
+/** Party bar width with full slots (portrait, nickname, Lv, HP, status). */
+export const PARTY_BAR_WIDE_WIDTH_PX = 200;
+/** Party bar width with portraits only (matches the upstream card column). */
+export const PARTY_BAR_COMPACT_WIDTH_PX = 72;
+/** Indent per nesting level for a Lead's children in the wide party bar. */
+export const PARTY_CHILD_INDENT_PX = 10;
+/** Deepest nesting the party bar indents (children of children stop here). */
+export const PARTY_MAX_NEST_DEPTH = 2;
+/** A done agent whose last activity is older than this shows as asleep. */
+export const PARTY_SLEEP_AFTER_MS = 120_000;
+/** Levels at which a Pokémon evolves (when its line has a later stage). A
+ *  species change that crosses one is an evolution; any other is not (a Lead
+ *  promoted to a legendary, for one). */
+export const EVOLUTION_LEVELS: readonly number[] = [16, 36];
+/** How often time-derived slot states (asleep, "synced Xs ago") re-render. */
+export const CONDUCTOR_UI_TICK_MS = 5_000;
+/** Pixel size of a PMD portrait (portraits are drawn at integer multiples). */
+export const PORTRAIT_SOURCE_PX = 40;
+/** Pokédex header portrait size (2× the source). */
+export const POKEDEX_PORTRAIT_PX = 80;
+/** Docked or drawer width of the Pokédex panel. */
+export const POKEDEX_PANEL_WIDTH_PX = 360;
+/** Mobile bottom sheet: below the Intro (45) and the modal stack (50). */
+export const POKEDEX_SHEET_Z_INDEX = 44;
+/** Desktop drawer over the office (narrow windows): above the office chrome
+ *  and the characters' labels and bubbles (41-43), below the Intro (45). */
+export const POKEDEX_DRAWER_Z_INDEX = 44;
+/** Mobile bottom sheet's maximum height, as a fraction of the viewport. */
+export const POKEDEX_SHEET_MAX_HEIGHT_RATIO = 0.72;
+/** requestSessionDetail cadence while the Pokédex is open. */
+export const POKEDEX_REFRESH_MS = 5_000;
+/** An action outcome stays visible in the Pokédex this long. */
+export const POKEDEX_ACTION_RESULT_VISIBLE_MS = 8_000;
+/** What Revive sends to a fainted (errored) session. */
+export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
+/** Deep links the UI will hand to openExternal (the server re-validates). */
+export const CONDUCTOR_DEEP_LINK_PROTOCOL = /^conductor(-[a-z0-9-]+)?:$/;
+export const CONDUCTOR_DEEP_LINK_HOST = 'workspace';
+/** Sessions modal scope choices: activity window in hours (0 = no limit) and
+ *  the cap on characters. */
+export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;
+export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
+/** Battle log: events kept, how long the newest stays up, and its fade. */
+export const BATTLE_LOG_CAPACITY = 30;
+export const BATTLE_LOG_VISIBLE_MS = 4_000;
+export const BATTLE_LOG_FADE_MS = 500;
+/** Distance of the battle log from the office's bottom edge: clears the
+ *  desktop toolbar, which shares the bottom-left corner. */
+export const BATTLE_LOG_BOTTOM_PX = 80;
+export const BATTLE_LOG_BOTTOM_MOBILE_PX = 10;
+export const BATTLE_LOG_MAX_WIDTH_PX = 520;
+/** Per-device preferences (localStorage, not synced through the server). */
+export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
+export const CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
+/** Toasts for Conductor action outcomes: lifetime and how many stack. */
+export const TOAST_VISIBLE_MS = 4_000;
+export const TOAST_MAX_VISIBLE = 3;
+export const TOAST_Z_INDEX = 60;
+/** data-theme value on <html> while the Pokémon theme is on (index.css). */
+export const POKEMON_THEME_NAME = 'pokemon';
+/** Credits links (PMD Sprite Repository and the community art license). */
+export const PMD_SPRITE_SITE_URL = 'https://sprites.pmdcollab.org';
+export const PMD_SPRITE_REPO_URL = 'https://github.com/PMDCollab/SpriteCollab';
+export const CC_BY_NC_LICENSE_URL = 'https://creativecommons.org/licenses/by-nc/4.0/';
