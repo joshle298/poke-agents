@@ -6,6 +6,7 @@ import { MobileKeyBar } from '../components/MobileKeyBar.js';
 import { MobileTerminalPage } from '../components/MobileTerminalPage.js';
 import type { TerminalInputHandle } from '../components/TerminalPane.js';
 import { Button } from '../components/ui/Button.js';
+import type { PartySlot } from '../conductor/party.js';
 import { MOBILE_PASTE_PROMPT } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
 import type { TerminalDrawerController } from '../hooks/useTerminalDrawer.js';
@@ -31,6 +32,13 @@ interface MobileShellProps {
   onCloseAgent: (agentId: number) => void;
   /** The software keyboard is up (useKeyboardViewport). */
   keyboardOpen: boolean;
+  /** A card tap; defaults to the shell's two-step rule. App routes stream
+   *  (Conductor) agents to their Pokédex instead. */
+  onSelectCard?: (agentId: number) => void;
+  /** Show the + launch card (offices that can launch Claude Code). */
+  showLaunch?: boolean;
+  /** Party slot per agent (Pokémon theme portraits). */
+  slotFor?: (agentId: number, now: number) => PartySlot | null;
 }
 
 /**
@@ -54,6 +62,9 @@ export function MobileShell({
   onEditDirectory,
   onCloseAgent,
   keyboardOpen,
+  onSelectCard,
+  showLaunch = true,
+  slotFor,
 }: MobileShellProps) {
   const shellRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -124,7 +135,7 @@ export function MobileShell({
         // The accent border marks the showing pane, so it only exists on the
         // terminal page; the focused character keeps its tint on both.
         activeAgentId={shell.view === 'terminal' ? drawer.activeAgentId : null}
-        onSelectAgent={shell.selectCard}
+        onSelectAgent={onSelectCard ?? shell.selectCard}
         onCloseAgent={onCloseAgent}
         onLaunchDirectory={shell.launch}
         directories={directories}
@@ -134,6 +145,8 @@ export function MobileShell({
         launchUnavailableReason={terminalUnavailableReason}
         getAppearance={drawer.getAppearance}
         statusFor={drawer.statusFor}
+        showLaunch={showLaunch}
+        slotFor={slotFor}
       />
 
       {/* Accessory keys for the TUI, only while the software keyboard is up —

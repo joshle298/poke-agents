@@ -42,12 +42,58 @@
   --color-status-success: #89d185;
   --color-status-error: var(--color-danger);
 
+  /* Controls drawn on the panel fill (checkbox frame) and text on accent fills */
+  --color-control-border: rgba(255, 255, 255, 0.5);
+  --color-on-accent: #ffffff;
+
+  /* Party bar, Pokédex and battle log (Conductor chrome) */
+  --color-panel-inner: transparent;
+  --color-text-shadow: transparent;
+  --color-hp-high: #58d080;
+  --color-hp-mid: #f8c030;
+  --color-hp-low: #f05038;
+  --color-hp-bg: #304030;
+  --color-status-asleep: #8888a8;
+  /* In-house Poké Ball placeholder (generic red/white shape, no official art) */
+  --color-ball-top: #dc0a2d;
+  --color-ball-bottom: #f8f8f0;
+  --color-ball-band: #1a1c2c;
+
   /* Shadow */
   --shadow-pixel: 2px 2px 0px #0a0a14;
 
   /* Non-utility values */
   --vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
   --btn-disabled-opacity: 0.35;
+}
+
+/* Pokémon theme (default on; App sets <html data-theme="pokemon">). Panels
+   read as GBA dialog boxes: near-white fill, dark slate frame, light inner
+   ring, a 1-px text shadow. Approximate Gen-3 tones, not official assets.
+   The page around the office stays dark so VOID tiles read as night. */
+:root[data-theme='pokemon'] {
+  --color-bg: #f8f8f0;
+  --color-bg-dark: #1a1c2c;
+  --color-bg-thumb: #c8d0d8;
+  --color-border: #3c4858;
+  --color-panel-inner: #a8b8c8;
+  --color-accent: #dc0a2d;
+  --color-accent-bright: #ff3b3b;
+  --color-text: #303030;
+  --color-text-muted: #6a6a72;
+  --color-text-shadow: #d0d0c8;
+  --color-btn-bg: #e8e8e0;
+  --color-btn-hover: #d8dce8;
+  --color-active-bg: #ffe8a0;
+  --color-danger: #c03028;
+  --color-warning: #f08030;
+  --color-status-permission: #f8d030;
+  --color-status-active: #6890f0;
+  --color-status-success: #78c850;
+  --color-status-error: #c03028;
+  --color-status-asleep: #a8a8b8;
+  --color-control-border: #3c4858;
+  --shadow-pixel: 2px 2px 0px #1a1c2c;
 }
 
 @theme inline {
@@ -88,6 +134,14 @@
   --color-status-active: var(--color-status-active);
   --color-status-success: var(--color-status-success);
   --color-status-error: var(--color-status-error);
+  --color-status-asleep: var(--color-status-asleep);
+  --color-control-border: var(--color-control-border);
+  --color-on-accent: var(--color-on-accent);
+  --color-panel-inner: var(--color-panel-inner);
+  --color-hp-high: var(--color-hp-high);
+  --color-hp-mid: var(--color-hp-mid);
+  --color-hp-low: var(--color-hp-low);
+  --color-hp-bg: var(--color-hp-bg);
 
   /* Shadow */
   --shadow-pixel: var(--shadow-pixel);
@@ -117,6 +171,12 @@
 @layer components {
   /* Panel with standard pixel-art border + shadow */
   .pixel-panel {
+    @apply bg-bg border-2 border-border rounded-none shadow-pixel;
+  }
+
+  /* Modal panels and the Pokédex share the panel look; under the Pokémon
+     theme both get the GBA double frame (see below). */
+  .pixel-dialog {
     @apply bg-bg border-2 border-border rounded-none shadow-pixel;
   }
 
@@ -340,6 +400,86 @@
       'opsz' 24;
     font-size: 1em;
     line-height: 1;
+  }
+}
+
+/* GBA dialog frame under the Pokémon theme: inner light ring inside the dark
+   border, plus the 1-px text shadow. Outside the theme the ring and shadow
+   tokens are transparent, so these rules change nothing. */
+:root[data-theme='pokemon'] .pixel-panel,
+:root[data-theme='pokemon'] .pixel-dialog {
+  box-shadow:
+    inset 0 0 0 2px var(--color-panel-inner),
+    var(--shadow-pixel);
+  text-shadow: 1px 1px 0 var(--color-text-shadow);
+}
+
+/* The office void stays night-dark under the theme: OfficeCanvas paints its
+   container with bg-bg, which the theme turns into the light dialog fill. */
+:root[data-theme='pokemon'] div:has(> canvas[data-testid='office-canvas']) {
+  background-color: var(--color-bg-dark);
+}
+
+/* The battle log's one-line dialog box (shown only under the Pokémon theme). */
+.battle-log {
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 2px solid var(--color-border);
+  box-shadow:
+    inset 0 0 0 2px var(--color-panel-inner),
+    var(--shadow-pixel);
+  text-shadow: 1px 1px 0 var(--color-text-shadow);
+  transition: opacity var(--battle-log-fade, 500ms) linear;
+}
+
+/* A party slot whose session needs you blinks (hard steps, no easing). */
+.party-attention {
+  animation: party-attention 1s steps(1, end) infinite;
+}
+
+/* In-house pixel Poké Ball: red top, white bottom, dark band and button,
+   chamfered to an octagon so it reads round at pixel scale. */
+.pokeball-icon {
+  position: relative;
+  background: linear-gradient(
+    to bottom,
+    var(--color-ball-band) 0 8%,
+    var(--color-ball-top) 8% 42%,
+    var(--color-ball-band) 42% 58%,
+    var(--color-ball-bottom) 58% 92%,
+    var(--color-ball-band) 92% 100%
+  );
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+.pokeball-icon::after {
+  content: '';
+  position: absolute;
+  left: 36%;
+  top: 36%;
+  width: 28%;
+  height: 28%;
+  background: var(--color-ball-bottom);
+  box-shadow: 0 0 0 2px var(--color-ball-band);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .party-attention {
+    animation: none;
+    outline: 2px solid var(--color-status-permission);
+    outline-offset: -2px;
+  }
+  .battle-log {
+    transition: none;
+  }
+}
+
+@keyframes party-attention {
+  0%,
+  100% {
+    border-color: var(--color-status-permission);
+  }
+  50% {
+    border-color: transparent;
   }
 }
 

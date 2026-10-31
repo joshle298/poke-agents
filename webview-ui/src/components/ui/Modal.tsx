@@ -37,7 +37,7 @@ export function Modal({
         style={{ zIndex: zIndex + 1 }}
       >
         <div
-          className={`pointer-events-auto bg-bg border-2 border-border rounded-none shadow-pixel p-4 min-w-[min(320px,100%)] max-w-full max-h-full overflow-y-auto overflow-x-hidden ${className}`}
+          className={`pointer-events-auto pixel-dialog p-4 min-w-[min(320px,100%)] max-w-full max-h-full overflow-y-auto overflow-x-hidden ${className}`}
         >
           {/* Sticky so the close button stays reachable while long content
               (changelog, settings) scrolls under it. */}

@@ -1,23 +1,48 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { toMajorMinor } from './changelogData.js';
+import type { SelectMods, TabStatus } from './components/AgentCard.js';
+import type { CardBarLayout } from './components/AgentCardBar.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
+import { BattleLog } from './components/BattleLog.js';
 import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
+import { ConductorEmptyOffice } from './components/ConductorEmptyOffice.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
+import { CreditsModal } from './components/CreditsModal.js';
 import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { PcBoxModal } from './components/PcBoxModal.js';
+import { SessionPanel } from './components/SessionPanel.js';
+import { SessionsModal } from './components/SessionsModal.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
+import { Toasts } from './components/Toasts.js';
 import { Tooltip } from './components/Tooltip.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
 import { ZoomControls } from './components/ZoomControls.js';
-import { OFFICE_CANVAS_TEST_ID } from './constants.js';
+import { openInConductor, setPokemonTheme } from './conductor/actions.js';
+import type { ConductorAgent } from './conductor/conductorStore.js';
+import { conductorStore, isStreamProvider, useConductor } from './conductor/conductorStore.js';
+import { useWindowWidth } from './conductor/hooks.js';
+import { buildPartySlot, partyOrder } from './conductor/party.js';
+import { useBoolPref } from './conductor/preferences.js';
+import { useConductorFeed } from './conductor/useConductorFeed.js';
+import {
+  BATTLE_LOG_BOTTOM_MOBILE_PX,
+  BATTLE_LOG_BOTTOM_PX,
+  BATTLE_LOG_STORAGE_KEY,
+  CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY,
+  OFFICE_CANVAS_TEST_ID,
+  PARTY_WIDE_MIN_WINDOW_PX,
+  POKEMON_THEME_NAME,
+  TERMINAL_SIDEBAR_WIDTH_PX,
+} from './constants.js';
 import { useDirectoryEditor } from './hooks/useDirectoryEditor.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js';
@@ -60,7 +85,17 @@ function getOfficeState(): OfficeState {
   return officeStateRef.current;
 }
 
+/** A stream-provider (Conductor) agent: its character and card open the
+ *  Pokédex instead of focusing a terminal. */
+function isStreamAgent(agent: ConductorAgent | undefined): agent is ConductorAgent {
+  return agent !== undefined && isStreamProvider(agent.providerId);
+}
+
 function App() {
+  // Conductor chrome store. Registered before useExtensionMessages (effects
+  // run in call order), so it is listening before webviewReady goes out.
+  useConductorFeed();
+
   // Browser runtime (dev or static dist): dispatch mock messages after the
   // useExtensionMessages listener has been registered.
   useEffect(() => {
@@ -134,6 +169,38 @@ function App() {
   const [hooksTooltipDismissed, setHooksTooltipDismissed] = useState(false);
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false);
+
+  // ── Conductor chrome ────────────────────────────────────────
+  // Which providers feed the office decides the chrome: Claude Code brings
+  // + Agent, hooks and Directories; Conductor brings Sessions and the PC Box.
+  const activeProviders = useConductor((s) => s.activeProviders);
+  const claudeActive = activeProviders.includes('claude');
+  const conductorActive = activeProviders.includes('conductor');
+  const conductorAgents = useConductor((s) => s.agents);
+  const speciesMap = useConductor((s) => s.species);
+  const pokemonTheme = useConductor((s) => s.pokemonTheme);
+  const [isSessionsOpen, setIsSessionsOpen] = useState(false);
+  const [isPcBoxOpen, setIsPcBoxOpen] = useState(false);
+  const [isCreditsOpen, setIsCreditsOpen] = useState(false);
+  // The agent whose Pokédex is open (stream agents only).
+  const [detailAgentId, setDetailAgentId] = useState<number | null>(null);
+  const [battleLogOn, setBattleLogOn] = useBoolPref(BATTLE_LOG_STORAGE_KEY, true);
+  // Per-device (localStorage). The office's link layer must follow the same
+  // value: integration hands it to the office's setShowConnections.
+  const [showConnections, setShowConnections] = useBoolPref(
+    CONDUCTOR_SHOW_CONNECTIONS_STORAGE_KEY,
+    true,
+  );
+  const windowWidth = useWindowWidth();
+  const wideWindow = windowWidth >= PARTY_WIDE_MIN_WINDOW_PX;
+
+  // The theme is the server's setting (settingsLoaded / pokemonThemeUpdated),
+  // applied as <html data-theme>, which swaps the index.css palette.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (pokemonTheme) root.dataset.theme = POKEMON_THEME_NAME;
+    else delete root.dataset.theme;
+  }, [pokemonTheme]);
 
   // Mobile shell (phones, touch tablets): office and terminal as sliding
   // full-screen pages with the cards in a bottom bar. Desktop keeps the
@@ -334,11 +401,35 @@ function App() {
 
   const { reveal: revealTerminal } = terminalDrawer;
   const { showTerminal: showMobileTerminal } = mobileShell;
+  // A stream agent's session opens in its own app (⌘/Ctrl-click, double-click,
+  // or the Pokédex button). A read-only office would only be refused.
+  const openAgentExternally = useCallback(
+    (agent: ConductorAgent) => {
+      if (!officeReadOnly) openInConductor(agent.externalUrl);
+    },
+    [officeReadOnly],
+  );
+
   const handleClick = useCallback(
-    (agentId: number) => {
+    (agentId: number, mods?: SelectMods) => {
       // If clicked agent is a sub-agent, focus the parent's terminal instead
       const os = getOfficeState();
       const focusId = os.terminalOwnerOf(agentId);
+      // Stream (Conductor) agents have no terminal: the click opens their
+      // Pokédex (the canvas already toggled the selection). A click that
+      // deselected the agent whose Pokédex is open closes it again.
+      const streamAgent = conductorStore.getState().agents[focusId];
+      if (isStreamAgent(streamAgent)) {
+        if (mods?.meta || mods?.double) {
+          openAgentExternally(streamAgent);
+          setDetailAgentId(focusId);
+          return;
+        }
+        setDetailAgentId((open) =>
+          open === focusId && os.selectedAgentId !== focusId ? null : focusId,
+        );
+        return;
+      }
       transport.send({ type: 'focusAgent', id: focusId });
       // Standalone: focusAgent is a no-op server-side (there's no editor to
       // raise a panel in), so focus is resolved here — reveal the agent's tab
@@ -353,17 +444,107 @@ function App() {
         if (isMobile) showMobileTerminal();
       }
     },
-    [terminalAgentIds, isMobile, revealTerminal, showMobileTerminal],
+    [terminalAgentIds, isMobile, revealTerminal, showMobileTerminal, openAgentExternally],
   );
 
   // Card click when there is no terminal pane to switch (VS Code, or a
   // watch-only standalone session): ask the host to raise the agent's own
   // terminal — VS Code shows the editor terminal, standalone has nothing to
-  // show — and select its character so the office follows the click.
-  const handleCardSelect = useCallback((agentId: number) => {
-    transport.send({ type: 'focusAgent', id: agentId });
+  // show — and select its character so the office follows the click. A
+  // stream agent's card selects it and opens its Pokédex instead.
+  const handleCardSelect = useCallback(
+    (agentId: number, mods?: SelectMods) => {
+      const streamAgent = conductorStore.getState().agents[agentId];
+      getOfficeState().selectAndFollow(agentId);
+      if (isStreamAgent(streamAgent)) {
+        if (mods?.meta || mods?.double) openAgentExternally(streamAgent);
+        setDetailAgentId(agentId);
+        return;
+      }
+      transport.send({ type: 'focusAgent', id: agentId });
+    },
+    [openAgentExternally],
+  );
+
+  // Mixed mode: cards of agents with a terminal pane are its tabs; every
+  // other card (adopted or Conductor agents) selects as above.
+  const { select: selectTerminalTab } = terminalDrawer;
+  const handleDrawerCardSelect = useCallback(
+    (agentId: number, mods?: SelectMods) => {
+      if (terminalAgentIds.includes(agentId)) selectTerminalTab(agentId);
+      else handleCardSelect(agentId, mods);
+    },
+    [terminalAgentIds, selectTerminalTab, handleCardSelect],
+  );
+
+  // Mobile card tap: stream agents get their Pokédex sheet; the rest keep the
+  // shell's two-step focus-then-terminal rule.
+  const { selectCard: selectMobileCard } = mobileShell;
+  const handleMobileCardSelect = useCallback(
+    (agentId: number) => {
+      if (isStreamAgent(conductorStore.getState().agents[agentId])) {
+        getOfficeState().selectAndFollow(agentId);
+        setDetailAgentId(agentId);
+        return;
+      }
+      selectMobileCard(agentId);
+    },
+    [selectMobileCard],
+  );
+
+  // Jump from a Pokédex entry to the peer session it names.
+  const handleJumpToAgent = useCallback((agentId: number) => {
     getOfficeState().selectAndFollow(agentId);
+    setDetailAgentId(agentId);
   }, []);
+
+  const closeDetail = useCallback(() => setDetailAgentId(null), []);
+  const isInOffice = useCallback((id: number) => agents.includes(id), [agents]);
+
+  // The Pokédex closes when its agent leaves the office (hidden, deposited,
+  // scoped out).
+  const detailAgentPresent = detailAgentId !== null && agents.includes(detailAgentId);
+  useEffect(() => {
+    if (detailAgentId !== null && !detailAgentPresent) setDetailAgentId(null);
+  }, [detailAgentId, detailAgentPresent]);
+
+  // ── Party bar ───────────────────────────────────────────────
+  // Theme on: an in-flow party (full slots on wide windows, portraits below),
+  // Leads first with their children nested. Theme off: the upstream column.
+  const cardBarLayout: CardBarLayout = pokemonTheme ? (wideWindow ? 'wide' : 'compact') : 'overlay';
+  const partyEntries = useMemo(
+    () =>
+      partyOrder(
+        agents,
+        (id) =>
+          conductorAgents[id]?.leadAgentId ?? getOfficeState().characters.get(id)?.leadAgentId,
+      ),
+    [agents, conductorAgents],
+  );
+  const cardAgentIds = useMemo(
+    () => (pokemonTheme ? partyEntries.map((e) => e.id) : agents),
+    [pokemonTheme, partyEntries, agents],
+  );
+  const slotFor = useMemo(() => {
+    if (!pokemonTheme) return undefined;
+    const depthById = new Map(partyEntries.map((e) => [e.id, e.depth]));
+    const state = { agents: conductorAgents, species: speciesMap };
+    return (id: number, now: number) => buildPartySlot(state, id, depthById.get(id) ?? 0, now);
+  }, [pokemonTheme, partyEntries, conductorAgents, speciesMap]);
+  const cardTitleFor = useCallback((id: number) => conductorAgents[id]?.label, [conductorAgents]);
+  // A Conductor agent's × hides its session (the server routes closeAgent).
+  const closeTitleFor = useCallback(
+    (id: number) => (isStreamAgent(conductorAgents[id]) ? 'Hide session' : 'Close agent'),
+    [conductorAgents],
+  );
+  // A fainted (errored) session's dot turns red; otherwise the drawer's
+  // activity reading.
+  const { statusFor: drawerStatusFor } = terminalDrawer;
+  const cardStatusFor = useCallback(
+    (id: number): TabStatus | null =>
+      conductorAgents[id]?.status === 'error' ? 'error' : drawerStatusFor(id),
+    [conductorAgents, drawerStatusFor],
+  );
 
   const officeState = getOfficeState();
 
@@ -641,13 +822,20 @@ function App() {
           onEditDirectory={directoryEditor.edit}
           terminalAvailable={terminalAvailable}
           terminalUnavailableReason={terminalUnavailableReason}
+          claudeActive={claudeActive}
+          conductorActive={conductorActive}
+          isSessionsOpen={isSessionsOpen}
+          onOpenSessions={() => setIsSessionsOpen(true)}
+          isPcBoxOpen={isPcBoxOpen}
+          onOpenPcBox={() => setIsPcBoxOpen(true)}
         />
       )}
 
       {/* Mobile: Settings floats top-left (the layout editor stays desktop-
-            only — its tools are drag/hover-driven). */}
+            only — its tools are drag/hover-driven), with Sessions and PC
+            beside it when Conductor feeds the office. */}
       {isMobile && !isDebugMode && !officeReadOnly && (
-        <div className="absolute mobile-safe-top left-8 z-20">
+        <div className="absolute mobile-safe-top left-8 z-20 flex gap-4">
           <Button
             size="sm"
             variant={isSettingsOpen ? 'active' : 'default'}
@@ -656,7 +844,55 @@ function App() {
           >
             Settings
           </Button>
+          {conductorActive && (
+            <>
+              <Button
+                size="sm"
+                variant={isSessionsOpen ? 'active' : 'default'}
+                className="border-border! shadow-pixel"
+                onClick={() => setIsSessionsOpen(true)}
+              >
+                Sessions
+              </Button>
+              <Button
+                size="sm"
+                variant={isPcBoxOpen ? 'active' : 'default'}
+                className="border-border! shadow-pixel"
+                onClick={() => setIsPcBoxOpen(true)}
+              >
+                PC
+              </Button>
+            </>
+          )}
         </div>
+      )}
+
+      {/* Conductor on and nobody here: sign-in steps or "No sessions in scope". */}
+      {conductorActive && agents.length === 0 && !isDebugMode && (
+        <ConductorEmptyOffice
+          onOpenSessions={officeReadOnly ? null : () => setIsSessionsOpen(true)}
+        />
+      )}
+
+      {pokemonTheme && battleLogOn && !isDebugMode && (
+        <BattleLog bottomPx={isMobile ? BATTLE_LOG_BOTTOM_MOBILE_PX : BATTLE_LOG_BOTTOM_PX} />
+      )}
+
+      {/* Narrow desktop windows: the Pokédex opens as a drawer over the
+          office's right edge (clear of the upstream card column, which
+          overlays that edge when the theme is off). */}
+      {!isMobile && !wideWindow && detailAgentPresent && detailAgentId !== null && (
+        <SessionPanel
+          key={detailAgentId}
+          agentId={detailAgentId}
+          mode="drawer"
+          rightInsetPx={cardBarLayout === 'overlay' ? TERMINAL_SIDEBAR_WIDTH_PX : 0}
+          readOnly={officeReadOnly}
+          appearance={terminalDrawer.getAppearance(detailAgentId)}
+          isInOffice={isInOffice}
+          onJump={handleJumpToAgent}
+          onClose={closeDetail}
+        />
       )}
 
       <VersionIndicator
@@ -683,6 +919,9 @@ function App() {
             isSettingsOpen ||
             isChangelogOpen ||
             isHooksInfoOpen ||
+            isSessionsOpen ||
+            isPcBoxOpen ||
+            isCreditsOpen ||
             showMigrationNotice ||
             editor.isEditMode
           }
@@ -691,6 +930,20 @@ function App() {
 
       <ConnectionIndicator />
     </div>
+  );
+
+  // Wide windows dock the Pokédex as a flex sibling of the office.
+  const dockedPanel = wideWindow && detailAgentPresent && detailAgentId !== null && (
+    <SessionPanel
+      key={detailAgentId}
+      agentId={detailAgentId}
+      mode="docked"
+      readOnly={officeReadOnly}
+      appearance={terminalDrawer.getAppearance(detailAgentId)}
+      isInOffice={isInOffice}
+      onJump={handleJumpToAgent}
+      onClose={closeDetail}
+    />
   );
 
   return (
@@ -708,7 +961,7 @@ function App() {
           office={officeRegion}
           shell={mobileShell}
           drawer={terminalDrawer}
-          agentIds={agents}
+          agentIds={cardAgentIds}
           terminalAgentIds={terminalAgentIds}
           focusedAgentId={focusedAgentId}
           terminalAvailable={terminalAvailable}
@@ -718,10 +971,17 @@ function App() {
           onEditDirectory={directoryEditor.edit}
           onCloseAgent={handleCloseAgent}
           keyboardOpen={keyboard.keyboardOpen}
+          onSelectCard={handleMobileCardSelect}
+          showLaunch={claudeActive}
+          slotFor={slotFor}
         />
       ) : (
         <>
           {officeRegion}
+
+          {/* Party layouts: the Pokédex docks between the office and the
+              party, so the office reflows and the party never moves. */}
+          {cardBarLayout !== 'overlay' && dockedPanel}
 
           {/* Standalone with a terminal: terminalAvailable is only ever true when
               the server reports a working PTY to a tokened session, which VS
@@ -736,28 +996,47 @@ function App() {
             <TerminalDrawer
               agentIds={terminalAgentIds}
               shownAgentId={terminalDrawer.shownAgentId}
-              onSelectAgent={terminalDrawer.select}
-              onCloseAgent={handleCloseAgent}
+              cardBar={
+                <AgentCardBar
+                  agentIds={cardAgentIds}
+                  activeAgentId={terminalDrawer.shownAgentId}
+                  focusedAgentId={focusedAgentId}
+                  getAppearance={terminalDrawer.getAppearance}
+                  statusFor={cardStatusFor}
+                  onSelect={handleDrawerCardSelect}
+                  onClose={handleCloseAgent}
+                  layout={cardBarLayout}
+                  slotFor={slotFor}
+                  titleFor={cardTitleFor}
+                  closeTitleFor={closeTitleFor}
+                />
+              }
               isOpen={terminalDrawer.isOpen}
               onClosePanel={terminalDrawer.close}
               widthPx={terminalDrawer.widthPx}
               onResizeStart={terminalDrawer.onResizeStart}
-              getAppearance={terminalDrawer.getAppearance}
-              statusFor={terminalDrawer.statusFor}
               onStatusChange={terminalDrawer.onStatusChange}
             />
           ) : (
             !isDebugMode && (
               <AgentCardBar
-                agentIds={agents}
+                agentIds={cardAgentIds}
                 focusedAgentId={focusedAgentId}
                 getAppearance={terminalDrawer.getAppearance}
-                statusFor={terminalDrawer.statusFor}
+                statusFor={cardStatusFor}
                 onSelect={handleCardSelect}
                 onClose={handleCloseAgent}
+                layout={cardBarLayout}
+                slotFor={slotFor}
+                titleFor={cardTitleFor}
+                closeTitleFor={closeTitleFor}
               />
             )
           )}
+
+          {/* Upstream card column: it overlays whatever sits to its left, so
+              the Pokédex docks on its right instead. */}
+          {cardBarLayout === 'overlay' && dockedPanel}
         </>
       )}
 
@@ -866,7 +1145,45 @@ function App() {
         }}
         onExportLayout={handleExportLayout}
         onImportLayout={handleImportLayout}
+        claudeActive={claudeActive}
+        conductorActive={conductorActive}
+        onManageSessions={() => setIsSessionsOpen(true)}
+        onOpenPcBox={() => setIsPcBoxOpen(true)}
+        pokemonTheme={pokemonTheme}
+        onTogglePokemonTheme={() => setPokemonTheme(!pokemonTheme)}
+        showConnections={showConnections}
+        onToggleShowConnections={() => setShowConnections(!showConnections)}
+        battleLog={battleLogOn}
+        onToggleBattleLog={() => setBattleLogOn(!battleLogOn)}
+        onOpenCredits={() => setIsCreditsOpen(true)}
       />
+
+      {/* Conductor surfaces. Top level for the same reason as the modals
+          above: the mobile track's transform would capture position:fixed. */}
+      <SessionsModal
+        isOpen={isSessionsOpen}
+        onClose={() => setIsSessionsOpen(false)}
+        readOnly={officeReadOnly}
+      />
+      <PcBoxModal
+        isOpen={isPcBoxOpen}
+        onClose={() => setIsPcBoxOpen(false)}
+        readOnly={officeReadOnly}
+      />
+      <CreditsModal isOpen={isCreditsOpen} onClose={() => setIsCreditsOpen(false)} />
+      {isMobile && detailAgentPresent && detailAgentId !== null && (
+        <SessionPanel
+          key={detailAgentId}
+          agentId={detailAgentId}
+          mode="sheet"
+          readOnly={officeReadOnly}
+          appearance={terminalDrawer.getAppearance(detailAgentId)}
+          isInOffice={isInOffice}
+          onJump={handleJumpToAgent}
+          onClose={closeDetail}
+        />
+      )}
+      <Toasts />
 
       {showMigrationNotice && (
         <MigrationNotice onDismiss={() => setMigrationNoticeDismissed(true)} />

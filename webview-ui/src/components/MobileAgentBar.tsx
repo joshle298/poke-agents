@@ -1,9 +1,12 @@
 import type { TouchEvent as ReactTouchEvent } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { useNow } from '../conductor/hooks.js';
+import type { PartySlot } from '../conductor/party.js';
 import {
   CARD_REORDER_LONG_PRESS_MS,
   CARD_SCROLL_INTO_VIEW_MARGIN_PX,
+  CONDUCTOR_UI_TICK_MS,
   MOBILE_CARD_ORDER_STORAGE_KEY,
 } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
@@ -37,6 +40,12 @@ interface MobileAgentBarProps {
   launchUnavailableReason: string | null;
   getAppearance: (agentId: number) => AgentAppearance;
   statusFor: (agentId: number) => TabStatus | null;
+  /** Show the + launch card (Claude Code offices). A Conductor-only office
+   *  has nothing to launch. */
+  showLaunch?: boolean;
+  /** Party slot per agent as of `now` (Pokémon theme): the card shows its
+   *  portrait. */
+  slotFor?: (agentId: number, now: number) => PartySlot | null;
 }
 
 /** Saved order from localStorage; [] on first run or unparseable junk. */
@@ -92,7 +101,10 @@ export function MobileAgentBar({
   launchUnavailableReason,
   getAppearance,
   statusFor,
+  showLaunch = true,
+  slotFor,
 }: MobileAgentBarProps) {
+  const now = useNow(CONDUCTOR_UI_TICK_MS, slotFor !== undefined);
   const [savedOrder, setSavedOrder] = useState<number[]>(loadSavedOrder);
   const displayIds = useMemo(() => mergeOrder(savedOrder, agentIds), [savedOrder, agentIds]);
   const [draggingId, setDraggingId] = useState<number | null>(null);
@@ -281,38 +293,42 @@ export function MobileAgentBar({
         {/* Launch card pinned on the left; only the agent cards scroll.
             A tap opens the launch drawer above it — so the wrapper is the
             positioning context and the outside-press boundary. */}
-        <div ref={launchRef} className="relative shrink-0 flex">
-          <button
-            onClick={canLaunch ? handleLaunchClick : undefined}
-            // A long press must not open the OS callout menu over the drawer.
-            onContextMenu={(e) => e.preventDefault()}
-            disabled={!canLaunch}
-            title={canLaunch ? 'Launch agent' : (launchUnavailableReason ?? 'Terminal unavailable')}
-            className={`flex items-center justify-center shrink-0 px-14 border-2 rounded-none text-2xl leading-none select-none ${
-              canLaunch
-                ? 'bg-accent border-accent text-white cursor-pointer active:bg-accent-bright'
-                : 'bg-btn-bg border-border text-text-muted cursor-default opacity-(--btn-disabled-opacity)'
-            }`}
-          >
-            +
-          </button>
-          <LaunchDrawer
-            isOpen={isLaunchDrawerOpen}
-            directories={directories}
-            onSelect={(directory) => {
-              setIsLaunchDrawerOpen(false);
-              onLaunchDirectory(directory);
-            }}
-            onAddDirectory={() => {
-              setIsLaunchDrawerOpen(false);
-              onAddDirectory();
-            }}
-            onEditDirectory={(directory) => {
-              setIsLaunchDrawerOpen(false);
-              onEditDirectory(directory);
-            }}
-          />
-        </div>
+        {showLaunch && (
+          <div ref={launchRef} className="relative shrink-0 flex">
+            <button
+              onClick={canLaunch ? handleLaunchClick : undefined}
+              // A long press must not open the OS callout menu over the drawer.
+              onContextMenu={(e) => e.preventDefault()}
+              disabled={!canLaunch}
+              title={
+                canLaunch ? 'Launch agent' : (launchUnavailableReason ?? 'Terminal unavailable')
+              }
+              className={`flex items-center justify-center shrink-0 px-14 border-2 rounded-none text-2xl leading-none select-none ${
+                canLaunch
+                  ? 'bg-accent border-accent text-white cursor-pointer active:bg-accent-bright'
+                  : 'bg-btn-bg border-border text-text-muted cursor-default opacity-(--btn-disabled-opacity)'
+              }`}
+            >
+              +
+            </button>
+            <LaunchDrawer
+              isOpen={isLaunchDrawerOpen}
+              directories={directories}
+              onSelect={(directory) => {
+                setIsLaunchDrawerOpen(false);
+                onLaunchDirectory(directory);
+              }}
+              onAddDirectory={() => {
+                setIsLaunchDrawerOpen(false);
+                onAddDirectory();
+              }}
+              onEditDirectory={(directory) => {
+                setIsLaunchDrawerOpen(false);
+                onEditDirectory(directory);
+              }}
+            />
+          </div>
+        )}
         <div
           ref={scrollerRef}
           className="flex items-stretch gap-6 overflow-x-auto no-scrollbar flex-1 min-w-0"
@@ -339,6 +355,8 @@ export function MobileAgentBar({
                   variant={variant}
                   appearance={getAppearance(agentId)}
                   status={statusFor(agentId)}
+                  slot={slotFor?.(agentId, now) ?? null}
+                  compact
                   showClose={variant === 'active'}
                   onSelect={onSelectAgent}
                   onClose={onCloseAgent}

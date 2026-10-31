@@ -25,6 +25,14 @@ import type {
   CatalogEntry,
   CharacterDirectionSprites,
 } from '../../core/src/assets/types.ts';
+import type {
+  ClientMessage,
+  ConductorScope,
+  ConductorSessionSummary,
+  ServerMessage,
+  SessionDetail,
+} from '../../core/src/messages.ts';
+import { transport } from './transport/index.js';
 
 interface MockPayload {
   characters: CharacterDirectionSprites[];
@@ -285,4 +293,495 @@ export function dispatchMockMessages(): void {
   });
 
   console.log('[BrowserMock] Messages dispatched');
+
+  dispatchMockConductor(dispatch);
+}
+
+// ── Conductor mock (Vite dev only) ─────────────────────────────────────────────
+// A few synthetic Conductor sessions so the party bar, Pokédex, Sessions and
+// PC Box can be developed and screenshotted without a server. Every name and
+// message below is made up. No sprites are fetched: species carry names only,
+// so portraits and characters fall back to the upstream art.
+//
+// ?conductor=off  no Conductor at all (the upstream Claude Code office)
+// ?conductor=empty  connected, nobody in scope (empty-office state)
+// ?conductor=auth  no sign-in found (authRequired)
+
+interface MockAgent {
+  id: number;
+  sessionId: string;
+  label: string;
+  workspaceId: string;
+  workspaceName: string;
+  workspaceNumber: number;
+  repo: string;
+  model: string;
+  harness: string;
+  species: number;
+  level: number;
+  status: 'active' | 'waiting' | 'error';
+  awaitingInput?: boolean;
+  errorMessage?: string;
+  tool?: { name: string; status: string };
+  context?: [used: number, window: number];
+  leadAgentId?: number;
+  lastActivityMinutesAgo: number;
+}
+
+const MOCK_SPECIES: Record<number, string> = {
+  4: 'Charmander',
+  7: 'Squirtle',
+  25: 'Pikachu',
+  133: 'Eevee',
+  150: 'Mewtwo',
+};
+
+const MOCK_AGENTS: MockAgent[] = [
+  {
+    id: 1,
+    sessionId: 'mock-session-lead',
+    label: 'Plan the auth refactor',
+    workspaceId: 'mock-ws-41',
+    workspaceName: 'auth-refactor',
+    workspaceNumber: 41,
+    repo: 'acme/web',
+    model: 'claude-sonnet-4-5',
+    harness: 'claude',
+    species: 150,
+    level: 23,
+    status: 'active',
+    tool: { name: 'Bash', status: 'Running conductor session list' },
+    context: [118_000, 200_000],
+    lastActivityMinutesAgo: 0,
+  },
+  {
+    id: 2,
+    sessionId: 'mock-session-redirect',
+    label: 'Fix login redirect',
+    workspaceId: 'mock-ws-42',
+    workspaceName: 'login-redirect',
+    workspaceNumber: 42,
+    repo: 'acme/web',
+    model: 'gpt-5-codex',
+    harness: 'codex',
+    species: 4,
+    level: 12,
+    status: 'waiting',
+    awaitingInput: true,
+    context: [204_000, 272_000],
+    leadAgentId: 1,
+    lastActivityMinutesAgo: 1,
+  },
+  {
+    id: 3,
+    sessionId: 'mock-session-tests',
+    label: 'Write session tests',
+    workspaceId: 'mock-ws-43',
+    workspaceName: 'session-tests',
+    workspaceNumber: 43,
+    repo: 'acme/web',
+    model: 'claude-sonnet-4-5',
+    harness: 'claude',
+    species: 7,
+    level: 17,
+    status: 'active',
+    tool: { name: 'Edit', status: 'Editing session.test.ts' },
+    context: [40_000, 200_000],
+    leadAgentId: 1,
+    lastActivityMinutesAgo: 0,
+  },
+  {
+    id: 4,
+    sessionId: 'mock-session-docs',
+    label: 'Docs pass',
+    workspaceId: 'mock-ws-12',
+    workspaceName: 'docs-pass',
+    workspaceNumber: 12,
+    repo: 'acme/docs',
+    model: 'claude-haiku-4-5',
+    harness: 'claude',
+    species: 25,
+    level: 8,
+    status: 'error',
+    errorMessage: 'The model provider returned an overloaded error.',
+    context: [180_000, 200_000],
+    lastActivityMinutesAgo: 6,
+  },
+  {
+    id: 5,
+    sessionId: 'mock-session-deps',
+    label: 'Dependency bumps',
+    workspaceId: 'mock-ws-13',
+    workspaceName: 'deps',
+    workspaceNumber: 13,
+    repo: 'acme/api',
+    model: 'gpt-5',
+    harness: 'codex',
+    species: 133,
+    level: 5,
+    status: 'waiting',
+    context: [22_000, 272_000],
+    lastActivityMinutesAgo: 45,
+  },
+];
+
+const MOCK_SCOPE: ConductorScope = {
+  creator: 'me',
+  activeWithinHours: 6,
+  showIdle: true,
+  maxSessions: 24,
+};
+
+function mockMinutesAgo(minutes: number): number {
+  return Date.now() - minutes * 60_000;
+}
+
+function mockSessions(): ConductorSessionSummary[] {
+  const inOffice: ConductorSessionSummary[] = MOCK_AGENTS.map((a) => ({
+    sessionId: a.sessionId,
+    label: a.label,
+    workspaceId: a.workspaceId,
+    workspaceName: a.workspaceName,
+    workspaceNumber: a.workspaceNumber,
+    repo: a.repo,
+    model: a.model,
+    harness: a.harness,
+    status: a.status === 'active' ? 'working' : a.status === 'error' ? 'error' : 'idle',
+    lastActivityAt: mockMinutesAgo(a.lastActivityMinutesAgo),
+    hidden: false,
+    pinned: a.id === 1,
+    agentId: a.id,
+    leadSessionId: a.leadAgentId
+      ? MOCK_AGENTS.find((l) => l.id === a.leadAgentId)?.sessionId
+      : undefined,
+    externalUrl: `conductor://workspace?id=${a.workspaceId}&session=${a.sessionId}`,
+    creatorName: 'Dev User',
+  }));
+  return [
+    ...inOffice,
+    {
+      sessionId: 'mock-session-hidden',
+      label: 'Spike: edge caching',
+      workspaceId: 'mock-ws-44',
+      workspaceName: 'edge-cache',
+      workspaceNumber: 44,
+      repo: 'acme/web',
+      model: 'claude-sonnet-4-5',
+      harness: 'claude',
+      status: 'idle',
+      lastActivityAt: mockMinutesAgo(90),
+      hidden: true,
+      creatorName: 'Dev User',
+    },
+    {
+      sessionId: 'mock-session-teammate',
+      label: 'Billing webhooks',
+      workspaceId: 'mock-ws-7',
+      workspaceName: 'billing-webhooks',
+      workspaceNumber: 7,
+      repo: 'acme/api',
+      model: 'gpt-5-codex',
+      harness: 'codex',
+      status: 'working',
+      lastActivityAt: mockMinutesAgo(3),
+      hidden: true,
+      creatorName: 'Another Dev',
+    },
+    {
+      sessionId: 'mock-session-archived-1',
+      label: 'Old onboarding flow',
+      workspaceId: 'mock-ws-30',
+      workspaceName: 'onboarding',
+      workspaceNumber: 30,
+      repo: 'acme/web',
+      status: 'idle',
+      hidden: false,
+      archived: true,
+      archivedAt: mockMinutesAgo(180),
+    },
+    {
+      sessionId: 'mock-session-archived-2',
+      label: 'Upgrade CI runners',
+      workspaceId: 'mock-ws-31',
+      workspaceName: 'ci-runners',
+      workspaceNumber: 31,
+      repo: 'acme/infra',
+      status: 'idle',
+      hidden: false,
+      archived: true,
+      archivedAt: mockMinutesAgo(60 * 26),
+    },
+  ];
+}
+
+function mockDetail(agent: MockAgent): SessionDetail {
+  const peer = agent.leadAgentId ?? (agent.id === 1 ? 3 : undefined);
+  const peerLabel = MOCK_AGENTS.find((a) => a.id === peer)?.label;
+  const entries: SessionDetail['entries'] = [
+    { role: 'user', text: `Please take on: ${agent.label.toLowerCase()}.`, at: mockMinutesAgo(30) },
+    {
+      role: 'assistant',
+      text: 'On it. I will read the relevant files first, then make the change and run the tests.',
+      at: mockMinutesAgo(29),
+    },
+    { role: 'tool', text: 'Reading src/auth/session.ts', at: mockMinutesAgo(28) },
+    { role: 'tool', text: 'Running npm test', at: mockMinutesAgo(20) },
+  ];
+  if (peer !== undefined) {
+    entries.push({
+      role: agent.leadAgentId ? 'peerIn' : 'peerOut',
+      text: 'Status check: how far along are the tests?',
+      at: mockMinutesAgo(12),
+      peerId: peer,
+      peerLabel,
+    });
+  }
+  entries.push({
+    role: 'assistant',
+    text:
+      agent.status === 'error'
+        ? 'The run stopped with a provider error.'
+        : agent.awaitingInput
+          ? 'Should the redirect keep the original query string?'
+          : 'Tests are green so far; continuing with the next file.',
+    at: mockMinutesAgo(agent.lastActivityMinutesAgo),
+  });
+  return {
+    type: 'sessionDetail',
+    id: agent.id,
+    prompt: `${agent.label}. Keep the change small, add tests, and report back to the lead session when done.`,
+    entries,
+  };
+}
+
+function dispatchMockConductor(dispatch: (data: unknown) => void): void {
+  const mode = new URLSearchParams(window.location.search).get('conductor');
+  if (mode === 'off') return;
+  const send = (msg: ServerMessage) => dispatch(msg);
+
+  send({
+    type: 'providerCapabilities',
+    readingTools: ['Read', 'Grep', 'Glob', 'WebFetch', 'WebSearch'],
+    subagentToolNames: ['Task', 'Agent'],
+    activeProviders: ['conductor'],
+  });
+
+  if (mode === 'auth') {
+    send({
+      type: 'conductorStatus',
+      state: 'authRequired',
+      message: 'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
+      scope: MOCK_SCOPE,
+    });
+    return;
+  }
+
+  let sessions = mode === 'empty' ? [] : mockSessions();
+  const status = (scope: ConductorScope): ServerMessage => ({
+    type: 'conductorStatus',
+    state: 'connected',
+    account: 'dev@example.com',
+    workspaceCount: 6,
+    sessionCount: sessions.filter((s) => !s.archived).length,
+    visibleCount: sessions.filter((s) => !s.archived && !s.hidden).length,
+    lastSyncAt: Date.now(),
+    scope,
+  });
+  let scope = MOCK_SCOPE;
+  send(status(scope));
+  send({ type: 'conductorSessions', sessions });
+  if (mode === 'empty') return;
+
+  for (const [dex, name] of Object.entries(MOCK_SPECIES)) {
+    send({
+      type: 'pokemonSpeciesLoaded',
+      dex: Number(dex),
+      shiny: false,
+      name,
+      shadowSize: 1,
+      anims: {},
+      portraits: {},
+      credits: { sprite: ['CHUNSOFT'], portrait: ['CHUNSOFT'], pageUrl: '' },
+    });
+  }
+
+  for (const a of MOCK_AGENTS) {
+    send({
+      type: 'agentCreated',
+      id: a.id,
+      directoryName: a.repo.split('/')[1],
+      isExternal: true,
+      hooksOnly: true,
+      providerId: 'conductor',
+      label: a.label,
+      species: a.species,
+      level: a.level,
+    });
+    send({
+      type: 'agentDetails',
+      id: a.id,
+      providerId: 'conductor',
+      label: a.label,
+      externalUrl: `conductor://workspace?id=${a.workspaceId}&session=${a.sessionId}`,
+      model: a.model,
+      harness: a.harness,
+      conductorSessionId: a.sessionId,
+      conductorWorkspaceId: a.workspaceId,
+      conductorWorkspaceName: a.workspaceName,
+      conductorWorkspaceNumber: a.workspaceNumber,
+      repo: a.repo,
+      creatorName: 'Dev User',
+      messageCount: a.level * a.level * 4,
+      lastActivityAt: mockMinutesAgo(a.lastActivityMinutesAgo),
+      species: a.species,
+      level: a.level,
+    });
+  }
+  for (const a of MOCK_AGENTS) {
+    if (a.leadAgentId !== undefined) {
+      send({
+        type: 'agentTeamInfo',
+        id: a.id,
+        agentName: a.label,
+        leadAgentId: a.leadAgentId,
+        teamUsesTmux: true,
+      });
+    } else if (MOCK_AGENTS.some((c) => c.leadAgentId === a.id)) {
+      send({ type: 'agentTeamInfo', id: a.id, isTeamLead: true });
+    }
+    if (a.context) {
+      send({
+        type: 'agentContextUsage',
+        id: a.id,
+        contextTokens: a.context[0],
+        maxContextTokens: a.context[1],
+      });
+    }
+    if (a.tool) {
+      send({
+        type: 'agentToolStart',
+        id: a.id,
+        toolId: `mock-tool-${a.id}`,
+        status: a.tool.status,
+        toolName: a.tool.name,
+      });
+    }
+    send({
+      type: 'agentStatus',
+      id: a.id,
+      status: a.status,
+      awaitingInput: a.awaitingInput,
+      errorMessage: a.errorMessage,
+      silent: true,
+    });
+    send(mockDetail(a));
+  }
+  send({
+    type: 'agentLinks',
+    links: [
+      { fromId: 1, toId: 2, kind: 'spawned', count: 1, lastAt: mockMinutesAgo(30) },
+      { fromId: 1, toId: 3, kind: 'spawned', count: 1, lastAt: mockMinutesAgo(30) },
+      {
+        fromId: 3,
+        toId: 1,
+        kind: 'messaged',
+        count: 2,
+        lastAt: mockMinutesAgo(12),
+        preview: 'Tests are green so far',
+      },
+    ],
+  });
+
+  // Answer the chrome's requests the way the server would.
+  const reply = (msg: ServerMessage) => setTimeout(() => send(msg), 80);
+  const ok =
+    (action: Extract<ServerMessage, { type: 'conductorActionResult' }>['action']) =>
+    (id?: number) =>
+      reply({ type: 'conductorActionResult', action, id, ok: true });
+  const realSend = transport.send.bind(transport);
+  transport.send = (msg: ClientMessage) => {
+    realSend(msg);
+    switch (msg.type) {
+      case 'requestSessionDetail': {
+        const agent = MOCK_AGENTS.find((a) => a.id === msg.id);
+        if (agent) reply(mockDetail(agent));
+        break;
+      }
+      case 'requestConductorSessions':
+        reply({ type: 'conductorSessions', sessions });
+        break;
+      case 'setSessionHidden':
+      case 'setSessionPinned':
+        sessions = sessions.map((s) =>
+          s.sessionId !== msg.sessionId
+            ? s
+            : msg.type === 'setSessionHidden'
+              ? { ...s, hidden: msg.hidden }
+              : { ...s, pinned: msg.pinned },
+        );
+        reply({ type: 'conductorSessions', sessions });
+        reply(status(scope));
+        break;
+      case 'setConductorScope':
+        scope = msg.scope;
+        reply(status(scope));
+        break;
+      case 'archiveSession': {
+        const session = sessions.find((s) => s.sessionId === msg.sessionId);
+        sessions = sessions.map((s) =>
+          s.sessionId === msg.sessionId
+            ? { ...s, archived: true, archivedAt: Date.now(), agentId: undefined }
+            : s,
+        );
+        if (session?.agentId !== undefined) {
+          reply({ type: 'agentClosed', id: session.agentId });
+          ok('archiveSession')(session.agentId);
+        }
+        reply({ type: 'conductorSessions', sessions });
+        break;
+      }
+      case 'restoreSession':
+        sessions = sessions.map((s) =>
+          s.sessionId === msg.sessionId ? { ...s, archived: false, archivedAt: undefined } : s,
+        );
+        ok('restoreSession')();
+        reply({ type: 'conductorSessions', sessions });
+        break;
+      case 'sendSessionMessage':
+        ok('sendSessionMessage')(msg.id);
+        break;
+      case 'stopSession':
+        ok('stopSession')(msg.id);
+        reply({ type: 'agentStatus', id: msg.id, status: 'waiting' });
+        break;
+      case 'setPokemonTheme':
+        reply({ type: 'pokemonThemeUpdated', enabled: msg.enabled });
+        break;
+      default:
+        break;
+    }
+  };
+
+  // A little live traffic for the battle log and the activity lines: tool
+  // calls (each finishing before the next) and messages between sessions.
+  const liveTools = [
+    { id: 3, name: 'Bash', status: 'Running npm test' },
+    { id: 1, name: 'Read', status: 'Reading session.ts' },
+    { id: 3, name: 'Edit', status: 'Editing session.test.ts' },
+  ];
+  let tick = 0;
+  let lastTool: { id: number; toolId: string } | null = null;
+  setInterval(() => {
+    tick += 1;
+    if (tick % 2 === 0) {
+      const [fromId, toId] = tick % 4 === 0 ? [1, 3] : [3, 1];
+      send({ type: 'agentMessage', fromId, toId, kind: 'messaged', at: Date.now() });
+      return;
+    }
+    if (lastTool) send({ type: 'agentToolDone', id: lastTool.id, toolId: lastTool.toolId });
+    const tool = liveTools[(tick >> 1) % liveTools.length];
+    const toolId = `mock-live-${tick}`;
+    lastTool = { id: tool.id, toolId };
+    send({ type: 'agentToolStart', id: tool.id, toolId, status: tool.status, toolName: tool.name });
+  }, 3_000);
 }

@@ -20,6 +20,15 @@ interface BottomToolbarProps {
   terminalAvailable: boolean;
   /** Why the terminal is off (shown on the disabled button's tooltip). */
   terminalUnavailableReason: string | null;
+  /** Claude Code feeds this office: + Agent launches it. Without it (a
+   *  Conductor-only office) there is nothing to launch. */
+  claudeActive: boolean;
+  /** Conductor feeds this office: show Sessions and PC. */
+  conductorActive: boolean;
+  isSessionsOpen: boolean;
+  onOpenSessions: () => void;
+  isPcBoxOpen: boolean;
+  onOpenPcBox: () => void;
 }
 
 export function BottomToolbar({
@@ -32,6 +41,12 @@ export function BottomToolbar({
   onEditDirectory,
   terminalAvailable,
   terminalUnavailableReason,
+  claudeActive,
+  conductorActive,
+  isSessionsOpen,
+  onOpenSessions,
+  isPcBoxOpen,
+  onOpenPcBox,
 }: BottomToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
@@ -64,8 +79,8 @@ export function BottomToolbar({
   // doesn't, show the button disabled with the reason rather than hiding it —
   // silently missing UI reads as a bug, and the cause (a native module that
   // couldn't install) is not something a user would otherwise ever discover.
-  const canLaunch = !isBrowserRuntime || terminalAvailable;
-  const showUnavailable = isBrowserRuntime && !terminalAvailable;
+  const canLaunch = claudeActive && (!isBrowserRuntime || terminalAvailable);
+  const showUnavailable = claudeActive && isBrowserRuntime && !terminalAvailable;
 
   return (
     // Bottom-left. The terminal panel docks on the right edge, so it never
@@ -110,6 +125,24 @@ export function BottomToolbar({
             }}
           />
         </div>
+      )}
+      {conductorActive && (
+        <>
+          <Button
+            variant={isSessionsOpen ? 'active' : 'accent'}
+            onClick={onOpenSessions}
+            title="Choose which Conductor sessions are in the office"
+          >
+            Sessions
+          </Button>
+          <Button
+            variant={isPcBoxOpen ? 'active' : 'default'}
+            onClick={onOpenPcBox}
+            title="PC Box: deposited (archived) sessions"
+          >
+            PC
+          </Button>
+        </>
       )}
       <Button
         variant={isEditMode ? 'active' : 'default'}
