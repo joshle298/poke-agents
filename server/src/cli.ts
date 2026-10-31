@@ -12,6 +12,7 @@
  * embedded terminal -- is opt-in with --claude.
  */
 
+import * as os from 'os';
 import * as path from 'path';
 
 import type { StreamProvider } from '../../core/src/provider.js';
@@ -36,6 +37,7 @@ import {
   DEFAULT_STANDALONE_PORT,
   MAX_PORT,
   MIN_PORT,
+  SERVER_JSON_DIR,
   TERMINAL_DISABLED_BY_FLAG_REASON,
   TERMINAL_DISABLED_NO_CLAUDE_REASON,
   WILDCARD_HOSTNAMES,
@@ -52,6 +54,7 @@ import {
 import { setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
+import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
 import { PixelAgentsServer, type ServerConfig } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
@@ -313,6 +316,17 @@ export async function startOnPreferredPort<T>(
   }
 }
 
+/** The machine-wide Conductor poller lock, or null when it can't be taken
+ *  (an unwritable data directory must not keep Conductor off). */
+function acquireConductorLock(port: number): PollerLock | null {
+  try {
+    return acquirePollerLock({ dir: path.join(os.homedir(), SERVER_JSON_DIR), port });
+  } catch (err) {
+    console.warn(`[Pixel Agents] Could not take the Conductor lock: ${errorText(err)}`);
+    return { acquired: true, release: () => undefined };
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -497,7 +511,18 @@ async function main(): Promise<void> {
     // office URL prints at once and sessions stream in as they are found.
     // A Conductor failure never takes the office down with it.
     let conductor: StreamProvider | null = null;
+    let conductorLock: PollerLock | null = null;
     if (args.conductor && ownsServer) {
+      // One poller per machine: an office in another mode (no shared server)
+      // would otherwise double the API traffic and overwrite this one's state.
+      conductorLock = acquireConductorLock(config.port);
+    }
+    if (conductorLock && !conductorLock.acquired) {
+      const { pid, port } = conductorLock.holder;
+      console.warn(
+        `[Pixel Agents] Conductor sessions are already tracked by the Poke Agents office${port ? ` on port ${port}` : ''} (PID ${pid}). This office shows no Conductor sessions: open that one, or stop it and restart this one.`,
+      );
+    } else if (conductorLock) {
       try {
         conductor = createConductorProvider({
           budgetPerMinute: args.conductorBudget,
@@ -612,6 +637,7 @@ async function main(): Promise<void> {
       await conductor?.stop().catch((err: unknown) => {
         console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
       });
+      if (conductorLock?.acquired) conductorLock.release();
       // Kill child terminals before the runtime tears their agents down, and
       // wait for them: exiting now would cancel the SIGKILL escalation and
       // leave a child that ignores SIGHUP orphaned on a dead server.

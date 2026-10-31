@@ -183,6 +183,8 @@ export const USER_ACTION_DETAIL_MAX = 120;
 // ── Persistence ─────────────────────────────────────────────
 
 export const STATE_FILE_NAME = 'conductor-state.json';
+/** Held by the one office process that polls Conductor (pollerLock.ts). */
+export const POLLER_LOCK_FILE_NAME = 'conductor.lock';
 export const STATE_FILE_VERSION = 1;
 export const STATE_FILE_MODE = 0o600;
 export const STATE_SAVE_DEBOUNCE_MS = 1_000;
