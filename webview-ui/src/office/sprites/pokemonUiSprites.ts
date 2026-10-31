@@ -1,18 +1,18 @@
 /**
  * In-house pixel art for the Pokémon office (no Pokémon art: these are drawn
- * here, as JSON palettes + pixels like the speech bubbles): the capsule the
+ * here, as JSON palettes + pixels like the speech bubbles): the catch orb the
  * spawn effect and message projectiles use and that stands in for a Pokémon
  * whose sprites are still loading, Promptling (our mascot, the greeter), the
  * envelope flown when the theme is off, and the needs-you "!" and sleeping
- * "z" bubbles. The capsule and Promptling are original designs, not
- * renditions of any official ball or Pokémon.
+ * "z" bubbles. The orb and Promptling are original designs, not renditions
+ * of any official ball or Pokémon.
  */
 
 import type { SpriteData } from '../types.js';
 import bubbleAlertData from './bubble-alert.json';
 import bubbleSleepData from './bubble-sleep.json';
-import capsuleData from './capsule.json';
 import envelopeData from './envelope.json';
+import orbData from './orb.json';
 import promptlingData from './promptling.json';
 
 type Palette = Record<string, string>;
@@ -24,17 +24,21 @@ function resolve(palette: Palette, pixels: string[][]): SpriteData {
 /** A frame written as one string per row, one palette key per pixel. */
 const rows = (frame: string[]): string[][] => frame.map((row) => [...row]);
 
-/** Closed capsule (16x8): thrown, recalled, and flown as a message. */
-export const CAPSULE_CLOSED_SPRITE: SpriteData = resolve(
-  capsuleData.palette,
-  rows(capsuleData.frames.closed),
-);
+/** Closed orb (16x13), its C ring open on the right: resting while a
+ *  Pokémon's sprites load, thrown, recalled and flown as a message. */
+export const ORB_CLOSED_SPRITE: SpriteData = resolve(orbData.palette, rows(orbData.frames.closed));
 
-/** Open capsule (23x8): its halves pulled apart, light on the centre line. */
-export const CAPSULE_OPEN_SPRITE: SpriteData = resolve(
-  capsuleData.palette,
-  rows(capsuleData.frames.open),
-);
+/** The ring spinning (16x13 each): its opening on the right (closed), the
+ *  front, then the left. Played in a loop while the orb flies. */
+export const ORB_SPIN_SPRITES: readonly SpriteData[] = [
+  ORB_CLOSED_SPRITE,
+  resolve(orbData.palette, rows(orbData.frames.spinFront)),
+  resolve(orbData.palette, rows(orbData.frames.spinLeft)),
+];
+
+/** Open orb (20x16): split along the ring's tilt, its upper part lifted and
+ *  light pouring out between, the frame's centre in the light. */
+export const ORB_OPEN_SPRITE: SpriteData = resolve(orbData.palette, rows(orbData.frames.open));
 
 /** Envelope (7x5): a message in flight while the theme is off. */
 export const ENVELOPE_SPRITE: SpriteData = resolve(envelopeData.palette, envelopeData.pixels);

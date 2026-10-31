@@ -34,7 +34,8 @@ declare global {
         isActive: boolean;
         /** Asleep as the office shows it (Sleep anim, Zzz, SLP). */
         asleep: boolean;
-        /** Drawn as a closed capsule waiting for its Pokémon. */
+        /** Drawn as a closed orb waiting for its Pokémon (the field keeps its
+         *  name from when the office threw capsules). */
         capsule: boolean;
         /** The PMD frame drawn now, when drawn as a Pokémon. */
         pmd: { anim: string; situation: string; loop: boolean; frame: number; row: number } | null;

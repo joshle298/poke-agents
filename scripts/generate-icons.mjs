@@ -4,28 +4,29 @@
 //   node scripts/generate-icons.mjs --preview <dir> also write nearest-neighbor
 //                                                  previews (1024/128/48/32/16 px)
 //
-// The art is original: Poke Agents' own capsule, the one thrown, recalled and
-// flown in the office (webview-ui/src/office/sprites/capsule.json), drawn
-// large with a bold gold C for Conductor in place of that capsule's gold
-// collar. It is a horizontal pill 22 cells wide and 13 tall with squared-off
-// round ends, like the sprite, and a dark outline: a teal cap on the left and
-// a cream body on the right, in the sprite's colours. The C spans the pill's
-// full height between them, as the collar does, and opens into the cream.
-// Light comes from the upper left: a rim of light and a two-cell glint on the
-// cap, a lit top edge on the body, and shade along the bottom and the body's
-// right end. The C is our own pixel letter, outlined where it meets teal and
-// cream, with a lit top and left edge and a darker underside. Two gold
-// sparkles sit at the upper right, each at least a cell inside the tile, and
-// everything is on a macOS-style rounded square in the app's night palette.
+// The art is original: Poke Agents' own catch orb, the one thrown, recalled
+// and flown in the office (webview-ui/src/office/sprites/orb.json), drawn
+// large. A glossy sphere 16 cells across, deep teal to indigo, lit from the
+// upper left (a white glint, a pale halo and two star specks) with a cyan
+// rim light along its lower right. A bold gold C for Conductor rings it at
+// a tilt, like a planet's ring: the ring passes behind the sphere at the
+// top and in front of it near the bottom, and it opens on the right, where
+// its upper end carries a small gold latch. Everything has a dark outline,
+// and the ring casts a dark line where it crosses the sphere. Two gold
+// sparkles sit in the free corners, each at least a cell inside the tile,
+// on a macOS-style rounded square in the app's night palette.
 //
-// It is not a ball: the colours meet side by side, not top over bottom, with
-// no band, no round button and no red, and the C is not Conductor's logo.
+// It is not a ball from the games: the sphere is one colour all round, with
+// no band splitting it into two hemispheres, no button in its middle and no
+// red, white or black halves. The ring is tilted, curved and open, and the
+// C is our own pixel letter, not Conductor's logo.
 //
 // Each size is drawn on whole-pixel cells, so edges stay crisp. 32 px and up
-// draw the 32-cell design. 16 px is drawn by hand: the pill with no outline or
-// sparkles, and a solid gold collar with a dark 3 by 5 C printed on it,
-// because gold is too close to teal and cream in lightness to carry a letter
-// at that size. 48 px draws the 16 px design at 3 px a cell.
+// draw the 32-cell design. 16 px is drawn by hand: the sphere 8 px across
+// with its glint and rim, the C ring as a gold stroke 1 to 2 px thick with
+// the latch and the opening on the right, and no outline or sparkles (they
+// would melt into the dark square). 48 px draws the 16 px design at 3 px a
+// cell.
 //
 // Outputs (all committed; scripts/generate-icons.test.mjs fails when they
 // drift from this script):
@@ -48,9 +49,10 @@ const { PNG } = pngjs;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ── Palette ───────────────────────────────────────────────────
-// The tile keeps the app's night blues. The capsule uses the office capsule's
-// teal, cream and gold (capsule.json), plus a deeper shade of each half, a
-// lit cream and the icon's own dark outline. No red and no red/white split.
+// The tile keeps the app's night blues. The orb uses the office orb's
+// colours (orb.json): five shades of its teal-to-indigo body, the cyan rim,
+// the pale highlight, the gold ring in three shades, and the icon's own dark
+// outline. No red, and no white half.
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16),
@@ -69,22 +71,22 @@ const TOP_RIM_ALPHA = 0.2;
 
 /** Cell colors by key. */
 export const INK = {
-  k: hex('#0e1a26'), // outline (at 16 px, the C printed on the collar)
-  T: hex('#9af2dd'), // teal cap, lit
-  t: hex('#45c9b4'), // teal cap
-  d: hex('#2a9a9c'), // teal in shadow
-  D: hex('#1d6c7c'), // teal in deep shadow
-  P: hex('#ffffff'), // glint on the cap
-  w: hex('#fffbea'), // cream body, lit
-  c: hex('#fdf3d2'), // cream body
-  C: hex('#e6cf9c'), // cream in shadow
-  b: hex('#c4a46c'), // cream in deep shadow
-  G: hex('#ffe58a'), // the C (the collar at 16 px), lit
-  g: hex('#f2c23a'), // the C
-  o: hex('#b07a1e'), // the C in shadow
+  k: hex('#0e1a26'), // outline, and the ring's shadow on the sphere
+  B: hex('#34bdbb'), // sphere, lit teal
+  b: hex('#1e8fa6'), // sphere, teal
+  n: hex('#21639a'), // sphere, deep teal
+  N: hex('#2d4590'), // sphere, indigo
+  M: hex('#2b2a6a'), // sphere, deep indigo
+  R: hex('#5ee6ff'), // rim light
+  h: hex('#b8fff4'), // highlight halo and star specks
+  W: hex('#ffffff'), // glint on the sphere
+  w: hex('#ffffff'), // glint on the latch
+  G: hex('#ffe58a'), // the C ring, lit
+  g: hex('#f2c23a'), // the C ring
+  o: hex('#b07a1e'), // the C ring in shadow
   y: hex('#f8d030'), // sparkle tips
   Y: hex('#ffe878'), // sparkle arms
-  W: hex('#ffffff'), // sparkle core
+  '*': hex('#ffffff'), // sparkle core
 };
 
 // ── Designs ───────────────────────────────────────────────────
@@ -95,12 +97,15 @@ export const INK = {
 const parseGrid = (rows) => rows.map((row) => [...row].map((c) => (c === '.' ? null : c)));
 
 /**
- * The capsule on a 32-cell grid (32 px and up): a pill 22 cells wide and 13
- * tall (1.69 times as wide as tall), centred left to right and low enough for
- * the sparkles to sit above it with a cell of tile between every tip and the
- * tile's edge, and none touching the pill or each other. The C is 8 cells wide
- * and 11 tall, the pill's full height inside its outline: a 3-cell spine,
- * 3-row arms and an outlined counter, three rows of cream open into the body.
+ * The orb on a 32-cell grid (32 px and up). The sphere is an outlined disc
+ * 16 cells across (rows 9 to 24); the C ring's centre-line is a tilted
+ * ellipse about 22 cells wide and 9 tall, a stroke 2 cells thick, that
+ * leaves the sphere's top right as the C's upper arm (ending in a 2 by 3
+ * latch with a glint), wraps round its left as the spine, crosses in front
+ * of its lower part, and ends a stroke's width past the sphere's right edge,
+ * three rows below the latch: the C's opening. The sparkles take the free
+ * corners, the big one at the upper left and the small one at the lower
+ * right.
  */
 const GRID_32 = parseGrid([
   '................................',
@@ -108,26 +113,26 @@ const GRID_32 = parseGrid([
   '................................',
   '................................',
   '................................',
-  '...................y....y.......',
-  '..................yWy...Y.......',
-  '...................y..yYWYy.....',
-  '........................Y.......',
-  '........................y.......',
-  '................................',
-  '.........kkkkkkkkkkkkkk.........',
-  '.......kkTTkkGGGGGGGkwCkk.......',
-  '......kTTPtkGgggggggkccCbk......',
-  '.....kTtPttkGgggggggkcccCbk.....',
-  '.....kTttttkGggkkkkkkcccCbk.....',
-  '.....kTttttkGggkccccccccCbk.....',
-  '.....kTttttkGggkccccccccCbk.....',
-  '.....kTttttkGggkccccccccCbk.....',
-  '.....kdttttkGggkkkkkkcccCbk.....',
-  '.....kddtttkGgggggggkcccCbk.....',
-  '......kddddkGgggggggkCCCbk......',
-  '.......kkDDkkoooooookbbkk.......',
-  '.........kkkkkkkkkkkkkk.........',
-  '................................',
+  '.......y........................',
+  '.......Y........................',
+  '.....yY*Yy......................',
+  '.......Y........................',
+  '.......y.....kkkkkk..kkkkk......',
+  '...........kkBBBbbnkkGGGwGk.....',
+  '..........kBhhBBbbbnnkggGgk.....',
+  '.........kBhWWhBbbbhnRkkgok.....',
+  '.........kBhWhBbbbnnnRk.kk......',
+  '.......kkBBBhBBbbbnnnNRk........',
+  '......kGkbBBBbbbbnnnNNRkkk......',
+  '.....kGgkbbbbbbbnnnnNNRkGGk.....',
+  '.....kGgkbbbbbbnnnnNNMRGggk.....',
+  '....kGgkknbhbnnnnnNNNMGgkk......',
+  '....kGgkknnnnnnnnNNNGGgk........',
+  '....kGgkkknnnnnNNNGGggk.........',
+  '....kGgkkkNNNNNGGGggkkk.........',
+  '.....kGGGGGGGGGgggkkRk...y......',
+  '......koggggggokkkRkk...y*y.....',
+  '.......kkkkkkkkkkkk......y......',
   '................................',
   '................................',
   '................................',
@@ -137,24 +142,25 @@ const GRID_32 = parseGrid([
   '................................',
 ]);
 
-/** Hand-drawn 16 px design: the pill, 10 px wide and 7 tall with a pixel of
- *  tile all round, a teal cap, a cream body and between them a solid gold
- *  collar the pill's height with a dark C printed on it, 3 px wide and 5
- *  tall. No outline round the pill (it would melt into the dark square) and
+/** Hand-drawn 16 px design: the sphere 8 px across with a pixel of tile all
+ *  round the orb, a glint at its upper left and a rim down its right; the
+ *  ring a gold stroke round its left and across its lower part, 2 px thick
+ *  in front, its upper arm with the latch at the top right and its other
+ *  end two rows below. No outline (it would melt into the dark square) and
  *  no sparkles. */
 const GRID_16 = parseGrid([
   '................',
   '................',
   '................',
-  '................',
-  '....TtGGGGwC....',
-  '...TttGkkkccC...',
-  '...tttGkGGccC...',
-  '...tttgkggccC...',
-  '...dttgkggcCb...',
-  '...ddtgkkkCCb...',
-  '....DDoooobb....',
-  '................',
+  '......BBbn......',
+  '.....BWBbnnGG...',
+  '....BBBbbnnRo...',
+  '...GBBbbnnNR....',
+  '...GbbbnnNNR....',
+  '...GbbnnNNGGG...',
+  '...GnnNNGGgg....',
+  '...gGGGGgg......',
+  '....gggg........',
   '................',
   '................',
   '................',
@@ -299,7 +305,7 @@ export function renderIcon(size, { fullBleed = false } = {}) {
     for (let p = 0; p < size * size; p++) over(data, p * 4, [0, 0, 0], shadow[p] * 0.32);
   }
 
-  // The rounded square: a vertical gradient, a soft glow behind the capsule,
+  // The rounded square: a vertical gradient, a soft glow behind the orb,
   // and a faint light line just inside the edge, brighter along the top.
   const top = fullBleed ? 0 : (size * (1 - BODY_FRACTION)) / 2;
   const span = fullBleed ? size : size * BODY_FRACTION;

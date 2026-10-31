@@ -243,7 +243,7 @@ describe('quiet window after a connect', () => {
 });
 
 describe('new sessions', () => {
-  it('a live arrival pops its capsule, then cries', () => {
+  it('a live arrival pops its orb, then cries', () => {
     liveOffice();
     expect(send(created(1, { species: CHARMANDER }))).toEqual([
       {

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **The catch orb.** Sessions are now thrown out of and recalled into Poke Agents' own catch orb, and messages fly between them as one, instead of the teal-and-cream capsule: a glossy teal-to-indigo sphere ringed at a tilt by a gold C for Conductor, open on the right with a small latch. Its ring spins while it flies, turns once more where it lands, and the sphere splits along the ring with a flash before the Pokémon appears. A session whose sprites are loading waits as the closed orb, and the party bar, the Pokédex, the archived sessions and the empty office show it where there is no portrait.
+- **A new app icon:** the catch orb on the night tile, with two sparkles, in the Mac app, the favicon and the installed web app. At 16 and 48 px it is drawn without outlines or sparkles.
+
 ## Poke Agents v0.4.0
 
 Switch model and Change Pokémon in the Pokédex, calmer offices, and a new icon.

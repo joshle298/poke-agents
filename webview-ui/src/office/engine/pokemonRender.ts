@@ -1,9 +1,9 @@
 /**
  * The renderer's Pokémon branch: resolve the PMD frame a character shows
  * right now, and queue its z-sorted drawables (outline, body, faint tint,
- * evolution flash, capsule effect). Returns null whenever the character
+ * evolution flash, orb effect). Returns null whenever the character
  * isn't drawn as a Pokémon — theme off, no species, sheets not decoded — and
- * the renderer draws the closed capsule instead (a Pokémon office) or the
+ * the renderer draws the closed orb instead (a Pokémon office) or the
  * upstream character (theme off, hosts without sprites).
  */
 
@@ -24,9 +24,9 @@ import {
 } from '../sprites/pokemonSprites.js';
 import type { Character } from '../types.js';
 import { TILE_SIZE } from '../types.js';
-import { renderCapsuleEffect } from './capsuleEffect.js';
 import type { FrameRef } from './frameCanvas.js';
 import { frameGreyed, frameOutline, frameSilhouette } from './frameCanvas.js';
+import { renderOrbEffect } from './orbEffect.js';
 import type { PokemonAnimSituation } from './pokemonAnim.js';
 import {
   choosePokemonAnim,
@@ -130,8 +130,7 @@ export function pushPokemonDrawables(
     const ground = { x: place.x, y: groundY };
     drawables.push({
       zY,
-      draw: (c) =>
-        renderCapsuleEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
+      draw: (c) => renderOrbEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
     });
     return;
   }

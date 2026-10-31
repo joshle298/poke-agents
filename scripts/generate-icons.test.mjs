@@ -160,17 +160,15 @@ test('the committed icon files are what the script draws (run it after changing 
   }
 });
 
-/** The sparkles, which sit apart from the capsule. */
-const SPARKLE_KEYS = new Set('yYW');
-/** The C's gold (the collar's at 16 px). */
-const GOLD_KEYS = new Set('Ggo');
-/** The outline (at 16 px, the C printed on the collar). */
-const DARK_KEYS = new Set('k');
-const TEAL_KEYS = new Set('TtdD');
-const CREAM_KEYS = new Set('wcCb');
+/** The sparkles, which sit apart from the orb. */
+const SPARKLE_KEYS = new Set('yY*');
+/** The C ring's gold, its latch's glint included. */
+const RING_KEYS = new Set('Ggow');
+/** The sphere's own colours: its body, rim, highlight and glint. */
+const SPHERE_KEYS = new Set('BbnNMRhW');
+/** The sphere's body alone, without the highlight and glint. */
+const BODY_KEYS = new Set('BbnNMR');
 const DESIGN_SIZES = [16, 32, 48, 64, 128, 1024];
-/** The hand-drawn 16 px design, which 48 px also draws. */
-const isSmallDesign = (size) => designFor(size).length === 16;
 
 /** Every drawn cell of a grid whose key passes `keep`. */
 function cellsOf(grid, keep) {
@@ -179,7 +177,7 @@ function cellsOf(grid, keep) {
   );
 }
 
-const capsuleCells = (grid) => cellsOf(grid, (key) => !SPARKLE_KEYS.has(key));
+const orbCells = (grid) => cellsOf(grid, (key) => !SPARKLE_KEYS.has(key));
 
 /** The box round some cells, in cells. */
 function box(cells) {
@@ -189,103 +187,10 @@ function box(cells) {
   return { x0, x1, y0, y1, width: x1 - x0 + 1, height: y1 - y0 + 1 };
 }
 
-const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
-
-test('the capsule is a pill 1.4 to 2 times as wide as tall at every size, not a ball', () => {
-  // The office sprite's closed capsule is 16 by 8, twice as wide as tall.
-  for (const size of DESIGN_SIZES) {
-    const { width, height } = box(capsuleCells(designFor(size)));
-    const ratio = width / height;
-    assert.ok(ratio >= 1.4 && ratio <= 2, `${size} px: ${width} x ${height}`);
-  }
-});
-
-/**
- * The C drawn in `keys`, or null. Taken top to bottom, the rows of its box
- * must each hold one run of those keys starting in the box's first two
- * columns (for rounded corners): first an arm reaching the right edge, then
- * at least two rows that stop at least two cells short of it (a counter open
- * to the right), then an arm reaching the right edge again. That rules out
- * an O, an E, a mirrored C and a solid block.
- */
-function findC(grid, keys) {
-  const cells = cellsOf(grid, (key) => keys.has(key));
-  if (cells.length === 0) return null;
-  const found = box(cells);
-  const { x0, x1, y0, y1 } = found;
-  if (found.height < 5 || found.width < 3) return null;
-  let shape = '';
-  for (let y = y0; y <= y1; y++) {
-    const xs = [];
-    for (let x = x0; x <= x1; x++) if (keys.has(grid[y][x])) xs.push(x);
-    if (xs.length === 0 || xs.at(-1) - xs[0] + 1 !== xs.length || xs[0] > x0 + 1) return null;
-    shape += xs.at(-1) === x1 ? 'a' : xs.at(-1) <= x1 - 2 ? 'c' : '?';
-  }
-  return /^a+c{2,}a+$/.test(shape) ? found : null;
-}
-
-/** At 16 px, the C printed dark on the gold collar, or null: the collar must
- *  show left of its spine, above and below it, and in its counter. */
-function findPrintedC(grid) {
-  const c = findC(grid, DARK_KEYS);
-  if (!c) return null;
-  const { x0, x1, y0, y1 } = c;
-  for (let y = y0 - 1; y <= y1 + 1; y++) {
-    for (let x = x0 - 1; x <= x1; x++) {
-      const key = grid[y][x];
-      if (!DARK_KEYS.has(key) && !GOLD_KEYS.has(key)) return null;
-    }
-  }
-  return c;
-}
-
-/** The C at a size: gold on the capsule from 32 px, printed on the collar in
- *  the 16 px design. */
-const cAt = (size) =>
-  isSmallDesign(size) ? findPrintedC(designFor(size)) : findC(designFor(size), GOLD_KEYS);
-
-test('every size shows a bold C in the middle of the capsule, at least 60% of its height', () => {
-  for (const size of DESIGN_SIZES) {
-    const c = cAt(size);
-    assert.ok(c, `${size} px shows a C`);
-    const capsule = box(capsuleCells(designFor(size)));
-    assert.ok(c.height >= 0.6 * capsule.height, `${size} px: C ${c.height} of ${capsule.height}`);
-    const centre = (from, to) => (from + to + 1) / 2;
-    assert.ok(
-      Math.abs(centre(c.x0, c.x1) - centre(capsule.x0, capsule.x1)) <= 1 &&
-        Math.abs(centre(c.y0, c.y1) - centre(capsule.y0, capsule.y1)) <= 1,
-      `${size} px: the C is centred on the capsule`,
-    );
-  }
-});
-
-test('the C checks reject a capsule with no C, a closed O or a mirrored C', () => {
-  const big = designFor(1024);
-  const small = designFor(16);
-  const without = (grid, keys, fill) =>
-    grid.map((row) => row.map((key) => (keys.has(key) ? fill : key)));
-  /** The C's counter filled in on its right edge, closing it into an O. */
-  const closed = (grid, c, key) =>
-    grid.map((row, y) =>
-      row.map((k, x) => (y > c.y0 && y < c.y1 && (x === c.x1 || x === c.x1 - 1) ? key : k)),
-    );
-  const mirrored = (grid) => grid.map((row) => [...row].reverse());
-
-  assert.equal(findC(without(big, GOLD_KEYS, 'c'), GOLD_KEYS), null);
-  assert.equal(findC(closed(big, findC(big, GOLD_KEYS), 'g'), GOLD_KEYS), null);
-  assert.equal(findC(mirrored(big), GOLD_KEYS), null);
-
-  assert.equal(findPrintedC(without(small, DARK_KEYS, 'g')), null);
-  assert.equal(findPrintedC(closed(small, findPrintedC(small), 'k')), null);
-  assert.equal(findPrintedC(mirrored(small)), null);
-  // A dark C on teal or cream instead of the collar.
-  assert.equal(findPrintedC(without(small, GOLD_KEYS, 't')), null);
-});
-
-/** Groups of sparkle cells that touch, corners included. */
-function sparkleGroups(grid) {
-  const left = new Set(cellsOf(grid, (key) => SPARKLE_KEYS.has(key)).map((c) => `${c.x},${c.y}`));
-  const groups = [];
+/** Groups of cells that touch, corners included. */
+function groups(cells) {
+  const left = new Set(cells.map((c) => `${c.x},${c.y}`));
+  const found = [];
   for (const start of left) {
     left.delete(start);
     const group = [start];
@@ -298,19 +203,212 @@ function sparkleGroups(grid) {
         }
       }
     }
-    groups.push(group.map((key) => key.split(',').map(Number)));
+    found.push(group.map((key) => key.split(',').map(Number)).map(([x, y]) => ({ x, y })));
   }
-  return groups;
+  return found;
 }
 
-test('two sparkles that touch neither each other nor the capsule', () => {
+/**
+ * The sphere's disc, found from its own colours: as wide as they reach,
+ * centred on them left to right, its top where they start (the ring may
+ * hide part of its bottom).
+ */
+function sphereDisc(grid) {
+  const cells = cellsOf(grid, (key) => SPHERE_KEYS.has(key));
+  const b = box(cells);
+  const r = b.width / 2;
+  return { cx: b.x0 + r, cy: b.y0 + r, r, box: b };
+}
+
+const distance = (cell, disc) => Math.hypot(cell.x + 0.5 - disc.cx, cell.y + 0.5 - disc.cy);
+
+/** Why the orb isn't a round sphere, or null: every sphere colour lies in
+ *  the disc, the disc holds nothing but the sphere, its outline and the
+ *  ring, and the sphere shows at least 70% of its height. */
+function roundProblem(grid) {
+  const disc = sphereDisc(grid);
+  for (const cell of cellsOf(grid, (key) => SPHERE_KEYS.has(key))) {
+    if (distance(cell, disc) > disc.r + 0.5) return `(${cell.x}, ${cell.y}) is off the disc`;
+  }
+  for (const [y, row] of grid.entries()) {
+    for (const [x, key] of row.entries()) {
+      if (distance({ x, y }, disc) > disc.r - 1) continue;
+      if (!key || !(SPHERE_KEYS.has(key) || RING_KEYS.has(key) || key === 'k')) {
+        return `(${x}, ${y}) inside the disc is ${key ?? 'empty'}`;
+      }
+    }
+  }
+  if (disc.box.height < 0.7 * disc.box.width) {
+    return `${disc.box.width} wide but ${disc.box.height} tall`;
+  }
+  return null;
+}
+
+/**
+ * The C ring, or null: gold reaching past the sphere on both sides, in one
+ * stroke on the left (the spine) and in two ends on the right with at least
+ * a clear row between them (the opening). Inside the disc it only crosses
+ * the sphere's lower half (in front), the upper half hiding it (behind).
+ */
+function findRingC(grid) {
+  const disc = sphereDisc(grid);
+  const gold = cellsOf(grid, (key) => RING_KEYS.has(key));
+  const left = gold.filter((c) => c.x + 1 <= disc.cx - disc.r);
+  const right = gold.filter((c) => c.x >= disc.cx + disc.r);
+  if (left.length === 0 || right.length === 0) return null;
+  if (groups(left).length !== 1) return null;
+  const ends = groups(right).map(box);
+  if (ends.length !== 2) return null;
+  const [upper, lower] = ends.sort((a, b) => a.y0 - b.y0);
+  if (lower.y0 - upper.y1 < 2) return null;
+  const inside = gold.filter((c) => distance(c, disc) <= disc.r - 0.5);
+  if (inside.length === 0 || inside.some((c) => c.y + 0.5 <= disc.cy)) return null;
+  return { spine: box(left), upper, lower };
+}
+
+/** Why a band crosses the sphere, or null: on the rows within half a radius
+ *  of its centre, no run of anything but the sphere covers half the chord. */
+function bandProblem(grid) {
+  const disc = sphereDisc(grid);
+  for (let y = 0; y < grid.length; y++) {
+    const dy = y + 0.5 - disc.cy;
+    if (Math.abs(dy) > disc.r / 2) continue;
+    const half = Math.sqrt(disc.r ** 2 - dy ** 2);
+    const x0 = Math.ceil(disc.cx - half - 0.5);
+    const x1 = Math.floor(disc.cx + half - 0.5);
+    let run = 0;
+    for (let x = x0; x <= x1; x++) {
+      run = SPHERE_KEYS.has(grid[y][x]) ? 0 : run + 1;
+      if (run >= (x1 - x0 + 1) / 2) return `row ${y}: a run of ${run} across ${x1 - x0 + 1}`;
+    }
+  }
+  return null;
+}
+
+/** Why the sphere has a button, or null: within a third of its radius of
+ *  its centre there is only its body colour. */
+function buttonProblem(grid) {
+  const disc = sphereDisc(grid);
+  for (const [y, row] of grid.entries()) {
+    for (const [x, key] of row.entries()) {
+      if (distance({ x, y }, disc) <= disc.r / 3 && !BODY_KEYS.has(key)) {
+        return `(${x}, ${y}) at the centre is ${key ?? 'empty'}`;
+      }
+    }
+  }
+  return null;
+}
+
+test('the orb is a round sphere at every size, not a pill', () => {
+  for (const size of DESIGN_SIZES) assert.equal(roundProblem(designFor(size)), null, `${size} px`);
+});
+
+test('a gold C rings the sphere at every size: past it both sides, open on the right', () => {
+  for (const size of DESIGN_SIZES) {
+    const ring = findRingC(designFor(size));
+    assert.ok(ring, `${size} px shows the C ring`);
+    // The C's spine reaches above and below the ends of its arms' opening.
+    assert.ok(ring.spine.height >= 3, `${size} px: a spine ${ring.spine.height} tall`);
+  }
+});
+
+test('no band splits the sphere and no button sits in its middle, at any size', () => {
+  for (const size of DESIGN_SIZES) {
+    assert.equal(bandProblem(designFor(size)), null, `${size} px band`);
+    assert.equal(buttonProblem(designFor(size)), null, `${size} px button`);
+  }
+});
+
+test('the shape checks reject a pill, no ring, a closed O, a mirrored C, a band and a button', () => {
   const grid = designFor(1024);
-  assert.equal(sparkleGroups(grid).length, 2);
+  const swap = (from, to) =>
+    grid.map((row, y) => row.map((key, x) => (from({ x, y, key }) ? to : key)));
+  const disc = sphereDisc(grid);
+  const ring = findRingC(grid);
+
+  const pill = grid.map((row) => row.flatMap((key) => [key, key]));
+  assert.notEqual(roundProblem(pill), null, 'a pill');
+  assert.equal(findRingC(swap(({ key }) => RING_KEYS.has(key), null)), null, 'no ring');
+  const closed = swap(
+    ({ x, y }) =>
+      y > ring.upper.y1 && y < ring.lower.y0 && x >= ring.lower.x0 && x <= ring.upper.x1,
+    'g',
+  );
+  assert.equal(findRingC(closed), null, 'a closed O');
+  assert.equal(findRingC(grid.map((row) => [...row].reverse())), null, 'a mirrored C');
+  const middle = Math.floor(disc.cy);
+  assert.notEqual(
+    bandProblem(swap(({ x, y }) => y === middle && Math.abs(x + 0.5 - disc.cx) < disc.r, 'k')),
+    null,
+    'a dark band across the middle',
+  );
+  assert.notEqual(
+    buttonProblem(swap((cell) => distance(cell, disc) <= 1.5, 'h')),
+    null,
+    'a pale button in the middle',
+  );
+});
+
+/** Hue in degrees and saturation (HSV) of an RGB pixel. */
+function hueSat(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return { hue: 0, sat: 0, value: max / 255 };
+  let hue;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  return { hue: (hue * 60 + 360) % 360, sat: d / max, value: max / 255 };
+}
+
+test('the sphere is teal to indigo all round and the ring gold, with no white half', () => {
+  for (const key of BODY_KEYS) {
+    const { hue, sat } = hueSat(...INK[key]);
+    assert.ok(hue >= 170 && hue <= 250 && sat >= 0.4, `body ${key}: hue ${hue}, sat ${sat}`);
+  }
+  for (const key of 'Ggo') {
+    const { hue, sat } = hueSat(...INK[key]);
+    assert.ok(hue >= 35 && hue <= 55 && sat >= 0.4, `ring ${key}: hue ${hue}, sat ${sat}`);
+  }
+  for (const size of DESIGN_SIZES) {
+    const sphere = cellsOf(designFor(size), (key) => SPHERE_KEYS.has(key));
+    const pale = sphere.filter((c) => !BODY_KEYS.has(c.key));
+    assert.ok(pale.length <= 0.12 * sphere.length, `${size} px: ${pale.length} pale cells`);
+  }
+});
+
+test('no size uses red: the icon stays off the official ball colours', () => {
+  for (const size of [16, 32, 128, 1024]) {
+    const { data } = renderIcon(size);
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] === 0) continue;
+      const { hue, sat, value } = hueSat(data[i], data[i + 1], data[i + 2]);
+      const red = (hue < 20 || hue > 340) && sat > 0.4 && value > 0.3;
+      assert.ok(!red, `${size} px: pixel ${i / 4} is red (${data.subarray(i, i + 3).join(',')})`);
+    }
+  }
+});
+
+test("the orb uses the office orb's colours", () => {
+  const sprite = JSON.parse(
+    fs.readFileSync(path.join(REPO_ROOT, 'webview-ui/src/office/sprites/orb.json'), 'utf8'),
+  );
+  for (const key of 'BbnNMRhWwGgo') {
+    const want = sprite.palette[key].toLowerCase();
+    const got = `#${INK[key].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    assert.equal(got, want, `ink ${key}`);
+  }
+});
+
+test('two sparkles that touch neither each other nor the orb', () => {
+  const grid = designFor(1024);
+  assert.equal(groups(cellsOf(grid, (key) => SPARKLE_KEYS.has(key))).length, 2);
   for (const { x, y } of cellsOf(grid, (key) => SPARKLE_KEYS.has(key))) {
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         const key = grid[y + dy][x + dx];
-        assert.ok(!key || SPARKLE_KEYS.has(key), `sparkle (${x}, ${y}) touches the capsule`);
+        assert.ok(!key || SPARKLE_KEYS.has(key), `sparkle (${x}, ${y}) touches the orb`);
       }
     }
   }
@@ -336,81 +434,10 @@ test('a whole cell of tile lies between every sparkle and the tile edge, iOS mas
   }
 });
 
-/** Hue in degrees and saturation (HSV) of an RGB pixel. */
-function hueSat(r, g, b) {
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  if (d === 0) return { hue: 0, sat: 0, value: max / 255 };
-  let hue;
-  if (max === r) hue = ((g - b) / d) % 6;
-  else if (max === g) hue = (b - r) / d + 2;
-  else hue = (r - g) / d + 4;
-  return { hue: (hue * 60 + 360) % 360, sat: d / max, value: max / 255 };
-}
-
-test('no size uses red: the icon stays off the official ball colours', () => {
-  for (const size of [16, 32, 128, 1024]) {
-    const { data } = renderIcon(size);
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i + 3] === 0) continue;
-      const { hue, sat, value } = hueSat(data[i], data[i + 1], data[i + 2]);
-      const red = (hue < 20 || hue > 340) && sat > 0.4 && value > 0.3;
-      assert.ok(!red, `${size} px: pixel ${i / 4} is red (${data.subarray(i, i + 3).join(',')})`);
-    }
-  }
-});
-
-/** HSV value (0 to 1) of a cell key's colour. */
-const valueOf = (key) => Math.max(...INK[key]) / 255;
-
-test('no dark band runs across the capsule at any size', () => {
-  for (const size of DESIGN_SIZES) {
-    const cells = capsuleCells(designFor(size));
-    const { y0, y1 } = box(cells);
-    for (let y = y0 + 1; y < y1; y++) {
-      const row = cells.filter((c) => c.y === y).sort((a, b) => a.x - b.x);
-      const span = row.at(-1).x - row[0].x + 1;
-      let longest = 0;
-      let current = 0;
-      for (const [i, cell] of row.entries()) {
-        const touching = i > 0 && cell.x === row[i - 1].x + 1;
-        current = valueOf(cell.key) < 0.25 ? (touching ? current : 0) + 1 : 0;
-        longest = Math.max(longest, current);
-      }
-      assert.ok(longest < span / 2, `${size} px: row ${y} has a dark run of ${longest}/${span}`);
-    }
-  }
-});
-
-test('the teal cap and the cream body sit side by side, not top over bottom', () => {
-  for (const size of DESIGN_SIZES) {
-    const grid = designFor(size);
-    const { width, height } = box(capsuleCells(grid));
-    const teal = cellsOf(grid, (key) => TEAL_KEYS.has(key));
-    const cream = cellsOf(grid, (key) => CREAM_KEYS.has(key));
-    const dx = mean(cream.map((c) => c.x)) - mean(teal.map((c) => c.x));
-    const dy = mean(cream.map((c) => c.y)) - mean(teal.map((c) => c.y));
-    assert.ok(dx > width / 4, `${size} px: the cream body is right of the teal cap (${dx})`);
-    assert.ok(Math.abs(dy) < height / 8, `${size} px: neither half is on top (${dy})`);
-  }
-});
-
-test("the capsule uses the office capsule's teal, cream and gold", () => {
-  const sprite = JSON.parse(
-    fs.readFileSync(path.join(REPO_ROOT, 'webview-ui/src/office/sprites/capsule.json'), 'utf8'),
-  );
-  for (const key of 'TtdcCgGo') {
-    const want = sprite.palette[key].toLowerCase();
-    const got = `#${INK[key].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-    assert.equal(got, want, `ink ${key}`);
-  }
-});
-
-test('at 16 px a full pixel of tile surrounds the capsule', () => {
+test('at 16 px a full pixel of tile surrounds the orb', () => {
   const grid = designFor(16);
   const body = bodyCoverage(16);
-  for (const { x, y } of capsuleCells(grid)) {
+  for (const { x, y } of orbCells(grid)) {
     for (const [nx, ny] of [
       [x - 1, y],
       [x + 1, y],

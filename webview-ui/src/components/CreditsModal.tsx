@@ -70,7 +70,7 @@ export function CreditsModal({ isOpen, onClose }: CreditsModalProps) {
         </p>
         <p className="m-0">
           The app ships no Pokémon artwork. Poke Agents' own pixel art, such as the app icon and the
-          capsule, is original. When the Pokémon theme is on, the app downloads sprites and
+          catch orb, is original. When the Pokémon theme is on, the app downloads sprites and
           portraits from the PMD Sprite Repository (
           <ExternalLink href={PMD_SPRITE_SITE_URL}>sprites.pmdcollab.org</ExternalLink>,{' '}
           <ExternalLink href={PMD_SPRITE_REPO_URL}>PMDCollab/SpriteCollab</ExternalLink>) to a cache

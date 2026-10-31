@@ -25,8 +25,8 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **A Pokémon per session.** Each visible session is a Pokémon that keeps its species. It works at its desk while the session runs tools, nods along on read tools, and hops when a turn ends.
 - **Levels and evolution.** `Lv` comes from the session's message count. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it waits for your answer or a permission.
-- **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon that doesn't evolve. Its new sessions are thrown out of a capsule from where it stands, and a session that leaves is recalled into one.
-- **Links and messages.** Lines connect sessions that created, messaged or read each other. When one session messages another, a capsule flies between them with a short preview.
+- **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon that doesn't evolve. Its new sessions are thrown out of a catch orb from where it stands, and a session that leaves is recalled into one.
+- **Links and messages.** Lines connect sessions that created, messaged or read each other. When one session messages another, an orb flies between them with a short preview.
 - **Pokédex.** Click a Pokémon to open its Pokédex. **Overview** shows the workspace, repository, agent, model and effort, status, an HP bar for the context left, the task, recent tool steps and messages with other sessions, and the actions Open in Conductor, Switch model…, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
 - **Switch model…** Conductor's API can't change the model of a running session, so the Pokédex offers the closest honest thing: a new session in the same workspace (same files and branch) with the agent (Claude, Codex or Cursor), model, effort and fast mode you pick, and a first message you can edit (it starts as a note to continue the work and check the recent commits and changes). Your favorite models in Conductor come first, with a star; effort levels only some models take say "(some models)". The new session is named after the session and the model ("Fix flaky tests · GPT-5.5"), is thrown out of the original Pokémon and linked to it (the original doesn't become a Lead), and its Pokédex opens when it arrives. The original session isn't changed and keeps running: if it is still working, the picker says so, since both sessions would change the same files, and offers **Stop it**. If Conductor doesn't answer, starting again with the same choice within 10 minutes repeats the same request, so Conductor doesn't make a second session.
 - **Change Pokémon…** In the Pokédex's header: pick which evolution line a session is (a Lead can also be one of the legendaries), turn **Shiny** on or off (it applies at once), or **Reset to automatic** to get back the Pokémon it had before. The level still picks the stage within the line, the change plays the evolution flash, and the choice is kept across restarts. It is Poke Agents' own view; Conductor isn't told.
@@ -36,7 +36,7 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **Sessions.** Choose which sessions appear: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search.
 - **Party bar.** Each visible session as a party slot with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks while its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pichu used Bash!" or "Torchic fainted!".
-- **Sounds.** Each Pokémon's cry when its session needs you, faints, arrives or evolves, and original chiptune effects for level-ups, capsules and messages. See [Sounds](#sounds).
+- **Sounds.** Each Pokémon's cry when its session needs you, faints, arrives or evolves, and original chiptune effects for level-ups, orb throws and messages. See [Sounds](#sounds).
 - **Jukebox.** Background music: Poke Agents Radio, a built-in station of freely licensed retro game tracks, or your own music. See [Music](#music).
 - **Mac app.** The same office in its own window, with notifications when a session needs you or faints and a Dock badge counting the sessions waiting on you. See [Mac App](#mac-app).
 - **Demo mode.** A scripted office of synthetic sessions, for trying Poke Agents without a Conductor account. See [Demo](#demo).
@@ -96,19 +96,19 @@ A session becomes a Lead when it creates another session with a first message, f
 
 Sound is on by default and starts after your first click, tap or key press in the office: browsers keep audio locked until then, and nothing that happened earlier is played late.
 
-| When                                                 | You hear                                            |
-| ---------------------------------------------------- | --------------------------------------------------- |
-| A session needs your answer or a permission          | An alert, then its Pokémon's cry                    |
-| A session errors (faints)                            | Its cry, pitched down, and a falling tone           |
-| A fainted session works again                        | A rising heal arpeggio                              |
-| A Pokémon levels up                                  | A short level-up arpeggio                           |
-| A Pokémon evolves                                    | A rising shimmer, then the new species' cry         |
-| A Lead creates a session                             | A capsule throw, the pop, and the new Pokémon's cry |
-| Any other session appears                            | The pop and its cry                                 |
-| One session messages another                         | A whoosh                                            |
-| A session leaves (hidden, deposited or out of scope) | A recall zap                                        |
-| The selected or a pinned session finishes its turn   | A soft two-note tone                                |
-| You open a Pokédex                                   | That Pokémon's cry                                  |
+| When                                                 | You hear                                         |
+| ---------------------------------------------------- | ------------------------------------------------ |
+| A session needs your answer or a permission          | An alert, then its Pokémon's cry                 |
+| A session errors (faints)                            | Its cry, pitched down, and a falling tone        |
+| A fainted session works again                        | A rising heal arpeggio                           |
+| A Pokémon levels up                                  | A short level-up arpeggio                        |
+| A Pokémon evolves                                    | A rising shimmer, then the new species' cry      |
+| A Lead creates a session                             | An orb throw, the pop, and the new Pokémon's cry |
+| Any other session appears                            | The pop and its cry                              |
+| One session messages another                         | A whoosh                                         |
+| A session leaves (hidden, deposited or out of scope) | A recall zap                                     |
+| The selected or a pinned session finishes its turn   | A soft two-note tone                             |
+| You open a Pokédex                                   | That Pokémon's cry                               |
 
 At most four sounds play a second, one cry at a time, with a cooldown per session and nothing for five seconds after the office connects. **Settings → Sound** has the **Sounds** switch, a volume slider, **Cries**, **Alerts** and **Effects** toggles, and a test button for each sound.
 
@@ -143,7 +143,7 @@ The first time the Jukebox controls Music or Spotify, macOS asks whether your te
 
 The Mac app is the same office in its own window. It only shows Conductor: it never runs coding agents, edits repositories or changes your Conductor settings, and it has no Claude Code tracking, terminal or hooks.
 
-<img src="docs/screenshots/app-icon.png" alt="The Poke Agents app icon, a teal-and-cream capsule with a gold C, on a light and a dark background" width="400">
+<img src="docs/screenshots/app-icon.png" alt="The Poke Agents app icon, a glossy teal orb ringed by a gold C, on a light and a dark background" width="400">
 
 Build it on your Mac, from a clone:
 
@@ -348,7 +348,7 @@ Poke Agents is a fan project and is not affiliated with, endorsed, sponsored or 
 
 **Pixel Agents.** Poke Agents is built on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, used under the MIT License. The classic office, its characters and most of its furniture come from Pixel Agents; its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 
-**Original art.** The app icon (the capsule with a gold C for Conductor), the capsule, and the town's art (grass, tall grass, paths, trees, the pond, the buildings and the Lab and Pokémon Center furniture) are original to Poke Agents and drawn in code by `scripts/generate-icons.mjs` and `scripts/generate-world-assets.mjs`.
+**Original art.** The app icon (the catch orb, ringed by a gold C for Conductor), the catch orb sessions are thrown out of, and the town's art (grass, tall grass, paths, trees, the pond, the buildings and the Lab and Pokémon Center furniture) are original to Poke Agents and drawn in code: by `scripts/generate-icons.mjs` and `scripts/generate-world-assets.mjs`, and pixel by pixel in `webview-ui/src/office/sprites/orb.json`.
 
 **Sprites.** When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer; the app itself ships none. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): use them only for non-commercial purposes. **Settings → About & credits** lists the artists for each species in use.
 

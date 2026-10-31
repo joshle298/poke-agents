@@ -6,7 +6,6 @@ import {
   AMBIENT_ANIM_INTERVAL_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
-  CAPSULE_OPEN_MIN_WAIT_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
@@ -19,6 +18,7 @@ import {
   MAX_PET_ID_LENGTH,
   MESSAGE_PREVIEW_MAX_CHARS,
   MESSAGE_PREVIEW_SEC,
+  ORB_OPEN_MIN_WAIT_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
   POKEMON_EVOLVE_HOLD_MAX_SEC,
@@ -80,7 +80,7 @@ import type {
 } from '../types.js';
 import { CharacterState, Direction, PetState, TILE_SIZE, TileType } from '../types.js';
 import { createCharacter, updateCharacter } from './characters.js';
-import { advanceMatrixEffect, startCapsuleOpen, startMatrixEffect } from './matrixEffectState.js';
+import { advanceMatrixEffect, startMatrixEffect, startOrbOpen } from './matrixEffectState.js';
 import { createPet, updatePet } from './petEntity.js';
 import {
   advancePokemonAnim,
@@ -229,7 +229,7 @@ export class OfficeState {
 
   /** Links between agents from the latest agentLinks snapshot. */
   links: AgentLink[] = [];
-  /** Message capsules in flight (agentMessage), at most PROJECTILE_MAX_IN_FLIGHT. */
+  /** Message orbs in flight (agentMessage), at most PROJECTILE_MAX_IN_FLIGHT. */
   projectiles: Projectile[] = [];
   /** Previews of landed messages, shown near their receivers. */
   messagePreviews: MessagePreview[] = [];
@@ -1560,7 +1560,7 @@ export class OfficeState {
    * When the next species can't be drawn yet (agentDetails can arrive while
    * its sheets still decode), the flash holds solid white at its midpoint
    * until it can, at most POKEMON_EVOLVE_HOLD_MAX_SEC: an evolution never
-   * turns into a closed capsule halfway, then opens as if just sent out.
+   * turns into a closed orb halfway, then opens as if just sent out.
    */
   private advanceEvolution(ch: Character, dt: number): void {
     if (ch.evolveTimer === undefined) return;
@@ -1643,7 +1643,7 @@ export class OfficeState {
     if (ch) this.playOneShot(ch, 'turnEnd');
   }
 
-  /** The Lead (or whoever created it) throws the capsule a new character pops
+  /** The Lead (or whoever created it) throws the orb a new character pops
    *  out of. No-op unless `id` is still spawning and `fromId` is present. */
   setSpawnOrigin(id: number, fromId: number): void {
     const ch = this.characters.get(id);
@@ -1715,10 +1715,10 @@ export class OfficeState {
   }
 
   /**
-   * One agent messaged another: the sender attacks toward the receiver and a
-   * capsule flies between them; its preview shows near the receiver on landing.
+   * One agent messaged another: the sender attacks toward the receiver and an
+   * orb flies between them; its preview shows near the receiver on landing.
    * Refused (false) when either end is missing or PROJECTILE_MAX_IN_FLIGHT
-   * capsules are already in the air.
+   * orbs are already in the air.
    */
   launchProjectile(fromId: number, toId: number, kind: AgentLinkKind, preview?: string): boolean {
     if (fromId === toId) return false;
@@ -2036,19 +2036,19 @@ export class OfficeState {
       }
 
       // A Pokémon office never draws an upstream character: until its sheets
-      // are ready a Pokémon is a closed capsule that holds still. Once they
-      // are, a capsule that rested a while opens in place; one seen only for
+      // are ready a Pokémon is a closed orb that holds still. Once they
+      // are, an orb that rested a while opens in place; one seen only for
       // a moment (a reload decoding cached sheets) just gives way to its
       // Pokémon, as it was before the reload.
       const pokemon = isPokemonCharacter(ch);
       const placeholder = !pokemon && isPokemonPlaceholder(ch);
       if (placeholder) {
-        ch.capsuleWaitSec = (ch.capsuleWaitSec ?? 0) + dt;
-      } else if (ch.capsuleWaitSec !== undefined) {
-        const waited = ch.capsuleWaitSec;
-        ch.capsuleWaitSec = undefined;
-        if (pokemon && waited >= CAPSULE_OPEN_MIN_WAIT_SEC) {
-          startCapsuleOpen(ch);
+        ch.orbWaitSec = (ch.orbWaitSec ?? 0) + dt;
+      } else if (ch.orbWaitSec !== undefined) {
+        const waited = ch.orbWaitSec;
+        ch.orbWaitSec = undefined;
+        if (pokemon && waited >= ORB_OPEN_MIN_WAIT_SEC) {
+          startOrbOpen(ch);
           continue;
         }
       }

@@ -402,7 +402,7 @@ test('a session that turns out idle or fainted as it is created appears in its a
   os.setAgentActive(2, false);
   os.setAgentError(2, 'overloaded');
   os.update(DT);
-  assert.ok(idle.matrixEffect, 'still opening its capsule');
+  assert.ok(idle.matrixEffect, 'still opening its orb');
   assert.ok(roles.meadow.has(at(idle)), `opens in the Meadow (at ${at(idle)})`);
   assert.equal(idle.seatId, desk, 'keeps its desk for when it works');
   const bedSpots = new Set(beds.map((b) => tileKey(b.rest.col, b.rest.row)));

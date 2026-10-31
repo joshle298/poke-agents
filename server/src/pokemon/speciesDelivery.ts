@@ -6,14 +6,14 @@
  * - after `existingAgents`, every species in use;
  * - when an `agentCreated` or `agentDetails` introduces a species: ahead of
  *   that message when the species is already loaded, otherwise as soon as its
- *   load completes (the office shows a closed capsule until then);
+ *   load completes (the office shows a closed orb until then);
  * - when the theme is switched on (`pokemonThemeUpdated`), every species in use.
  * A species whose load fails is announced as `pokemonSpeciesFailed` (once,
- * until it loads: the office keeps its capsule closed, "Sprite unavailable")
+ * until it loads: the office keeps its orb closed, "Sprite unavailable")
  * and tried again once its backoff passes
  * (pokemonAssets.speciesRetryAt), for as long as an agent still shows it: an
  * idle session sends nothing new that would ask again, and would otherwise stay
- * a closed capsule until the page reloads.
+ * a closed orb until the page reloads.
  * Nothing is fetched or sent while sprites are off or the theme is off.
  * `settingsLoaded` is marked `pokemonSprites` (sprites on): this connection
  * gets a species for every agent, so the office draws only Pokémon.
@@ -132,7 +132,7 @@ export function createSpeciesDelivery(
         case 'settingsLoaded':
           if (typeof message.pokemonTheme === 'boolean') themeOn = message.pokemonTheme;
           // Every agent's species comes through this connection: the office
-          // may draw only Pokémon (closed capsules while they load).
+          // may draw only Pokémon (closed orbs while they load).
           send({ ...message, pokemonSprites: arePokemonSpritesEnabled() });
           return;
         case 'pokemonThemeUpdated':
