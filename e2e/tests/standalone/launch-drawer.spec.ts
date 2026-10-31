@@ -396,11 +396,11 @@ test.describe('Standalone / permission posture', () => {
 });
 
 /**
- * A long Directory list must not push the drawer off the screen: the drawer is
- * rendered above the launch button and the app hides overflow, so anything
- * above the viewport's top edge is unreachable. Seeded straight into the
- * shared config (the list's source of truth); none of these is ever launched,
- * so the paths need not exist.
+ * A long Directory list must not push the drawer off the screen: the drawer
+ * opens below the desktop toolbar's launch button (above the phone's card bar)
+ * and the app hides overflow, so anything past the viewport's edge is
+ * unreachable. Seeded straight into the shared config (the list's source of
+ * truth); none of these is ever launched, so the paths need not exist.
  */
 const MANY_DIRECTORIES = Array.from({ length: 33 }, (_, i) => ({
   name: `Project ${String(i + 1).padStart(2, '0')}`,
@@ -440,9 +440,14 @@ test.describe('Standalone / long Directory lists', () => {
       { width: 1280, height: 360 },
     ]) {
       await page.setViewportSize(size);
-      await page.mouse.move(size.width - 1, 0);
+      // Park the pointer off the toolbar (top right) so the hover below opens it.
+      await page.mouse.move(0, size.height - 1);
       const drawer = await openLaunchDrawer(page);
       await expectDrawerFits(page, drawer);
+      // The toolbar is at the top of the office: the drawer hangs below + Agent.
+      const button = await page.getByRole('button', { name: '+ Agent' }).boundingBox();
+      const box = await drawer.boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(button!.y + button!.height);
       await drawer.getByRole('button', { name: '+ Directory', exact: true }).click();
       await expect(getDirectoryModal(page)).toBeVisible();
       await getDirectoryModal(page).getByRole('button', { name: 'Cancel', exact: true }).click();

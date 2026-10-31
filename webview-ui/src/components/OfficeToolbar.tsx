@@ -7,7 +7,7 @@ import { transport } from '../transport/index.js';
 import { LaunchDrawer } from './LaunchDrawer.js';
 import { Button } from './ui/Button.js';
 
-interface BottomToolbarProps {
+interface OfficeToolbarProps {
   isEditMode: boolean;
   onToggleEditMode: () => void;
   isSettingsOpen: boolean;
@@ -32,7 +32,14 @@ interface BottomToolbarProps {
   onOpenPcBox: () => void;
 }
 
-export function BottomToolbar({
+/**
+ * The office's toolbar: + Agent (with its launch drawer) when Claude Code feeds
+ * the office, Sessions and PC when Conductor does, then Music, Layout and
+ * Settings. One row in the office's top-right corner, placed by OfficeTopBar
+ * (left of the party bar and the Pokédex); it wraps onto a second row only
+ * when the office is too narrow for one.
+ */
+export function OfficeToolbar({
   isEditMode,
   onToggleEditMode,
   isSettingsOpen,
@@ -48,7 +55,7 @@ export function BottomToolbar({
   onOpenSessions,
   isPcBoxOpen,
   onOpenPcBox,
-}: BottomToolbarProps) {
+}: OfficeToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
 
@@ -84,9 +91,7 @@ export function BottomToolbar({
   const showUnavailable = claudeActive && isBrowserRuntime && !terminalAvailable;
 
   return (
-    // Bottom-left. The terminal panel docks on the right edge, so it never
-    // reaches these buttons and no lift is needed.
-    <div className="absolute left-10 bottom-10 z-20 flex items-center gap-4 pixel-panel p-4">
+    <div className="flex flex-wrap justify-end items-center gap-4 pixel-panel p-4 pointer-events-auto">
       {showUnavailable && (
         <Button
           variant="disabled"
@@ -114,6 +119,7 @@ export function BottomToolbar({
           </Button>
           <LaunchDrawer
             isOpen={isDrawerOpen}
+            placement="down"
             directories={directories}
             onSelect={handleDirectorySelect}
             onAddDirectory={() => {

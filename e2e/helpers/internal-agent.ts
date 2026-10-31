@@ -145,7 +145,7 @@ export async function spawnInternalAgentAndWaitForInvocation(
 
 /**
  * Spawn an agent bound to a specific DIRECTORY in a multi-root window.
- * The plain "+ Agent" click opens the Directory picker (BottomToolbar.tsx); we click
+ * The plain "+ Agent" click opens the Directory picker (OfficeToolbar.tsx); we click
  * the named Directory entry, which sends `launchAgent { directoryPath }` so the agent
  * gets `directoryName = <folder basename>` (adapters/vscode/agentManager.ts). Then
  * we wait for the spawn exactly like spawnInternalAgentAndWait. The seated

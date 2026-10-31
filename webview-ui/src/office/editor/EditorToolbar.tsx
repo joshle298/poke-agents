@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, Ref } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../../components/ui/Button.js';
@@ -10,6 +10,8 @@ import { VisualColorPicker } from '../../components/VisualColorPicker.js';
 import {
   AREA_DEFAULT_COLORS,
   CANVAS_FALLBACK_TILE_COLOR,
+  EDITOR_PALETTE_EDGE_PX,
+  EDITOR_PALETTE_Z_INDEX,
   EMPTY_SPRITE_THUMBNAIL_BG,
   PET_THUMB_SCALE_MARGIN,
   PET_THUMB_ZOOM,
@@ -87,6 +89,8 @@ interface EditorToolbarProps {
   onAreaMappingChange: (directoryName: string, areaLabel: string, action: 'add' | 'remove') => void;
   /** Replace the layout with a bundled one (undoable). */
   onLoadBundledLayout: (id: BundledLayoutId) => void;
+  /** The palette's outer box (App keeps the battle log above it). */
+  ref?: Ref<HTMLDivElement>;
 }
 
 const THUMB_ZOOM = 2;
@@ -134,6 +138,7 @@ export function EditorToolbar({
   onAreaColorChange,
   onAreaMappingChange,
   onLoadBundledLayout,
+  ref,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurniturePanelCategory>('desks');
   // The Templates panel belongs to the Select tool (no other tool panel shows
@@ -252,7 +257,18 @@ export function EditorToolbar({
   };
 
   return (
-    <div className="absolute bottom-76 left-10 z-10 pixel-panel p-4 flex flex-col-reverse gap-4 max-w-[calc(100vw-20px)]">
+    // Bottom-left of the office, growing upward; the office's own width caps
+    // it (the party bar and a docked Pokédex sit outside the office).
+    <div
+      ref={ref}
+      className="absolute pixel-panel p-4 flex flex-col-reverse gap-4"
+      style={{
+        zIndex: EDITOR_PALETTE_Z_INDEX,
+        left: EDITOR_PALETTE_EDGE_PX,
+        bottom: EDITOR_PALETTE_EDGE_PX,
+        maxWidth: `calc(100% - ${2 * EDITOR_PALETTE_EDGE_PX}px)`,
+      }}
+    >
       {/* Tool row — at the bottom */}
       <div className="flex gap-4 flex-wrap">
         <Button

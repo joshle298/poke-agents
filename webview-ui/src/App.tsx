@@ -6,7 +6,6 @@ import type { SelectMods, TabStatus } from './components/AgentCard.js';
 import type { CardBarLayout } from './components/AgentCardBar.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { BattleLog } from './components/BattleLog.js';
-import { BottomToolbar } from './components/BottomToolbar.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { ConductorEmptyOffice, NothingTrackedOffice } from './components/ConductorEmptyOffice.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
@@ -16,6 +15,8 @@ import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
+import { OfficeToolbar } from './components/OfficeToolbar.js';
+import { OfficeTopBar } from './components/OfficeTopBar.js';
 import { PcBoxModal } from './components/PcBoxModal.js';
 import type { PokedexTab } from './components/SessionPanel.js';
 import { SessionPanel } from './components/SessionPanel.js';
@@ -24,10 +25,11 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
 import { Toasts } from './components/Toasts.js';
 import { Tooltip } from './components/Tooltip.js';
+import { officeRightCover } from './components/topBarLayout.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
 import { VersionIndicator } from './components/VersionIndicator.js';
-import { ZoomControls } from './components/ZoomControls.js';
+import { ZoomControls, ZoomLevelIndicator } from './components/ZoomControls.js';
 import { openInConductor, setPokemonTheme } from './conductor/actions.js';
 import type { ConductorAgent } from './conductor/conductorStore.js';
 import { conductorStore, isStreamProvider, useConductor } from './conductor/conductorStore.js';
@@ -36,14 +38,17 @@ import { buildPartySlot, partyOrder } from './conductor/party.js';
 import { useBoolPref } from './conductor/preferences.js';
 import { useConductorFeed } from './conductor/useConductorFeed.js';
 import {
-  BATTLE_LOG_BOTTOM_MOBILE_PX,
-  BATTLE_LOG_BOTTOM_PX,
+  BATTLE_LOG_EDGE_GAP_PX,
   BATTLE_LOG_STORAGE_KEY,
+  EDITOR_PALETTE_EDGE_PX,
   OFFICE_CANVAS_TEST_ID,
+  OFFICE_TOP_BAR_STACK_GAP_PX,
   PARTY_WIDE_MIN_WINDOW_PX,
+  POKEDEX_PANEL_WIDTH_PX,
   POKEMON_THEME_NAME,
   TERMINAL_SIDEBAR_WIDTH_PX,
 } from './constants.js';
+import { useBoxSize } from './hooks/useBoxSize.js';
 import { useDesktopCommands } from './hooks/useDesktopCommands.js';
 import { useDirectoryEditor } from './hooks/useDirectoryEditor.js';
 import { useEditorActions } from './hooks/useEditorActions.js';
@@ -58,6 +63,7 @@ import { MobileShell } from './mobile/MobileShell.js';
 import { useMobileShell } from './mobile/useMobileShell.js';
 import { Jukebox } from './music/Jukebox.js';
 import { JukeboxButton } from './music/JukeboxButton.js';
+import { NowPlayingPill } from './music/NowPlayingPill.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -407,6 +413,8 @@ function App() {
   ]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  // The layout editor's palette, measured: the battle log stays above it.
+  const [paletteRef, paletteBox] = useBoxSize<HTMLDivElement>();
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
   useEditorKeyboard(
@@ -680,6 +688,59 @@ function App() {
     return <div className="w-full h-full flex items-center justify-center ">Loading...</div>;
   }
 
+  // What covers the office's right edge, which the top bar and the battle log
+  // keep clear of: the upstream card column (theme off) and, on narrow
+  // desktop windows, the Pokédex drawer beside it.
+  const pokedexDrawerOpen = !isMobile && !wideWindow && detailAgentPresent;
+  const officeRightInset = officeRightCover(
+    !isMobile && cardBarLayout === 'overlay' && cardAgentIds.length > 0
+      ? TERMINAL_SIDEBAR_WIDTH_PX
+      : 0,
+    pokedexDrawerOpen ? POKEDEX_PANEL_WIDTH_PX : null,
+  );
+
+  // Hooks first-run tooltip. Gated on hooksInstalled (the hooksStatus
+  // message), NOT the hooksEnabled preference: hooksEnabled defaults true
+  // while first-run consent is still pending, and announcing "Instant
+  // Detection Active" before anything is installed would be a lie.
+  const showHooksTooltip =
+    hooksEnabled && claudeHooksInstalled && !hooksInfoShown && !hooksTooltipDismissed;
+  const hooksTooltip = (position: 'inline' | 'top-right') => (
+    <Tooltip
+      title="Instant Detection Active"
+      position={position}
+      onDismiss={() => {
+        setHooksTooltipDismissed(true);
+        transport.send({ type: 'setHooksInfoShown' });
+      }}
+    >
+      <span className="text-sm text-text leading-none">
+        Your agents now respond in real-time.{' '}
+        <span
+          className="text-accent cursor-pointer underline"
+          onClick={() => {
+            setIsHooksInfoOpen(true);
+            setHooksTooltipDismissed(true);
+            transport.send({ type: 'setHooksInfoShown' });
+          }}
+        >
+          View more
+        </span>
+      </span>
+    </Tooltip>
+  );
+
+  const rotateHint = (
+    <div className="bg-accent-bright text-white text-sm py-3 px-8 rounded-none border-2 border-accent shadow-pixel pointer-events-none whitespace-nowrap">
+      Rotate (R)
+    </div>
+  );
+  const viewOnlyLabel = officeReadOnly && (
+    <div className="text-sm text-text-muted pointer-events-none select-none whitespace-nowrap">
+      View only
+    </div>
+  );
+
   // The office region is shared by both shells: desktop mounts it as the
   // flexing left half of the split view (the terminal panel docks beside it);
   // mobile mounts it as the first page of the sliding track. containerRef
@@ -709,7 +770,7 @@ function App() {
         tapSelectsFirst={isMobile}
       />
 
-      {!isDebugMode ? (
+      {!isDebugMode && (
         <>
           {/* Mobile: pinch replaces the zoom buttons, and the toolbar's
                 jobs move to the card bar (+) and the floating Settings button. */}
@@ -720,20 +781,64 @@ function App() {
             className="absolute inset-0 pointer-events-none"
             style={{ background: 'var(--vignette)' }}
           />
+        </>
+      )}
 
-          {editor.isEditMode && editor.isDirty && (
-            <EditActionBar editor={editor} editorState={editorState} />
-          )}
+      {/* Desktop: the toolbar in the office's top-right corner (left of the
+          party bar and the Pokédex), the now-playing pill, the first-run
+          tooltip and the toasts under it, and the top-centre pills beside
+          it or, when they don't fit, under it. Debug mode keeps the toolbar
+          (Settings turns debug off). A read-only office gets no toolbar:
+          launching, layout editing and every setting would be refused by the
+          server anyway. */}
+      {!isMobile && (
+        <OfficeTopBar
+          rightInset={officeRightInset}
+          toolbar={
+            !officeReadOnly && (
+              <OfficeToolbar
+                isEditMode={editor.isEditMode}
+                onToggleEditMode={editor.handleToggleEditMode}
+                isSettingsOpen={isSettingsOpen}
+                onToggleSettings={() => setIsSettingsOpen((v) => !v)}
+                directories={directories}
+                onAddDirectory={directoryEditor.add}
+                onEditDirectory={directoryEditor.edit}
+                terminalAvailable={terminalAvailable}
+                terminalUnavailableReason={terminalUnavailableReason}
+                claudeActive={claudeActive}
+                conductorActive={conductorActive}
+                isSessionsOpen={isSessionsOpen}
+                onOpenSessions={() => setIsSessionsOpen(true)}
+                isPcBoxOpen={isPcBoxOpen}
+                onOpenPcBox={() => setIsPcBoxOpen(true)}
+              />
+            )
+          }
+          belowToolbar={
+            <>
+              {/* Jukebox (local music, never Conductor): privileged
+                  standalone offices, like the Jukebox itself. */}
+              {isBrowserRuntime && !officeReadOnly && <NowPlayingPill placement="toolbar" />}
+              {showHooksTooltip && hooksTooltip('inline')}
+            </>
+          }
+          centre={
+            <>
+              {!isDebugMode && editor.isEditMode && editor.isDirty && (
+                <EditActionBar editor={editor} editorState={editorState} />
+              )}
+              {!isDebugMode && showRotateHint && rotateHint}
+              {!isDebugMode && <ZoomLevelIndicator zoom={editor.zoom} />}
+              {viewOnlyLabel}
+              <ConnectionIndicator />
+            </>
+          }
+        />
+      )}
 
-          {showRotateHint && (
-            <div
-              className="absolute left-1/2 -translate-x-1/2 z-11 bg-accent-bright text-white text-sm py-3 px-8 rounded-none border-2 border-accent shadow-pixel pointer-events-none whitespace-nowrap"
-              style={{ top: editor.isDirty ? 64 : 8 }}
-            >
-              Rotate (R)
-            </div>
-          )}
-
+      {!isDebugMode ? (
+        <>
           {editor.isEditMode &&
             (() => {
               const selUid = editorState.selectedFurnitureUid;
@@ -742,6 +847,7 @@ function App() {
                 : null;
               return (
                 <EditorToolbar
+                  ref={paletteRef}
                   activeTool={editorState.activeTool}
                   selectedTileType={editorState.selectedTileType}
                   selectedFurnitureType={editorState.placingType}
@@ -811,61 +917,18 @@ function App() {
         />
       )}
 
-      {/* Hooks first-run tooltip. Gated on hooksInstalled (the hooksStatus
-          message), NOT the hooksEnabled preference: hooksEnabled defaults true
-          while first-run consent is still pending, and announcing "Instant
-          Detection Active" before anything is installed would be a lie. */}
-      {hooksEnabled && claudeHooksInstalled && !hooksInfoShown && !hooksTooltipDismissed && (
-        <Tooltip
-          title="Instant Detection Active"
-          position="top-right"
-          onDismiss={() => {
-            setHooksTooltipDismissed(true);
-            transport.send({ type: 'setHooksInfoShown' });
-          }}
+      {/* Mobile: the first-run tooltip in the top-right corner, and the
+          connection status and "View only" at the top centre (desktop puts
+          them in OfficeTopBar). */}
+      {isMobile && showHooksTooltip && hooksTooltip('top-right')}
+      {isMobile && (
+        <div
+          className="absolute mobile-safe-top left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none"
+          style={{ gap: OFFICE_TOP_BAR_STACK_GAP_PX }}
         >
-          <span className="text-sm text-text leading-none">
-            Your agents now respond in real-time.{' '}
-            <span
-              className="text-accent cursor-pointer underline"
-              onClick={() => {
-                setIsHooksInfoOpen(true);
-                setHooksTooltipDismissed(true);
-                transport.send({ type: 'setHooksInfoShown' });
-              }}
-            >
-              View more
-            </span>
-          </span>
-        </Tooltip>
-      )}
-
-      {officeReadOnly && (
-        <div className="absolute mobile-safe-top left-1/2 -translate-x-1/2 z-10 text-sm text-text-muted pointer-events-none select-none whitespace-nowrap">
-          View only
+          {viewOnlyLabel}
+          <ConnectionIndicator />
         </div>
-      )}
-
-      {/* A read-only office gets no toolbar: launching, layout editing and every
-          setting would be refused by the server anyway. */}
-      {!isMobile && !officeReadOnly && (
-        <BottomToolbar
-          isEditMode={editor.isEditMode}
-          onToggleEditMode={editor.handleToggleEditMode}
-          isSettingsOpen={isSettingsOpen}
-          onToggleSettings={() => setIsSettingsOpen((v) => !v)}
-          directories={directories}
-          onAddDirectory={directoryEditor.add}
-          onEditDirectory={directoryEditor.edit}
-          terminalAvailable={terminalAvailable}
-          terminalUnavailableReason={terminalUnavailableReason}
-          claudeActive={claudeActive}
-          conductorActive={conductorActive}
-          isSessionsOpen={isSessionsOpen}
-          onOpenSessions={() => setIsSessionsOpen(true)}
-          isPcBoxOpen={isPcBoxOpen}
-          onOpenPcBox={() => setIsPcBoxOpen(true)}
-        />
       )}
 
       {/* Mobile: Settings floats top-left (the layout editor stays desktop-
@@ -916,14 +979,23 @@ function App() {
         <NothingTrackedOffice />
       )}
 
+      {/* A quarter of the office's height above its bottom edge, and above the
+          layout editor's palette while it is open. */}
       {pokemonTheme && battleLogOn && !isDebugMode && (
-        <BattleLog bottomPx={isMobile ? BATTLE_LOG_BOTTOM_MOBILE_PX : BATTLE_LOG_BOTTOM_PX} />
+        <BattleLog
+          minBottomPx={
+            editor.isEditMode && paletteBox.height > 0
+              ? EDITOR_PALETTE_EDGE_PX + paletteBox.height + BATTLE_LOG_EDGE_GAP_PX
+              : BATTLE_LOG_EDGE_GAP_PX
+          }
+          rightInset={officeRightInset}
+        />
       )}
 
       {/* Narrow desktop windows: the Pokédex opens as a drawer over the
           office's right edge (clear of the upstream card column, which
           overlays that edge when the theme is off). */}
-      {!isMobile && !wideWindow && detailAgentPresent && detailAgentId !== null && (
+      {pokedexDrawerOpen && detailAgentId !== null && (
         <SessionPanel
           key={detailAgentId}
           agentId={detailAgentId}
@@ -962,8 +1034,6 @@ function App() {
           escapeSuppressed={editor.isEditMode}
         />
       )}
-
-      <ConnectionIndicator />
     </div>
   );
 
@@ -1112,7 +1182,7 @@ function App() {
         </div>
       </Modal>
       {/* Rendered at the composition root, not inside a launch surface: the
-          drawer that opens it lives in BottomToolbar on desktop and
+          drawer that opens it lives in OfficeToolbar on desktop and
           MobileAgentBar on mobile, and both close as soon as it appears. */}
       <DirectoryModal
         isOpen={directoryEditor.modal.open}
@@ -1222,7 +1292,8 @@ function App() {
           onClose={closeDetail}
         />
       )}
-      <Toasts />
+      {/* Desktop toasts stack under the toolbar (OfficeTopBar). */}
+      {isMobile && <Toasts />}
       {/* Jukebox (local music, never Conductor): privileged standalone offices. */}
       {isBrowserRuntime && !officeReadOnly && <Jukebox isMobile={isMobile} />}
 

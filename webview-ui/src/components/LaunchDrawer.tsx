@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 
 import { DRAWER_EDIT_LONG_PRESS_MAX_MOVE_PX, DRAWER_EDIT_LONG_PRESS_MS } from '../constants.js';
 import type { Directory } from '../hooks/useExtensionMessages.js';
+import type { DropdownPlacement } from './ui/Dropdown.js';
 import { Dropdown, DropdownItem } from './ui/Dropdown.js';
 
 interface LaunchDrawerProps {
@@ -16,6 +17,9 @@ interface LaunchDrawerProps {
   onAddDirectory: () => void;
   /** Open the Directory modal pre-filled with this entry (user-defined rows). */
   onEditDirectory: (directory: Directory) => void;
+  /** Which side of the launch button it opens on: up from the phone's card
+   *  bar (the default), down from the desktop toolbar at the top. */
+  placement?: DropdownPlacement;
   className?: string;
 }
 
@@ -23,8 +27,9 @@ interface LaunchDrawerProps {
  * The launch button's drawer: one row per Directory an agent can be launched
  * into, with `+ Directory` pinned above them behind a separator. Opened by a
  * plain press of the launch button (and by hover on desktop), and rendered
- * above the button by the shared Dropdown. Every launch goes through a row
- * here — the button itself never launches.
+ * by the shared Dropdown above the phone's card bar or below the desktop
+ * toolbar. Every launch goes through a row here — the button itself never
+ * launches.
  *
  * Rows arrive already ordered (host rows first, then user rows, each group
  * alphabetical) and already deduped: the union is built host-side, so every
@@ -44,15 +49,21 @@ export function LaunchDrawer({
   onSelect,
   onAddDirectory,
   onEditDirectory,
+  placement = 'up',
   className = '',
 }: LaunchDrawerProps) {
   return (
     // Open even with no Directories: `+ Directory` is always worth showing, and
     // an office with an empty list is exactly where it's needed most.
-    // fitViewport: a long list must never push `+ Directory` above the top of
-    // the screen, so the drawer is capped at the room above the button and
-    // only the rows scroll.
-    <Dropdown isOpen={isOpen} fitViewport className={`min-w-128 ${className}`}>
+    // fitViewport: a long list must never push `+ Directory` off the screen,
+    // so the drawer is capped at the room on its side of the button and only
+    // the rows scroll.
+    <Dropdown
+      isOpen={isOpen}
+      fitViewport
+      placement={placement}
+      className={`min-w-128 ${className}`}
+    >
       <div data-testid="launch-drawer" className="flex flex-col min-h-0">
         {/* DropdownItem hard-resets to border-none, so the separator lives on
             this wrapper. Pinned: it never scrolls away with the rows. */}

@@ -11,8 +11,9 @@ import { useMusicFeed } from './useMusicFeed.js';
  * tracks the server downloads on first play), music the user owns (the music
  * folder) or plays in their own apps (Music, Spotify). A local nicety that
  * never touches Conductor. Mount once at App's top level, for privileged
- * standalone offices only; it renders the panel while open and the
- * now-playing pill.
+ * standalone offices only; it renders the panel while open and, on a phone,
+ * the now-playing pill (on desktop the office's top bar shows the pill under
+ * the toolbar).
  */
 export function Jukebox({ isMobile }: { isMobile: boolean }) {
   useMusicFeed();
@@ -27,7 +28,7 @@ export function Jukebox({ isMobile }: { isMobile: boolean }) {
   return (
     <>
       {open && <JukeboxPanel onClose={close} />}
-      <NowPlayingPill isMobile={isMobile} />
+      {isMobile && <NowPlayingPill placement="phone" />}
     </>
   );
 }

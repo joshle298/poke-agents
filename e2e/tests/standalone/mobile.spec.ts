@@ -170,7 +170,7 @@ test.describe('Standalone / mobile shell', () => {
       claudeScenario('mobile shell launch').holdOpenFor(60_000).build(),
     );
 
-    // The mobile shell, not the desktop one: no bottom toolbar, a launch card.
+    // The mobile shell, not the desktop one: no desktop toolbar, a launch card.
     await expect(page.getByRole('button', { name: 'Layout' })).toHaveCount(0);
     const launch = page.getByTitle('Launch agent', { exact: true });
     await expect(launch).toBeVisible();

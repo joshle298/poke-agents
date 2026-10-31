@@ -198,4 +198,40 @@ test.describe('Standalone / UI', () => {
       timeout: CONNECTION_STATE_TIMEOUT_MS,
     });
   });
+
+  test('the toolbar holds the top-right corner and the connection pill stays clear of it @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    const toolbar = page.locator('.pixel-panel', {
+      has: page.getByRole('button', { name: 'Settings', exact: true }),
+    });
+    const indicator = page.getByText(/Reconnecting|Disconnected/);
+    await expect(toolbar).toBeVisible();
+
+    // The connection pill is centred at the top: beside the toolbar on a wide
+    // window, under it on a narrow one (800 px still gets the desktop shell).
+    await standalone.stopHost();
+    await expect(indicator).toBeVisible({ timeout: CONNECTION_STATE_TIMEOUT_MS });
+    for (const size of [
+      { width: 1280, height: 800 },
+      { width: 800, height: 800 },
+    ]) {
+      await page.setViewportSize(size);
+      // An empty office has no party bar: the toolbar's corner is the window's.
+      await expect
+        .poll(async () => {
+          const box = await toolbar.boundingBox();
+          return box && box.y <= 16 && box.x + box.width >= size.width - 16;
+        })
+        .toBe(true);
+      const bar = (await toolbar.boundingBox())!;
+      const pill = (await indicator.boundingBox())!;
+      const overlapX = Math.min(bar.x + bar.width, pill.x + pill.width) - Math.max(bar.x, pill.x);
+      const overlapY = Math.min(bar.y + bar.height, pill.y + pill.height) - Math.max(bar.y, pill.y);
+      expect(overlapX <= 0 || overlapY <= 0).toBe(true);
+    }
+    await standalone.startHost();
+    await expect(indicator).toHaveCount(0, { timeout: CONNECTION_STATE_TIMEOUT_MS });
+  });
 });

@@ -44,10 +44,9 @@ export const MUSIC_APP_POLL_MS = 5_000;
 export const MUSIC_APP_VOLUME_DEBOUNCE_MS = 300;
 
 // ── UI ─────────────────────────────────────────────────────────
-/** Above the office overlays and the Pokédex sheet, below the modals. */
+/** Above the office overlays and the Pokédex sheet, below the toolbar and
+ *  the modals. */
 export const MUSIC_PILL_Z_INDEX = 46;
-/** The pill sits above the bottom toolbar on desktop. */
-export const MUSIC_PILL_BOTTOM_PX = 76;
 /** On a phone the pill sits this far below the top buttons' line, clear of
  *  the connection pill that shows there while the socket reconnects. */
 export const MUSIC_PILL_MOBILE_OFFSET_PX = 52;

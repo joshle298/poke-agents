@@ -148,10 +148,35 @@ export const ZOOM_LEVEL_HIDE_DELAY_MS = 2000;
 export const ZOOM_LEVEL_FADE_DURATION_SEC = 0.5;
 export const ZOOM_SCROLL_THRESHOLD = 50;
 export const PAN_MARGIN_FRACTION = 0.25;
+/** Outer right and bottom edges of the zoom buttons in the office's top-left
+ *  corner (ZoomControls: two 40 px buttons 4 px apart, 8 px from the corner),
+ *  which the top-centre pills and the toolbar keep clear of. */
+export const ZOOM_CONTROLS_RIGHT_PX = 48;
+export const ZOOM_CONTROLS_BOTTOM_PX = 92;
+
+// ── Office top bar (desktop) ─────────────────────────────────
+/** Inset of the toolbar from the office's top and right edges, and of the
+ *  top-centre pills from its top edge while they fit beside the toolbar. */
+export const OFFICE_TOP_BAR_EDGE_PX = 8;
+/** Space between the toolbar and what sits under or beside it. */
+export const OFFICE_TOP_BAR_GAP_PX = 8;
+/** Space between the items stacked under the toolbar (the now-playing pill,
+ *  the first-run tooltip) and between the top-centre pills. */
+export const OFFICE_TOP_BAR_STACK_GAP_PX = 6;
+/** The toolbar: above the characters' labels and bubbles (41-43), the Intro
+ *  (45) and the now-playing pill under it (46), so its launch drawer opens
+ *  over them; below the modals (50) and the toasts (60). */
+export const OFFICE_TOOLBAR_Z_INDEX = 47;
 
 // ── Editor ───────────────────────────────────────────────────
 export const UNDO_STACK_MAX_SIZE = 50;
 export const LAYOUT_SAVE_DEBOUNCE_MS = 500;
+/** The layout editor's tool palette (EditorToolbar) sits this far from the
+ *  office's bottom-left corner... */
+export const EDITOR_PALETTE_EDGE_PX = 10;
+/** ...over the faint version label in the bottom-right corner (20), which a
+ *  palette as wide as a narrow office reaches. */
+export const EDITOR_PALETTE_Z_INDEX = 21;
 /** data-testid of the office canvas — e2e drives real editor gestures on it. */
 export const OFFICE_CANVAS_TEST_ID = 'office-canvas';
 /** Ghost-border hover tile when the border isn't shown — off any reachable tile. */
@@ -914,10 +939,13 @@ export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
 export const BATTLE_LOG_CAPACITY = 30;
 export const BATTLE_LOG_VISIBLE_MS = 4_000;
 export const BATTLE_LOG_FADE_MS = 500;
-/** Distance of the battle log from the office's bottom edge: clears the
- *  desktop toolbar, which shares the bottom-left corner. */
-export const BATTLE_LOG_BOTTOM_PX = 80;
-export const BATTLE_LOG_BOTTOM_MOBILE_PX = 10;
+/** The battle log's distance from the office's bottom edge, as a share of the
+ *  office's height: it reads in the lower part of the office instead of
+ *  hugging the window's bottom edge. */
+export const BATTLE_LOG_BOTTOM_FRACTION = 0.25;
+/** ...and never less than this from the bottom edge, or from the top of the
+ *  layout editor's palette while it is open. */
+export const BATTLE_LOG_EDGE_GAP_PX = 10;
 export const BATTLE_LOG_MAX_WIDTH_PX = 520;
 /** Per-device preferences (localStorage, not synced through the server). */
 export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
@@ -925,6 +953,10 @@ export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
 export const TOAST_VISIBLE_MS = 4_000;
 export const TOAST_MAX_VISIBLE = 3;
 export const TOAST_Z_INDEX = 60;
+/** Desktop: toasts stack right-aligned under the toolbar, this wide at most
+ *  (longer text wraps), so they stay under it rather than reaching across
+ *  the top of the office. */
+export const TOAST_MAX_WIDTH_PX = 320;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
 /** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */

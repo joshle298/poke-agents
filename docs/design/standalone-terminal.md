@@ -17,7 +17,7 @@ Today the two surfaces are asymmetric:
 | See agent output | VS Code terminal panel                    | **nothing**                           |
 
 `server/src/clientMessageHandler.ts` routed `launchAgent` and `focusAgent` into its `default:`
-branch ("require IDE-specific handling"), and `BottomToolbar.tsx` hid the `+ Agent` button
+branch ("require IDE-specific handling"), and `BottomToolbar.tsx` (since renamed `OfficeToolbar.tsx`) hid the `+ Agent` button
 behind `!isBrowserRuntime`. Standalone could only _observe_ agents started elsewhere.
 
 After this change, standalone spawns Claude in a server-side PTY and streams it to an
@@ -28,7 +28,7 @@ xterm.js drawer in the browser.
 ```
 Browser SPA                          Fastify server                     OS
 ───────────                          ──────────────                     ──
-BottomToolbar "+ Agent"
+OfficeToolbar "+ Agent"
    └─ launchAgent (ClientMessage, /ws)
                           ──────────▶ clientMessageHandler
                                         └─ launchStandaloneAgent()
