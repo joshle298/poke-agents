@@ -2,7 +2,7 @@
 
 Thanks for your interest in contributing to Poke Agents! All contributions are welcome — features, bug fixes, documentation improvements, refactors, and more. Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca; fixes to code the two share may belong upstream too.
 
-Poke Agents is a visualizer for Conductor. A change must not make it run agents, start sessions, edit repositories, or store or change Conductor settings; actions only ask Conductor's API to act, on the user's click. The README's "What It Is" section is the contract. Upstream's `--claude` mode is the opt-in exception.
+Poke Agents is a visualizer for Conductor. A change must not make it run agents, start sessions on its own, edit repositories, or store or change Conductor settings; actions only ask Conductor's API to act, on the user's click (Switch model's new session included). The README's "What It Is" section is the contract. Upstream's `--claude` mode is the opt-in exception.
 
 This project is licensed under the [MIT License](LICENSE), so your contributions will be too. No CLA or DCO is required.
 

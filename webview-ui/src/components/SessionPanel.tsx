@@ -21,14 +21,9 @@ import {
   isStreamProvider,
   useConductor,
 } from '../conductor/conductorStore.js';
-import {
-  agoText,
-  isConductorDeepLink,
-  modelLabel,
-  shortAge,
-  workspaceLabel,
-} from '../conductor/format.js';
+import { agoText, isConductorDeepLink, shortAge, workspaceLabel } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
+import { sessionModelRows } from '../conductor/modelPicker.js';
 import type { PartyCondition } from '../conductor/party.js';
 import {
   agentCondition,
@@ -54,7 +49,9 @@ import type { AgentAppearance } from './AgentCard.js';
 import { CharacterMugShot } from './CharacterMugShot.js';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { HpBar } from './HpBar.js';
+import { ModelPickerModal } from './ModelPickerModal.js';
 import { PokedexChat } from './PokedexChat.js';
+import { PokemonPickerModal } from './PokemonPickerModal.js';
 import { PokemonPortrait } from './PokemonPortrait.js';
 import { ReplyBox } from './ReplyBox.js';
 import { Button } from './ui/Button.js';
@@ -218,10 +215,13 @@ export function SessionPanel({
   const speciesMap = useConductor((s) => s.species);
   const sessions = useConductor((s) => s.sessions);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
+  const modelCatalog = useConductor((s) => s.modelCatalog);
+  const pokemonTheme = useConductor((s) => s.pokemonTheme);
   const now = useNow(CONDUCTOR_UI_TICK_MS);
 
   const [draft, setDraft] = useState('');
   const [confirm, setConfirm] = useState<'stop' | 'deposit' | null>(null);
+  const [picker, setPicker] = useState<'model' | 'pokemon' | null>(null);
   // The message last sent from here, until its conductorActionResult.
   const [sent, setSent] = useState<{ at: number; text: string } | null>(null);
 
@@ -257,6 +257,11 @@ export function SessionPanel({
   const nickname = agent?.label ?? `Agent ${agentId}`;
   const portraitUrl = pickPortrait(species?.portraits, portraitEmotion(condition));
   const question = detail?.question;
+  const modelRows = sessionModelRows(agent, modelCatalog);
+  const canChangePokemon = canAct && pokemonTheme && agent?.species !== undefined;
+  // The picker's own outcomes report inside it.
+  const pickerAction =
+    outcome?.action === 'continueWithModel' || outcome?.action === 'setAgentPokemon';
 
   // The reply box's state: a send waits for its conductorActionResult; the
   // outcome line fades after POKEDEX_ACTION_RESULT_VISIBLE_MS.
@@ -282,6 +287,7 @@ export function SessionPanel({
   const showOutcome =
     outcome &&
     !(outcome.action === 'sendSessionMessage' && answersSend) &&
+    !pickerAction &&
     now - outcome.at < POKEDEX_ACTION_RESULT_VISIBLE_MS;
 
   const sendText = (text: string) => {
@@ -429,6 +435,16 @@ export function SessionPanel({
               <span className="text-lg leading-none break-words">{nickname}</span>
               <span className="text-xs leading-none text-text-muted">{speciesLine}</span>
               {hp !== null && <HpBar fraction={hp} widthPx={120} heightPx={4} />}
+              {canChangePokemon && (
+                <Button
+                  size="sm"
+                  className="self-start"
+                  onClick={() => setPicker('pokemon')}
+                  title="Choose which Pokémon this session is"
+                >
+                  Change Pokémon…
+                </Button>
+              )}
             </div>
             {badge && <span className="self-start text-sm text-accent">{badge}</span>}
           </div>
@@ -452,7 +468,9 @@ export function SessionPanel({
               value={workspaceLabel(agent?.workspaceNumber, agent?.workspaceName)}
             />
             <InfoRow label="Repo" value={agent?.repo} />
-            <InfoRow label="Model" value={modelLabel(agent?.model, agent?.harness)} />
+            <InfoRow label="Agent" value={modelRows.agent} />
+            <InfoRow label="Model" value={modelRows.model} />
+            <InfoRow label="Effort" value={modelRows.effort} />
             <InfoRow label="Status" value={statusText} />
             <InfoRow label="Doing" value={activity} />
             <InfoRow
@@ -497,6 +515,15 @@ export function SessionPanel({
                   title="Open this session in the Conductor app"
                 >
                   Open in Conductor
+                </Button>
+              )}
+              {canAct && sessionId && (
+                <Button
+                  size="sm"
+                  onClick={() => setPicker('model')}
+                  title="Continue this work in a new session with another model"
+                >
+                  Switch model…
                 </Button>
               )}
               {canAct && agent?.status === 'error' && (
@@ -572,6 +599,12 @@ export function SessionPanel({
         </div>
       )}
 
+      {picker === 'model' && (
+        <ModelPickerModal agentId={agentId} agent={agent} onClose={() => setPicker(null)} />
+      )}
+      {picker === 'pokemon' && (
+        <PokemonPickerModal agentId={agentId} agent={agent} onClose={() => setPicker(null)} />
+      )}
       <ConfirmDialog
         isOpen={confirm === 'stop'}
         title="Stop session?"

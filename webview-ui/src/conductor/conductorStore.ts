@@ -18,6 +18,8 @@ import type {
   ConductorAction,
   ConductorSessionSummary,
   ConductorStatus,
+  ModelCatalog,
+  PokemonCatalog,
   PokemonSpeciesLoaded,
   ServerMessage,
   SessionDetail,
@@ -48,12 +50,16 @@ export interface ConductorAgent {
   label?: string;
   species?: number;
   shiny?: boolean;
+  /** The user chose this Pokémon (Change Pokémon). */
+  pokemonChosen?: boolean;
   level?: number;
   /** The level when the current species was set (evolution detection). */
   speciesLevel?: number;
   externalUrl?: string;
   model?: string;
   harness?: string;
+  effort?: string;
+  fastMode?: boolean;
   conductorSessionId?: string;
   workspaceId?: string;
   workspaceName?: string;
@@ -142,6 +148,12 @@ export interface ConductorState {
   battleLog: readonly BattleLogEntry[];
   toasts: readonly Toast[];
   actionOutcomes: Readonly<Record<number, ActionOutcome>>;
+  /** Switch model's picker data; null until requestModelCatalog is answered. */
+  modelCatalog: ModelCatalog | null;
+  /** Change Pokémon's picker data; null until requestPokemonCatalog is answered. */
+  pokemonCatalog: PokemonCatalog | null;
+  /** A session Switch model started: its Pokédex opens when it walks in. */
+  follow: { sessionId: string; at: number } | null;
 }
 
 const DEFAULT_PROVIDERS: readonly string[] = ['claude'];
@@ -164,6 +176,9 @@ function initialConductorState(): ConductorState {
     battleLog: [],
     toasts: [],
     actionOutcomes: {},
+    modelCatalog: null,
+    pokemonCatalog: null,
+    follow: null,
   };
 }
 
@@ -262,6 +277,8 @@ function actionToastText(
         return `${who} was deposited in the PC`;
       case 'restoreSession':
         return `${who} was withdrawn from the PC`;
+      case 'continueWithModel':
+        return `Started a new session to continue ${who}`;
       default:
         return null;
     }
@@ -275,6 +292,8 @@ function actionToastText(
     setConductorScope: "Couldn't change the scope",
     archiveSession: "Couldn't deposit the session",
     restoreSession: "Couldn't withdraw the session",
+    continueWithModel: "Couldn't start the new session",
+    setAgentPokemon: "Couldn't change the Pokémon",
   };
   return message ? `${failure[action]}: ${message}` : failure[action];
 }
@@ -415,6 +434,8 @@ export class ConductorStore {
             externalUrl: msg.externalUrl,
             model: msg.model,
             harness: msg.harness,
+            effort: msg.effort,
+            fastMode: msg.fastMode,
             conductorSessionId: msg.conductorSessionId,
             workspaceId: msg.conductorWorkspaceId,
             workspaceName: msg.conductorWorkspaceName,
@@ -425,6 +446,7 @@ export class ConductorStore {
             lastActivityAt: msg.lastActivityAt,
             species: msg.species,
             shiny: msg.shiny,
+            pokemonChosen: msg.pokemonChosen,
             level: msg.level,
           }),
           // A new species starts at the current level; otherwise keep the
@@ -558,9 +580,16 @@ export class ConductorStore {
             },
           };
         }
+        if (msg.action === 'continueWithModel' && msg.ok && msg.sessionId) {
+          next = { ...next, follow: { sessionId: msg.sessionId, at: now } };
+        }
         const text = actionToastText(state, msg.action, msg.ok, msg.id, msg.message);
         return text ? this.toast(next, text, msg.ok ? 'success' : 'error') : next;
       }
+      case 'modelCatalog':
+        return { ...state, modelCatalog: msg };
+      case 'pokemonCatalog':
+        return { ...state, pokemonCatalog: msg };
       case 'pokemonSpeciesLoaded':
         return {
           ...state,
@@ -623,6 +652,12 @@ export class ConductorStore {
         [id]: { ...prev, pendingSince: this.now(), error: undefined },
       },
     });
+  }
+
+  /** The followed session opened (or the wait ran out). */
+  clearFollow(): void {
+    if (this.state.follow === null) return;
+    this.set({ ...this.state, follow: null });
   }
 
   dismissToast(seq: number): void {

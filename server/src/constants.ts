@@ -217,6 +217,14 @@ export const CONDUCTOR_SCOPE_MAX_HOURS = 24 * 365;
 export const CONDUCTOR_SCOPE_MAX_SESSIONS = 500;
 /** Longest message the office may send to a session. */
 export const SESSION_MESSAGE_MAX_LENGTH = 32_000;
+/** Switch model: the new session's name ("<original name> · <model>") is cut
+ *  to this length, the original name giving way first. */
+export const CONTINUE_SESSION_NAME_MAX_LENGTH = 120;
+/** Switch model: favorite models kept from Conductor's list. */
+export const MODEL_FAVORITES_MAX = 24;
+/** Longest id, effort or agent value a continueWithModel request may carry
+ *  before it is even looked up in the catalog. */
+export const MODEL_CHOICE_FIELD_MAX_LENGTH = 64;
 /** Longest deep link openExternal accepts. */
 export const EXTERNAL_URL_MAX_LENGTH = 2_048;
 /** Deep-link schemes openExternal opens on the host (conductor:, conductor-dev:, ...). */

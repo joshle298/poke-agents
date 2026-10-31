@@ -151,6 +151,16 @@ export const LEVEL_WAIT_MAX_MS = 3 * 60_000;
 /** A session withdrawn from the PC Box is shown like a pinned one this long;
  *  afterwards the withdrawal counts as its activity for the scope window. */
 export const RESTORE_PIN_MS = 10 * 60_000;
+/** Switch model: a create-session that failed on the network or with a 5xx is
+ *  retried this many times (same session and message ids, so Conductor
+ *  deduplicates), after 1 s, then 2 s. */
+export const CONTINUE_RETRY_MAX = 2;
+export const CONTINUE_RETRY_BASE_MS = 1_000;
+/** A session the office just created is kept even when a session listing that
+ *  was already in flight comes back without it. */
+export const CREATED_LIST_GRACE_MS = 60_000;
+/** The user's favorite models (Switch model) are read again after this long. */
+export const FAVORITES_TTL_MS = 5 * 60_000;
 /** Polls further apart than this are catch-ups, not steady tail polls. */
 export const STEADY_POLL_GAP_MS = 60_000;
 /** Feed items newer than this (and from a steady poll) animate links and notices. */

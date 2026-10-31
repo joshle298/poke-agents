@@ -3,16 +3,18 @@
  *
  * Holds the scope and, per session, the hidden/pinned flags, when the session
  * was withdrawn from the PC Box, the feed cursor, the harness, the first
- * sender (spawn edge), the newest activity time and when a listing last showed
- * it. Agent ids and Pokémon live in the runtime's stream memory
+ * sender (spawn edge), the newest activity time, when a listing last showed
+ * it, and for a session the office started with another model (Switch model)
+ * the session it continues and when. Agent ids and Pokémon live in the runtime's stream memory
  * (`<namespace>-state.json` `streamAgents`), beside the seats they key.
  * Written atomically (tmp + rename) with mode 0600. Never the API token, and
  * never message text.
  *
- * What the user decided (scope, hidden, pinned, a withdrawal) is written within
- * a second. Bookkeeping that changes on every poll (cursors, activity times,
- * first senders) is written at most every STATE_LAZY_SAVE_MS and on stop, so an
- * active office does not rewrite the file every second.
+ * What the user decided (scope, hidden, pinned, a withdrawal, a continuation)
+ * is written within a second. Bookkeeping that changes on every poll
+ * (cursors, activity times, first senders) is written at most every
+ * STATE_LAZY_SAVE_MS and on stop, so an active office does not rewrite the
+ * file every second.
  */
 
 import * as fs from 'fs';
@@ -44,6 +46,12 @@ export interface PersistedConductorSession {
   /** Epoch ms a session listing last showed the session (refreshed daily), so
    *  entries without activity still age out once the session is gone. */
   seenAt?: number;
+  /** Switch model: the session this one continues (created by the office
+   *  with another model); restated as a handoff `spawned` link. */
+  continuedFrom?: string;
+  /** Epoch ms the office created it: shown like a withdrawal (counts as
+   *  activity, pinned-like for a while). */
+  continuedAt?: number;
 }
 
 /** Fields the user set: written within STATE_SAVE_DEBOUNCE_MS. */
@@ -51,6 +59,8 @@ const URGENT_FIELDS: ReadonlySet<keyof PersistedConductorSession> = new Set([
   'hidden',
   'pinned',
   'restoredAt',
+  'continuedFrom',
+  'continuedAt',
 ]);
 
 export interface ConductorStateFile {
@@ -106,6 +116,10 @@ function sanitizeSession(raw: unknown): PersistedConductorSession | undefined {
   if (typeof r.firstSender === 'string' || r.firstSender === null) out.firstSender = r.firstSender;
   if (isTime(r.lastActivityAt)) out.lastActivityAt = r.lastActivityAt;
   if (isTime(r.seenAt)) out.seenAt = r.seenAt;
+  if (typeof r.continuedFrom === 'string' && r.continuedFrom.length > 0) {
+    out.continuedFrom = r.continuedFrom;
+  }
+  if (isTime(r.continuedAt)) out.continuedAt = r.continuedAt;
   return out;
 }
 
@@ -115,7 +129,12 @@ function isTime(value: unknown): value is number {
 
 /** Newest moment the entry was known to matter (0 when never). */
 function recencyOf(entry: PersistedConductorSession): number {
-  return Math.max(entry.lastActivityAt ?? 0, entry.seenAt ?? 0, entry.restoredAt ?? 0);
+  return Math.max(
+    entry.lastActivityAt ?? 0,
+    entry.seenAt ?? 0,
+    entry.restoredAt ?? 0,
+    entry.continuedAt ?? 0,
+  );
 }
 
 export class ConductorStateStore {

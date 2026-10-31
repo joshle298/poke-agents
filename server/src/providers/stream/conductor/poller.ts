@@ -44,6 +44,7 @@ import {
   ARCHIVED_LIST_PROMPT_WORKSPACES,
   BUDGET_PLANNING_FRACTION,
   CAP_HYSTERESIS,
+  CREATED_LIST_GRACE_MS,
   DETAILS_THROTTLE_MS,
   DISCOVERY_INTERVAL_MS,
   FOCUS_PEER_RECENT_MS,
@@ -96,7 +97,7 @@ import {
   WORKSPACE_CATCHUP_MIN_GAP_MS,
   WORKSPACES_PAGE_LIMIT,
 } from './constants.js';
-import { harnessFromModel, isHarness } from './harness.js';
+import { type Harness, harnessFromModel, isHarness } from './harness.js';
 import { formatHistoryCursor, historyEntries, parseHistoryCursor } from './history.js';
 import type { LinkObservation, LinkTracker } from './links.js';
 import { repoShortName, repoSlug, sessionLabel } from './naming.js';
@@ -118,6 +119,7 @@ import type { SessionLogStore } from './sessionLog.js';
 import { type ConductorStateStore, scopeWindowMs } from './state.js';
 import { formatConductorToolStatus } from './tools.js';
 import type {
+  ConductorCreatedSession,
   ConductorItem,
   ConductorMe,
   ConductorRunStatus,
@@ -219,6 +221,12 @@ interface SessionRecord {
   promotedUntil?: number;
   /** The spawn edge from item #1 was reported this run. */
   spawnLinkEmitted: boolean;
+  /** Switch model: the handoff link from the session this one continues was
+   *  reported this run. */
+  continuationLinkEmitted: boolean;
+  /** Created by the office this run (Switch model): a session listing that
+   *  was already in flight may not show it yet. */
+  createdAt?: number;
   /** Item #1 probe found no items at all. */
   feedEmpty: boolean;
   /** Item #1 was fetched for the Pokédex prompt this run. */
@@ -604,6 +612,63 @@ export class ConductorPoller {
     if (this.autoTick) void this.tick();
   }
 
+  /** Where a session lives and what it is called (Switch model's request). */
+  sessionFacts(sessionId: string): { workspaceId: string; name?: string } | undefined {
+    const rec = this.records.get(sessionId);
+    if (!rec) return undefined;
+    const ws = this.workspaces.get(rec.workspaceId)?.ws;
+    return { workspaceId: rec.workspaceId, name: sessionLabel(rec.api, ws) };
+  }
+
+  /**
+   * The office just created `created` in `workspaceId` to continue
+   * `fromSessionId` with another model (Switch model): remember the handoff,
+   * link it to the original before it walks in (so the original throws it),
+   * note the handoff in the original's Pokédex, and poll it at once. It is
+   * shown like a withdrawal: pinned-like for RESTORE_PIN_MS, then by its own
+   * activity.
+   */
+  addContinuation(
+    created: ConductorCreatedSession,
+    workspaceId: string,
+    fromSessionId: string,
+    request: { agent: Harness; message: string },
+  ): void {
+    const now = this.clock.now();
+    const message = request.message;
+    // The agent is known: the API's first item often doesn't say, and a model
+    // id like `opus-5-5-1m` doesn't name its harness.
+    this.state.patchSession(created.id, {
+      continuedFrom: fromSessionId,
+      continuedAt: now,
+      harness: request.agent,
+    });
+    const rec = this.upsertSessionRecord({ ...created, archivedAt: null }, workspaceId);
+    rec.createdAt = now;
+    rec.continuationLinkEmitted = true;
+    this.sink.link({
+      fromSessionId,
+      toSessionId: created.id,
+      kind: 'spawned',
+      at: now,
+      preview: message,
+      live: true,
+      handoff: true,
+    });
+    this.logs.addPeer(
+      fromSessionId,
+      'peerOut',
+      created.id,
+      message,
+      now,
+      created.initialMessage?.messageId ?? `continue:${created.id}`,
+    );
+    this.promote(created.id);
+    this.refreshVisibility();
+    this.scheduleSessionsChanged();
+    if (this.autoTick) void this.tick();
+  }
+
   // ── Scheduling ──
 
   /** Sessions whose focus has not lapsed. */
@@ -859,7 +924,7 @@ export class ConductorPoller {
    * recent ones, and finally everything else in one low-priority unit each.
    */
   private onboardingTier(rec: SessionRecord, now: number): number {
-    if (this.state.session(rec.id)?.pinned) return 0;
+    if (this.state.session(rec.id)?.pinned || this.justRestored(rec, now)) return 0;
     const recent = now - this.activityOf(rec) < WARM_RECENT_MS;
     if (recent && rec.statusAt === undefined) return ONBOARD_TIER_STATUS;
     if (rec.runStatus === 'working') return 2;
@@ -1048,7 +1113,9 @@ export class ConductorPoller {
     }
     if (!includeArchived) {
       for (const rec of [...this.records.values()]) {
-        if (rec.workspaceId === ws.ws.id && !live.has(rec.id)) this.dropRecord(rec, 'gone');
+        if (rec.workspaceId !== ws.ws.id || live.has(rec.id)) continue;
+        if (rec.createdAt !== undefined && now - rec.createdAt < CREATED_LIST_GRACE_MS) continue;
+        this.dropRecord(rec, 'gone');
       }
     }
     this.scheduleSessionsChanged();
@@ -1082,6 +1149,7 @@ export class ConductorPoller {
         pollSoon: false,
         plannedIntervalMs: HOT_POLL_MS,
         spawnLinkEmitted: false,
+        continuationLinkEmitted: false,
         feedEmpty: false,
         promptFetched: false,
         busy: false,
@@ -1191,6 +1259,7 @@ export class ConductorPoller {
       rec.lastPollAt = this.clock.now();
     }
     this.emitCachedSpawnLink(rec);
+    this.emitContinuationLink(rec);
     // Ready to adopt, seeded from /status and item #1, once its level is
     // known (awaitsLevel). A shown session reads its tail right away, in this
     // unit, so the office fills one session at a time in rank order instead
@@ -1268,6 +1337,25 @@ export class ConductorPoller {
       kind: 'spawned',
       at: this.state.session(rec.id)?.lastActivityAt ?? this.clock.now(),
       live: false,
+    });
+  }
+
+  /** Switch model: restate the handoff link to the session this one continues
+   *  (from conductor-state.json), before the session walks in, so it is linked
+   *  to and thrown out of the original. */
+  private emitContinuationLink(rec: SessionRecord): void {
+    if (rec.continuationLinkEmitted) return;
+    const persisted = this.state.session(rec.id);
+    const from = persisted?.continuedFrom;
+    if (!from || from === rec.id) return;
+    rec.continuationLinkEmitted = true;
+    this.sink.link({
+      fromSessionId: from,
+      toSessionId: rec.id,
+      kind: 'spawned',
+      at: persisted?.continuedAt ?? this.clock.now(),
+      live: false,
+      handoff: true,
     });
   }
 
@@ -1769,9 +1857,11 @@ export class ConductorPoller {
     // is when the (possibly hours-long) turn started.
     const fromStatus = rec.runStatus === 'working' ? rec.statusAt : rec.statusUpdatedAt;
     const own = rec.norm.lastItemAt ?? persisted?.lastActivityAt ?? fromStatus;
-    const restored = persisted?.restoredAt;
-    if (restored === undefined) return own;
-    return own === undefined ? restored : Math.max(own, restored);
+    // A withdrawal from the PC Box or a continuation the office started (Switch
+    // model) is the user asking for the session: it counts as activity.
+    const asked = Math.max(persisted?.restoredAt ?? 0, persisted?.continuedAt ?? 0);
+    if (asked === 0) return own;
+    return own === undefined ? asked : Math.max(own, asked);
   }
 
   /** Own activity, else the workspace's: only to order the first /status pass
@@ -1780,10 +1870,12 @@ export class ConductorPoller {
     return this.ownActivityOf(rec) ?? this.workspaces.get(rec.workspaceId)?.lastActivityMs ?? 0;
   }
 
-  /** Withdrawn from the PC Box moments ago: shown like a pinned session. */
+  /** Withdrawn from the PC Box, or started by the office (Switch model),
+   *  moments ago: shown like a pinned session. */
   private justRestored(rec: SessionRecord, now: number): boolean {
-    const restored = this.state.session(rec.id)?.restoredAt;
-    return restored !== undefined && now - restored < RESTORE_PIN_MS;
+    const persisted = this.state.session(rec.id);
+    const asked = Math.max(persisted?.restoredAt ?? 0, persisted?.continuedAt ?? 0);
+    return asked > 0 && now - asked < RESTORE_PIN_MS;
   }
 
   /**
@@ -1839,9 +1931,10 @@ export class ConductorPoller {
     if (persisted?.pinned) return true;
     const scope = this.state.scope;
     const windowStart = now - scopeWindowMs(scope);
-    // Withdrawn from the PC Box within the window: the user asked for it,
-    // whatever its feed or workspace says.
+    // Withdrawn from the PC Box, or started by the office, within the window:
+    // the user asked for it, whatever its feed or workspace says.
     if (persisted?.restoredAt !== undefined && persisted.restoredAt >= windowStart) return true;
+    if (persisted?.continuedAt !== undefined && persisted.continuedAt >= windowStart) return true;
     const ws = this.workspaces.get(rec.workspaceId);
     if (!ws?.discovered) return false;
     if (scope.creator === 'me' && ws.ws.creatorId && ws.ws.creatorId !== this.me.userId)
@@ -2002,6 +2095,8 @@ export class ConductorPoller {
     const model = rec.api.resolvedModel ?? rec.api.model ?? rec.norm.model;
     if (model) details.model = model;
     if (rec.norm.harness) details.harness = rec.norm.harness;
+    if (rec.api.effort) details.effort = rec.api.effort;
+    if (typeof rec.api.fastMode === 'boolean') details.fastMode = rec.api.fastMode;
     details.workspaceId = rec.workspaceId;
     if (ws?.name) details.workspaceName = ws.name;
     if (typeof ws?.number === 'number') details.workspaceNumber = ws.number;
@@ -2158,7 +2253,7 @@ export class ConductorPoller {
       const archivedAt = parseTime(session.archivedAt);
       if (archivedAt) summary.archivedAt = archivedAt;
     }
-    const lead = rec?.firstSender ?? persisted?.firstSender;
+    const lead = rec?.firstSender ?? persisted?.firstSender ?? persisted?.continuedFrom;
     if (lead) summary.leadSessionId = lead;
     if (session.deepLink) summary.externalUrl = session.deepLink;
     if (ws?.creatorName) summary.creatorName = ws.creatorName;

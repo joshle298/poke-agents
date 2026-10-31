@@ -15,12 +15,15 @@ import * as path from 'path';
 import type { ConductorScope, ConductorSessionSummary } from '../../../../../core/src/messages.js';
 import type {
   AgentEventSink,
+  ModelChoice,
+  StreamModelCatalog,
   StreamProvider,
   StreamProviderStatus,
   StreamSessionDetail,
 } from '../../../../../core/src/provider.js';
 import { SERVER_JSON_DIR } from '../../../constants.js';
 import { contextWindowForModel as claudeContextWindow } from '../../hook/claude/claude.js';
+import { buildModelCatalog, continuationName, parseModelChoice } from '../modelCatalog.js';
 import { defaultExecFile, type ExecFileFn, resolveConductorAuth } from './auth.js';
 import {
   type ClientClock,
@@ -35,14 +38,18 @@ import {
   CLAUDE_MODEL_PREFIX,
   CONDUCTOR_DISPLAY_NAME,
   CONDUCTOR_PROVIDER_ID,
+  CONTINUE_RETRY_BASE_MS,
+  CONTINUE_RETRY_MAX,
   DEFAULT_BUDGET_PER_MINUTE,
   DISCOVERY_INTERVAL_MS,
   ENV_BUDGET,
+  FAVORITES_TTL_MS,
   GPT_CONTEXT_WINDOW,
   GPT_MODEL_PREFIX,
   LOG_PREFIX,
   STATE_FILE_NAME,
 } from './constants.js';
+import type { Harness } from './harness.js';
 import { LinkTracker } from './links.js';
 import { ConductorPoller } from './poller.js';
 import { SessionLogStore } from './sessionLog.js';
@@ -92,6 +99,8 @@ type ConductorControls = Required<
     | 'archiveSession'
     | 'restoreSession'
     | 'setFocus'
+    | 'getModelCatalog'
+    | 'continueWithModel'
   >
 >;
 
@@ -110,6 +119,20 @@ export function conductorContextWindow(model: string | undefined): number | unde
   if (model.startsWith(CLAUDE_MODEL_PREFIX)) return claudeContextWindow(model);
   if (model.startsWith(GPT_MODEL_PREFIX)) return GPT_CONTEXT_WINDOW;
   return undefined;
+}
+
+/** Why a create-session failed, for the office (a 404 there is the workspace). */
+function continueFailureMessage(err: unknown): string {
+  if (err instanceof ConductorApiError && err.kind === 'notFound') {
+    return "Conductor couldn't find this session's workspace.";
+  }
+  return userFacingMessage(err);
+}
+
+/** Network failures and 5xx may have created the session anyway: retry with
+ *  the same ids and let Conductor deduplicate. */
+function retryableCreate(err: unknown): boolean {
+  return err instanceof ConductorApiError && (err.kind === 'network' || err.kind === 'server');
 }
 
 function resolveBudget(opts: ConductorProviderOptions, env: NodeJS.ProcessEnv): number {
@@ -138,6 +161,10 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   let stopped = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let connectFailures = 0;
+  /** The favorites last read (GET /v0/favorite-models) and when. */
+  let favorites: { raw: unknown; at: number } | undefined;
+  /** Sessions with a Switch model create in flight: one at a time each. */
+  const continuing = new Set<string>();
 
   const setStatus = (status: Omit<StreamProviderStatus, 'scope'>) => {
     sink?.setStatus({ ...status, scope: state.scope });
@@ -324,6 +351,84 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     setFocus(sessionIds: string[]): void {
       poller?.setFocus(sessionIds);
+    },
+
+    async getModelCatalog(): Promise<StreamModelCatalog> {
+      const now = clock.now();
+      if (client && (!favorites || now - favorites.at >= FAVORITES_TTL_MS)) {
+        try {
+          favorites = { raw: await client.listFavoriteModels(), at: now };
+        } catch (err) {
+          // The catalog still works without them; keep the last ones read.
+          log(`favorite models unavailable: ${(err as Error).message}`);
+        }
+      }
+      return buildModelCatalog(favorites?.raw);
+    },
+
+    async continueWithModel(
+      sessionId: string,
+      request: ModelChoice,
+    ): Promise<{ sessionId: string }> {
+      if (!client || !poller) throw new Error('Conductor is not connected');
+      const parsed = parseModelChoice({ ...request }, buildModelCatalog(undefined));
+      if (!parsed.ok) throw new Error(parsed.message);
+      const choice = parsed.choice;
+      const facts = poller.sessionFacts(sessionId);
+      if (!facts) throw new Error('Session not found');
+      if (continuing.has(sessionId)) throw new Error('A new session is already starting.');
+      continuing.add(sessionId);
+      try {
+        // Both ids are ours, so a retry after a lost response names the same
+        // session and message, and Conductor creates (and sends) them once.
+        const body = {
+          workspaceId: facts.workspaceId,
+          sessionId: randomUUID(),
+          agent: choice.agent,
+          model: choice.model,
+          ...(choice.effort ? { effort: choice.effort } : {}),
+          ...(choice.fastMode ? { fastMode: true } : {}),
+          name: continuationName(facts.name, choice.model),
+          message: choice.message,
+          messageId: randomUUID(),
+        };
+        let created;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            created = await client.createSession(body);
+            break;
+          } catch (err) {
+            // A retry that finds its session already made means the lost
+            // first attempt went through.
+            if (attempt > 0 && err instanceof ConductorApiError && err.status === 409) {
+              created = { id: body.sessionId, name: body.name, model: body.model };
+              break;
+            }
+            if (attempt < CONTINUE_RETRY_MAX && retryableCreate(err) && !stopped) {
+              await clock.sleep(CONTINUE_RETRY_BASE_MS * 2 ** attempt);
+              continue;
+            }
+            throw new Error(continueFailureMessage(err));
+          }
+        }
+        const id = typeof created?.id === 'string' && created.id ? created.id : body.sessionId;
+        poller.addContinuation(
+          {
+            ...created,
+            id,
+            name: created?.name ?? body.name,
+            model: created?.model ?? body.model,
+            effort: created?.effort ?? body.effort,
+            fastMode: created?.fastMode ?? body.fastMode,
+          },
+          facts.workspaceId,
+          sessionId,
+          { agent: choice.agent as Harness, message: choice.message },
+        );
+        return { sessionId: id };
+      } finally {
+        continuing.delete(sessionId);
+      }
     },
 
     async tick(): Promise<void> {

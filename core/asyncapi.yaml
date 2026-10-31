@@ -110,6 +110,8 @@ components:
         - $ref: '#/components/schemas/ConductorStatus'
         - $ref: '#/components/schemas/ConductorSessions'
         - $ref: '#/components/schemas/ConductorActionResult'
+        - $ref: '#/components/schemas/ModelCatalog'
+        - $ref: '#/components/schemas/PokemonCatalog'
         # Layout
         - $ref: '#/components/schemas/LayoutLoaded'
         # Assets
@@ -186,6 +188,10 @@ components:
         - $ref: '#/components/schemas/ArchiveSession'
         - $ref: '#/components/schemas/RestoreSession'
         - $ref: '#/components/schemas/RequestSessionHistory'
+        - $ref: '#/components/schemas/RequestModelCatalog'
+        - $ref: '#/components/schemas/ContinueWithModel'
+        - $ref: '#/components/schemas/RequestPokemonCatalog'
+        - $ref: '#/components/schemas/SetAgentPokemon'
         # Jukebox (local music; never touches Conductor)
         - $ref: '#/components/schemas/RequestMusicLibrary'
         - $ref: '#/components/schemas/MusicCommand'
@@ -1076,6 +1082,12 @@ components:
         harness:
           type: string
           description: Agent harness running the session (claude, codex, cursor, ...).
+        effort:
+          type: string
+          description: Reasoning effort the session runs with, when Conductor reports one.
+        fastMode:
+          type: boolean
+          description: Whether the session runs in fast mode, when Conductor reports it.
         conductorSessionId:
           type: string
         conductorWorkspaceId:
@@ -1102,6 +1114,11 @@ components:
           type: boolean
         level:
           type: integer
+        pokemonChosen:
+          type: boolean
+          description: |
+            True when the user chose this agent's Pokémon (setAgentPokemon), false
+            when it is assigned automatically. Sent with every species.
 
     AgentLinks:
       description: |
@@ -1260,6 +1277,58 @@ components:
           type: boolean
         message:
           type: string
+        sessionId:
+          type: string
+          description: |
+            continueWithModel on success: the Conductor session it started. The
+            office opens that session's Pokédex once it arrives.
+
+    ModelCatalog:
+      description: |
+        The agents and models a session can continue with (Switch model…), from
+        Conductor's accepted model ids grouped by agent, with the user's favorite
+        models from Conductor first. Reply to requestModelCatalog.
+      type: object
+      additionalProperties: false
+      required: [type, agents, favorites]
+      properties:
+        type:
+          const: modelCatalog
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelCatalogAgent'
+        favorites:
+          type: array
+          description: The user's favorite models in Conductor's picker order, only those the catalog accepts.
+          items:
+            $ref: '#/components/schemas/FavoriteModel'
+        defaultAgent:
+          type: string
+          description: The agent of the first favorite, if any.
+        error:
+          type: string
+          description: Why the catalog is empty (a read-only office, no Conductor).
+
+    PokemonCatalog:
+      description: |
+        The Pokémon an agent can be changed to (Change Pokémon…): the catalog's
+        evolution lines without their large stages, and the legendaries a Lead
+        can be. Reply to requestPokemonCatalog.
+      type: object
+      additionalProperties: false
+      required: [type, lines, legendaries]
+      properties:
+        type:
+          const: pokemonCatalog
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PokemonCatalogLine'
+        legendaries:
+          type: array
+          items:
+            $ref: '#/components/schemas/PokemonCatalogLegendary'
 
     PokemonSpeciesLoaded:
       description: |
@@ -1908,6 +1977,72 @@ components:
           type: string
           description: Cursor from a previous sessionHistory; absent means the newest page.
 
+    RequestModelCatalog:
+      description: Ask for the agents and models a session can continue with (Switch model…). Answered with modelCatalog.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestModelCatalog
+
+    ContinueWithModel:
+      description: |
+        Start a new Conductor session in the agent's workspace (same files and
+        branch) with another agent or model, its first message `message`.
+        Conductor's API can't change the model of a running session, so this is
+        what Switch model does. Validated against the server's model catalog;
+        answered with conductorActionResult (with `sessionId` on success).
+      type: object
+      additionalProperties: false
+      required: [type, id, agent, model, message]
+      properties:
+        type:
+          const: continueWithModel
+        id:
+          type: integer
+          description: The agent whose session is continued.
+        agent:
+          type: string
+          description: claude, codex or cursor.
+        model:
+          type: string
+        effort:
+          type: string
+        fastMode:
+          type: boolean
+        message:
+          type: string
+
+    RequestPokemonCatalog:
+      description: Ask for the Pokémon an agent can be changed to. Answered with pokemonCatalog.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestPokemonCatalog
+
+    SetAgentPokemon:
+      description: |
+        Change which Pokémon an agent is: `line` is an evolution line id (or a
+        legendary id, for a Lead), `null` goes back to automatic, absent keeps the
+        line and changes only `shiny`. The level still picks the stage within the
+        line. Poke Agents' own view state; answered with conductorActionResult,
+        and agentDetails follows.
+      type: object
+      additionalProperties: false
+      required: [type, id]
+      properties:
+        type:
+          const: setAgentPokemon
+        id:
+          type: integer
+        line:
+          type: [string, 'null']
+        shiny:
+          type: boolean
+
     RequestMusicLibrary:
       description: Ask for the Jukebox library (rescans the music folder). Privileged.
       type: object
@@ -2252,7 +2387,98 @@ components:
           setConductorScope,
           archiveSession,
           restoreSession,
+          continueWithModel,
+          setAgentPokemon,
         ]
+
+    ModelCatalogAgent:
+      type: object
+      additionalProperties: false
+      required: [agent, label, models, efforts, fastModeModels]
+      properties:
+        agent:
+          type: string
+          description: claude, codex or cursor (the agent value Conductor's create-session accepts).
+        label:
+          type: string
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelCatalogModel'
+        efforts:
+          type: array
+          description: Effort levels Conductor accepts for this agent, lowest first.
+          items:
+            type: string
+        defaultEffort:
+          type: string
+          description: The effort Conductor uses when none is sent.
+        fastModeModels:
+          type: array
+          description: Models of this agent that accept fast mode.
+          items:
+            type: string
+
+    ModelCatalogModel:
+      type: object
+      additionalProperties: false
+      required: [id, label]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+
+    FavoriteModel:
+      type: object
+      additionalProperties: false
+      required: [agent, model]
+      properties:
+        agent:
+          type: string
+        model:
+          type: string
+        effort:
+          type: string
+        fastMode:
+          type: boolean
+
+    PokemonCatalogLine:
+      type: object
+      additionalProperties: false
+      required: [id, members]
+      properties:
+        id:
+          type: string
+        members:
+          type: array
+          description: The line's members by stage (stage 1 first); branching lines repeat a stage.
+          items:
+            $ref: '#/components/schemas/PokemonCatalogMember'
+
+    PokemonCatalogMember:
+      type: object
+      additionalProperties: false
+      required: [dex, name, stage]
+      properties:
+        dex:
+          type: integer
+        name:
+          type: string
+        stage:
+          type: integer
+
+    PokemonCatalogLegendary:
+      type: object
+      additionalProperties: false
+      required: [id, dex, name]
+      properties:
+        id:
+          type: string
+        dex:
+          type: integer
+        name:
+          type: string
 
     PokemonAnim:
       type: object

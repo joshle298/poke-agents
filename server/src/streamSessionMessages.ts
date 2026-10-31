@@ -8,6 +8,11 @@
  * the agent; session-addressed ones go to the Conductor driver. Every action
  * answers its sender with conductorActionResult, success or not.
  *
+ * Switch model (requestModelCatalog, continueWithModel) only asks Conductor to
+ * start a new session: its API can't change a running session's model, and
+ * Poke Agents never changes Conductor's stored settings. The request is
+ * validated here against the provider's catalog before the provider sees it.
+ *
  * The Pokédex detail and the chat history carry conversation text (prompts,
  * replies, commands), more than the office feed shows, so they are privileged
  * like everything else here: a read-only viewer (no token, e.g. a LAN watcher)
@@ -26,6 +31,7 @@ import {
   EXTERNAL_URL_SCHEME_PATTERN,
   SESSION_MESSAGE_MAX_LENGTH,
 } from './constants.js';
+import { parseModelChoice } from './providers/stream/modelCatalog.js';
 import type { StreamAgentDriver } from './streamAgentDriver.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
@@ -47,6 +53,7 @@ const NO_LINK_OPENER_MESSAGE = 'Opening links is not available here.';
 const READ_ONLY_MESSAGE = 'Read-only office: open the tokened URL to make changes.';
 const READ_ONLY_HISTORY_MESSAGE = 'Read-only office: open the tokened URL to read conversations.';
 const HISTORY_FAILED_MESSAGE = "Couldn't load earlier messages.";
+const NO_MODEL_CATALOG_MESSAGE = "Switching models isn't available here.";
 
 /** History cursors as they may arrive from a client (the provider validates its own). */
 const HISTORY_CURSOR_WIRE_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
@@ -64,6 +71,8 @@ export const STREAM_SESSION_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   'setConductorScope',
   'requestConductorSessions',
   'openExternal',
+  'requestModelCatalog',
+  'continueWithModel',
 ]);
 
 /** Message types that answer with conductorActionResult. */
@@ -76,6 +85,7 @@ const ACTION_TYPES: ReadonlySet<string> = new Set<ConductorAction>([
   'setConductorScope',
   'archiveSession',
   'restoreSession',
+  'continueWithModel',
 ]);
 
 export function handleStreamSessionMessage(
@@ -146,6 +156,12 @@ export function handleStreamSessionMessage(
     case 'openExternal':
       void openExternal(msg.url, send, ctx);
       return;
+    case 'requestModelCatalog':
+      void requestModelCatalog(send, ctx);
+      return;
+    case 'continueWithModel':
+      void continueWithModel(msg, send, ctx);
+      return;
   }
 }
 
@@ -160,6 +176,11 @@ export function refuseStreamSessionMessage(
   ctx: ClientMessageContext,
 ): void {
   const type = String(msg.type);
+  if (type === 'requestModelCatalog') {
+    // Settle the picker instead of leaving it loading.
+    send({ type: 'modelCatalog', agents: [], favorites: [], error: READ_ONLY_MESSAGE });
+    return;
+  }
   if (type === 'requestSessionHistory') {
     // Settle the chat view's "Load earlier" instead of leaving it spinning.
     if (isAgentId(msg.id)) {
@@ -323,6 +344,64 @@ async function openExternal(url: unknown, send: WsSend, ctx: ClientMessageContex
     reply(send, 'openExternal', true);
   } catch (err) {
     reply(send, 'openExternal', false, userMessage(err));
+  }
+}
+
+/** The Switch model picker's catalog, from the Conductor provider. */
+async function requestModelCatalog(send: WsSend, ctx: ClientMessageContext): Promise<void> {
+  const provider = conductorDriver(ctx)?.provider;
+  if (!provider?.getModelCatalog) {
+    send({ type: 'modelCatalog', agents: [], favorites: [], error: NO_MODEL_CATALOG_MESSAGE });
+    return;
+  }
+  try {
+    send({ type: 'modelCatalog', ...(await provider.getModelCatalog()) });
+  } catch (err) {
+    send({ type: 'modelCatalog', agents: [], favorites: [], error: userMessage(err) });
+  }
+}
+
+/**
+ * Switch model: start a new session in the agent's workspace with the chosen
+ * agent and model, seeded with the user's message. Validated against the
+ * provider's catalog; the result names the new session, so the office can
+ * open its Pokédex once it arrives.
+ */
+async function continueWithModel(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+): Promise<void> {
+  const id = msg.id;
+  if (!isAgentId(id)) return reply(send, 'continueWithModel', false, INVALID_REQUEST_MESSAGE);
+  const driver = ctx.runtime?.streamDriverForAgent(id);
+  const sessionId = driver?.sessionIdFor(id);
+  if (!driver || sessionId === undefined) {
+    return reply(send, 'continueWithModel', false, NOT_A_SESSION_MESSAGE, id);
+  }
+  const provider = driver.provider;
+  if (!provider.getModelCatalog || !provider.continueWithModel) {
+    return reply(
+      send,
+      'continueWithModel',
+      false,
+      `${provider.displayName} does not support this.`,
+      id,
+    );
+  }
+  try {
+    const parsed = parseModelChoice(msg, await provider.getModelCatalog());
+    if (!parsed.ok) return reply(send, 'continueWithModel', false, parsed.message, id);
+    const started = await provider.continueWithModel(sessionId, parsed.choice);
+    send({
+      type: 'conductorActionResult',
+      action: 'continueWithModel',
+      id,
+      ok: true,
+      sessionId: started.sessionId,
+    });
+  } catch (err) {
+    reply(send, 'continueWithModel', false, userMessage(err), id);
   }
 }
 

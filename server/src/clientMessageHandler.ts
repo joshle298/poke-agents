@@ -28,6 +28,11 @@ import {
   refuseMusicMessage,
 } from './music/musicMessages.js';
 import type { MusicService } from './music/musicService.js';
+import {
+  handlePokemonMessage,
+  POKEMON_MESSAGE_TYPES,
+  refusePokemonMessage,
+} from './pokemon/pokemonMessages.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
@@ -424,7 +429,15 @@ export function handleClientMessage(
     case 'setConductorScope':
     case 'requestConductorSessions':
     case 'openExternal':
+    case 'requestModelCatalog':
+    case 'continueWithModel':
       handleStreamSessionMessage(msg, send, ctx);
+      break;
+
+    // Change Pokémon: the office's own view state, never Conductor.
+    case 'requestPokemonCatalog':
+    case 'setAgentPokemon':
+      handlePokemonMessage(msg, send, ctx);
       break;
 
     // Jukebox: local music, never Conductor.
@@ -807,6 +820,10 @@ function refuseReadOnly(
   }
   if (MUSIC_MESSAGE_TYPES.has(type)) {
     refuseMusicMessage(msg, send);
+    return;
+  }
+  if (POKEMON_MESSAGE_TYPES.has(type)) {
+    refusePokemonMessage(msg, send);
     return;
   }
   switch (msg.type) {

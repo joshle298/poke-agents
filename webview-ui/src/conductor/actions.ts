@@ -5,7 +5,7 @@
  * optimistic).
  */
 
-import type { ConductorScope } from '../../../core/src/messages.js';
+import type { ConductorScope, ContinueWithModel } from '../../../core/src/messages.js';
 import { CONDUCTOR_REVIVE_MESSAGE } from '../constants.js';
 import { transport } from '../transport/index.js';
 import { conductorStore } from './conductorStore.js';
@@ -72,6 +72,29 @@ export function setSessionPinned(sessionId: string, pinned: boolean): void {
 
 export function setConductorScope(scope: ConductorScope): void {
   transport.send({ type: 'setConductorScope', scope });
+}
+
+export function requestModelCatalog(): void {
+  transport.send({ type: 'requestModelCatalog' });
+}
+
+/** Switch model: start a new session in the agent's workspace with another
+ *  agent or model (Conductor can't change a running session's model). */
+export function continueWithModel(request: Omit<ContinueWithModel, 'type'>): void {
+  transport.send({ type: 'continueWithModel', ...request });
+}
+
+export function requestPokemonCatalog(): void {
+  transport.send({ type: 'requestPokemonCatalog' });
+}
+
+/** Change Pokémon: a line (or legendary) id, null for automatic, absent to
+ *  change only the shiny flag. */
+export function setAgentPokemon(
+  id: number,
+  choice: { line?: string | null; shiny?: boolean },
+): void {
+  transport.send({ type: 'setAgentPokemon', id, ...choice });
 }
 
 export function setPokemonTheme(enabled: boolean): void {

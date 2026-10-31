@@ -59,6 +59,8 @@ export function agentDetailsMessage(id: number, agent: AgentState): AgentDetails
     externalUrl: d?.externalUrl,
     model: d?.model,
     harness: d?.harness,
+    effort: d?.effort,
+    fastMode: d?.fastMode,
     conductorSessionId,
     conductorWorkspaceId: d?.workspaceId,
     conductorWorkspaceName: d?.workspaceName,
@@ -70,5 +72,7 @@ export function agentDetailsMessage(id: number, agent: AgentState): AgentDetails
     species: agent.species,
     shiny: agent.shiny,
     level: agent.level,
+    // Always stated with a species, so a reset (false) reaches the office.
+    pokemonChosen: agent.species !== undefined ? agent.pokemonChosen === true : undefined,
   };
 }

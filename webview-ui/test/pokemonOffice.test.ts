@@ -349,6 +349,23 @@ test('evolution: a drawn Pokémon flashes and swaps species at the midpoint', as
   assert.equal(ch.evolveTimer, undefined);
 });
 
+test('Change Pokémon: turning shiny (same species) plays the flash too', async () => {
+  await loadSpecies(1);
+  const os = new OfficeState(floorLayout());
+  const ch = placeAgent(os, 1, 3, 3);
+  os.setAgentIdentity(1, { species: 1, shiny: false });
+  os.setAgentIdentity(1, { species: 1, shiny: true }, { evolve: true });
+  assert.equal(ch.shiny, false, 'not yet');
+  assert.equal(ch.nextShiny, true);
+  assert.equal(ch.evolveTimer, 0);
+  os.update(POKEMON_EVOLVE_SEC / 2 + 0.05);
+  assert.equal(ch.shiny, true, 'swapped mid-flash');
+  // An unchanged identity does not flash.
+  os.update(POKEMON_EVOLVE_SEC);
+  os.setAgentIdentity(1, { species: 1, shiny: true }, { evolve: true });
+  assert.equal(ch.evolveTimer, undefined);
+});
+
 test('evolution swaps at once for new characters, theme off, or undecoded species', async () => {
   await loadSpecies(1);
   const os = new OfficeState(floorLayout());

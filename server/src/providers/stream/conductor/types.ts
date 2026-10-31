@@ -41,6 +41,26 @@ export interface ConductorSession {
   archivedAt?: string | null;
 }
 
+/** POST /v0/sessions body (only the fields the office sends). */
+export interface ConductorCreateSessionBody {
+  workspaceId: string;
+  /** Chosen by the caller, so a retry after a lost response names the same
+   *  session (Conductor deduplicates the message within it). */
+  sessionId: string;
+  agent: string;
+  model: string;
+  effort?: string;
+  fastMode?: boolean;
+  name: string;
+  message: string;
+  messageId: string;
+}
+
+/** POST /v0/sessions 201. */
+export interface ConductorCreatedSession extends ConductorSession {
+  initialMessage?: { messageId?: string; state?: string; deepLink?: string };
+}
+
 export type ConductorRunStatus = 'idle' | 'working' | 'error';
 
 export interface ConductorSessionStatus {

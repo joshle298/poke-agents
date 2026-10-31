@@ -2,7 +2,8 @@
  * Levels for agents without a message count: Claude Code agents (`--claude`)
  * level up from the tool calls their hooks and transcripts report, the same
  * DESIGN fallback the stream driver uses (`1 + floor(sqrt(toolCallCount))`).
- * Stream agents are levelled by their StreamAgentDriver.
+ * Stream agents are levelled by their StreamAgentDriver. Change Pokémon on
+ * such an agent announces through announceSpeciesChange too.
  *
  * A level or species change is announced with agentDetails. An evolution waits
  * for its new species' sprites when the host registered a preloader
@@ -39,8 +40,19 @@ export function countToolCall(id: number, agent: AgentState, store: AgentStateSt
   });
   if (!change.levelChanged && !change.speciesChanged) return;
   if (change.speciesChanged) store.persist();
+  if (change.speciesChanged) announceSpeciesChange(id, agent, store);
+  else if (!evolving.has(agent)) announce(id, agent, store);
+}
+
+/**
+ * The agent's species changed (an evolution, or the user's Change Pokémon):
+ * announce it with agentDetails once the new species' sprites are loaded (or
+ * after STREAM_SPECIES_LOAD_TIMEOUT_MS), so the office plays the evolution
+ * flash. Agents of a stream provider go through their StreamAgentDriver.
+ */
+export function announceSpeciesChange(id: number, agent: AgentState, store: AgentStateStore): void {
   if (evolving.has(agent)) return;
-  if (!change.speciesChanged || !evolutionPreloader || agent.species === undefined) {
+  if (!evolutionPreloader || agent.species === undefined) {
     announce(id, agent, store);
     return;
   }

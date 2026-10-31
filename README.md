@@ -13,8 +13,8 @@ Poke Agents is a visualizer for Conductor. Each cloud session is a Pokémon: it 
 All coding happens in Conductor, with your Conductor settings: models, environment, repositories and agents stay configured there.
 
 - **What it reads:** your account, your cloud workspaces and their sessions, and each session's status and messages, through Conductor's public API with GET requests.
-- **What it can ask Conductor to do:** send a message to a session (**Send**, **Revive** and a pending question's options), stop a session's turn, archive a session (**Deposit in PC**) and unarchive one (**Withdraw**). Each happens only when you click it in an office opened with its token, and Conductor does the work.
-- **What it never does:** start sessions or agents, run code, edit repositories, or store or change your Conductor settings or API key. **Hide** and **Pin** only change what Poke Agents shows; Conductor isn't told.
+- **What it can ask Conductor to do:** send a message to a session (**Send**, **Revive** and a pending question's options), stop a session's turn, archive a session (**Deposit in PC**) and unarchive one (**Withdraw**), and start a new session in a session's workspace with another model (**Switch model…**). Each happens only when you click it in an office opened with its token, and Conductor does the work.
+- **What it never does:** start sessions on its own, run agents or code, edit repositories, or store or change your Conductor settings or API key. **Hide**, **Pin** and **Change Pokémon…** only change what Poke Agents shows; Conductor isn't told.
 - **What it stores:** its own view of your sessions under `~/.pixel-agents/` (see [Configuration](#configuration)): the scope, hidden and pinned sessions, seats and each session's Pokémon.
 
 The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is opt-in, `npm start` never turns it on, and the Mac app doesn't offer it. It launches Claude Code in a terminal inside the office and, after you agree in the app, installs hooks in `~/.claude/settings.json`.
@@ -27,7 +27,9 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it waits for your answer or a permission.
 - **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon that doesn't evolve. Its new sessions are thrown out of a capsule from where it stands, and a session that leaves is recalled into one.
 - **Links and messages.** Lines connect sessions that created, messaged or read each other. When one session messages another, a capsule flies between them with a short preview.
-- **Pokédex.** Click a Pokémon to open its Pokédex. **Overview** shows the workspace, repository, model and harness, status, an HP bar for the context left, the task, recent tool steps and messages with other sessions, and the actions Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
+- **Pokédex.** Click a Pokémon to open its Pokédex. **Overview** shows the workspace, repository, agent, model and effort, status, an HP bar for the context left, the task, recent tool steps and messages with other sessions, and the actions Open in Conductor, Switch model…, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
+- **Switch model…** Conductor's API can't change the model of a running session, so the Pokédex offers the closest honest thing: a new session in the same workspace (same files and branch) with the agent (Claude, Codex or Cursor), model, effort and fast mode you pick, and a first message you can edit (it starts as a note to continue the work and check the recent commits and changes). Your favorite models in Conductor come first, with a star. The new session is named after the session and the model ("Fix flaky tests · GPT-5.5"), is thrown out of the original Pokémon and linked to it (the original doesn't become a Lead), and its Pokédex opens when it arrives. The original session isn't changed.
+- **Change Pokémon…** In the Pokédex's header: pick which evolution line a session is (a Lead can also be one of the legendaries), shiny or not, or **Reset to automatic**. The level still picks the stage within the line, the change plays the evolution flash, and the choice is kept across restarts. It is Poke Agents' own view; Conductor isn't told.
 - **Chat.** The Pokédex's **Chat** tab shows the conversation: your messages, the agent's replies, each turn's tool steps folded into one line, and messages to and from other sessions. **Load earlier** fetches older messages from Conductor. The box at the bottom sends a reply.
 - **Pending questions.** When a session waits on a question (Claude's AskUserQuestion, a plan to approve, or a Codex question), the Pokédex shows it with its options. **Reply with this option** sends the option's text as a normal message.
 - **PC Box.** Archived sessions, with their Pokémon's portraits. **Withdraw** brings one back into the town.
@@ -64,6 +66,7 @@ Session actions are the only writes Poke Agents makes to Conductor, and each hap
 | Stop                       | Cancels the session's turn. Asks first, because Conductor drops messages still queued.       |
 | Deposit in PC              | Archives the session. Asks first. The session leaves the town and is listed in the PC Box.   |
 | Withdraw                   | Unarchives a session from the PC Box. It walks back in, even if it was idle past the window. |
+| Switch model… → Start      | Creates a session in the same workspace with the model you picked and your first message.    |
 
 ![The PC Box listing an archived session with its Pokémon's portrait and a Withdraw button](docs/screenshots/pc-box.png)
 

@@ -12,6 +12,8 @@ interface PokemonPortraitProps {
   /** Drawn instead when there is no URL or the image fails to load. */
   fallback: ReactNode;
   alt?: string;
+  /** 'lazy' for long grids (Change Pokémon): fetched only near the viewport. */
+  loading?: 'eager' | 'lazy';
 }
 
 /**
@@ -19,7 +21,13 @@ interface PokemonPortraitProps {
  * (to the upstream mug shot, or the capsule) whenever the image is missing,
  * so a slot never shows a broken image.
  */
-export function PokemonPortrait({ url, size, fallback, alt = '' }: PokemonPortraitProps) {
+export function PokemonPortrait({
+  url,
+  size,
+  fallback,
+  alt = '',
+  loading = 'eager',
+}: PokemonPortraitProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   if (!url || failedUrl === url) return <>{fallback}</>;
   return (
@@ -28,6 +36,7 @@ export function PokemonPortrait({ url, size, fallback, alt = '' }: PokemonPortra
       alt={alt}
       width={size}
       height={size}
+      loading={loading}
       draggable={false}
       onError={() => setFailedUrl(url)}
       className="shrink-0 select-none"

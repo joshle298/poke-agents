@@ -44,6 +44,8 @@ import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { ensureSpeciesLoaded } from './pokemon/pokemonAssets.js';
 import {
   assignSpeciesIfNeeded,
+  choosePokemon,
+  type PokemonChoice,
   promoteToOrchestrator,
   restoredPokemonFields,
   updateLevel,
@@ -61,6 +63,8 @@ export interface StreamAgentRecord {
   pokemonLine?: string;
   species?: number;
   shiny?: boolean;
+  /** The user chose this Pokémon (Change Pokémon). */
+  pokemonChosen?: boolean;
 }
 
 /** Durable home for StreamAgentRecords, keyed by the namespaced session key
@@ -117,6 +121,10 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
   private readonly statedLead = new Map<string, string>();
   /** Lead from the first `spawned` link into a session. */
   private readonly spawnedBy = new Map<string, string>();
+  /** Sessions whose spawned link is a handoff (Switch model): linked to the
+   *  session they continue and thrown out of it, but they don't make it a
+   *  Lead (it did not delegate, the user continued its work). */
+  private readonly handoffs = new Set<string>();
   private readonly statusOf = new Map<number, StatusKey>();
   private readonly teamKeyOf = new Map<number, string>();
   private readonly detailsJsonOf = new Map<number, string>();
@@ -193,6 +201,24 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
     } catch (err) {
       this.logFailure('onDismiss', err);
     }
+  }
+
+  /**
+   * Change Pokémon for an agent this driver owns (the choice was validated by
+   * the caller): apply it, remember it with the session (so it survives a
+   * restart), and announce the new species once its sprites load, which plays
+   * the evolution flash. Returns false when nothing changed.
+   */
+  setAgentPokemon(agentId: number, choice: PokemonChoice): boolean {
+    const sessionId = this.sessionByAgent.get(agentId);
+    const agent = this.store.get(agentId);
+    if (sessionId === undefined || !agent) return false;
+    const changed = choosePokemon(agent, this.store, choice, {
+      stableKey: sessionId,
+      orchestrator: agent.isTeamLead === true,
+    });
+    if (changed) this.speciesChanged(agentId, agent);
+    return changed;
   }
 
   /** Agent ids of every session this driver remembers, in the office or not:
@@ -312,6 +338,10 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
       if (!isSessionId(from) || !isSessionId(to) || from === to || !LINK_KINDS.has(kind)) return;
       const at = Number.isFinite(event.at) ? event.at : Date.now();
       const preview = cleanText(event.preview);
+      // Before the link: recordLink recomputes teams, which reads it.
+      if (kind === 'spawned' && event.handoff === true && !this.spawnedBy.has(to)) {
+        this.handoffs.add(to);
+      }
       this.recordLink(from, to, kind, at, preview);
       if (event.live) this.animateMessage(from, to, kind, preview, at);
     });
@@ -482,13 +512,15 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
       species: agent.species,
       shiny: agent.shiny,
     };
+    if (agent.pokemonChosen) record.pokemonChosen = true;
     const previous = this.remembered.get(key);
     if (
       previous &&
       previous.agentId === record.agentId &&
       previous.pokemonLine === record.pokemonLine &&
       previous.species === record.species &&
-      previous.shiny === record.shiny
+      previous.shiny === record.shiny &&
+      previous.pokemonChosen === record.pokemonChosen
     ) {
       return;
     }
@@ -911,9 +943,15 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
       leadSessionId !== undefined && leadSessionId !== sessionId
         ? this.agentIdBySession.get(leadSessionId)
         : undefined;
+    // Only a child it spawned itself makes a session a Lead (a legendary);
+    // a handoff (Switch model) is linked to it and thrown out of it, no more.
     let isTeamLead = false;
     for (const child of this.agentIdBySession.keys()) {
-      if (child !== sessionId && this.leadSessionOf(child) === sessionId) {
+      if (
+        child !== sessionId &&
+        !this.handoffs.has(child) &&
+        this.leadSessionOf(child) === sessionId
+      ) {
         isTeamLead = true;
         break;
       }

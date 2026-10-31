@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- **Switch model…** in the Pokédex. Conductor's API can't change the model of a running session, so this starts a new session in the same workspace (same files and branch) instead: pick Claude, Codex or Cursor, a model (your Conductor favorites first, starred), an effort and fast mode where the model has it, and edit the first message, which starts as a note to continue the work and check the recent commits and changes. The new session is named after the original and the model, thrown out of the original Pokémon and linked to it, and its Pokédex opens when it walks in. The original session isn't changed and doesn't become a Lead. A create whose answer was lost is retried with the same session and message ids, so Conductor makes it once. The demo plays it against its own sessions.
+- **Change Pokémon…** in the Pokédex's header: choose a session's evolution line (a Lead can also be a legendary) from a grid of portraits, shiny or not, or reset it to automatic. The level still picks the stage within the line, the change plays the evolution flash, and the choice is kept across restarts and never replaced by a Lead's legendary. It is Poke Agents' own view; Conductor isn't told.
+- The Pokédex's Overview shows the session's agent, model and effort (and fast mode).
+
 ## Poke Agents v0.3.0
 
 The Pokémon release. Poke Agents shows your Conductor cloud sessions as Pokémon in a small pixel-art town, as a Mac app or in a browser window next to Conductor. It is a visualizer: all coding happens in Conductor with your Conductor settings, and Poke Agents only asks Conductor's API to act when you click.

@@ -29,6 +29,8 @@ import { canSeedSilently } from '../silentSeed.js';
 import {
   DEMO_ACCOUNT,
   DEMO_BEGIN_SEC,
+  DEMO_CONTINUED_CONTEXT_TOKENS,
+  DEMO_CONTINUED_ID_BASE,
   DEMO_CREATOR_NAME,
   DEMO_DEEP_LINK_BASE,
   DEMO_DETAIL_ENTRIES,
@@ -72,6 +74,21 @@ export interface DemoSessionSpec {
   idleMinutes?: number;
   pinned?: boolean;
   hidden?: boolean;
+  /** Reasoning effort and fast mode, when the session was started with them. */
+  effort?: string;
+  fastMode?: boolean;
+  /** Switch model: the session this one continues (linked as a handoff). */
+  continuedFrom?: string;
+}
+
+/** A Switch model request, already validated against the catalog. */
+export interface DemoContinuation {
+  agent: DemoHarness;
+  model: string;
+  effort?: string;
+  fastMode?: boolean;
+  name: string;
+  message: string;
 }
 
 /** One step in a session's queue. Durations are script seconds. */
@@ -123,6 +140,9 @@ export interface DemoReplies {
   revive(spec: DemoSessionSpec): DemoAction[];
   /** A busy session got a message: what it says before carrying on. */
   noted(spec: DemoSessionSpec): string;
+  /** A session started to continue `from` with another model (Switch model):
+   *  what it does first. */
+  handoff(spec: DemoSessionSpec, from: DemoSessionSpec): DemoAction[];
 }
 
 type Entry = StreamSessionDetail['entries'][number];
@@ -192,6 +212,7 @@ export class DemoWorld {
   private readonly steps: Array<{ at: number; seq: number; run: (world: DemoWorld) => void }> = [];
   private stepSeq = 0;
   private keySeq = 0;
+  private continued = 0;
   private scope: ConductorScope = { ...DEFAULT_SCOPE };
   /** How far the script may play (the player's clock). */
   private scriptNow = 0;
@@ -271,6 +292,11 @@ export class DemoWorld {
   at(atMs: number, run: (world: DemoWorld) => void): void {
     this.steps.push({ at: atMs, seq: this.stepSeq++, run });
     this.steps.sort((a, b) => a.at - b.at || a.seq - b.seq);
+  }
+
+  /** A session's name, if it exists. */
+  labelOf(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.spec.label;
   }
 
   status(sessionId: string): 'idle' | 'working' | 'error' | 'asking' | 'archived' | 'unborn' {
@@ -390,6 +416,78 @@ export class DemoWorld {
     this.scope = sanitizeScope(scope, this.scope);
     this.statusSig = null;
     this.refresh();
+  }
+
+  /**
+   * Switch model: a new session in `fromId`'s workspace, started on `message`
+   * with the chosen agent and model, linked to the original as a handoff
+   * before it walks in (so the original throws it). Returns its id.
+   */
+  continueSession(fromId: string, request: DemoContinuation): string {
+    const from = this.requireLive(fromId);
+    this.eventAt = this.scriptNow;
+    const id = `5e55de00-0000-4000-8000-${String(DEMO_CONTINUED_ID_BASE + ++this.continued).padStart(12, '0')}`;
+    const at = this.now();
+    const spec: DemoSessionSpec = {
+      id,
+      label: request.name,
+      workspace: from.spec.workspace,
+      model: request.model,
+      harness: request.agent,
+      contextWindow: request.model.endsWith('-1m') ? 1_000_000 : undefined,
+      prompt: request.message,
+      present: false,
+      status: 'working',
+      messageCount: 0,
+      contextTokens: DEMO_CONTINUED_CONTEXT_TOKENS,
+      continuedFrom: fromId,
+    };
+    if (request.effort) spec.effort = request.effort;
+    if (request.fastMode) spec.fastMode = true;
+    const session: DemoSession = {
+      spec,
+      born: true,
+      status: 'working',
+      messageCount: 0,
+      contextTokens: spec.contextTokens,
+      lastActivityAt: at,
+      hidden: false,
+      pinned: false,
+      archived: false,
+      adopted: false,
+      detailsAt: 0,
+      detailsDirty: false,
+      queue: [...this.replies.handoff(spec, from.spec)],
+      busyUntil: this.eventAt + DEMO_RECEIVE_DELAY_SEC * MS_PER_SEC,
+      readyAt: this.eventAt,
+      prompt: request.message,
+      transcript: [],
+      dropped: 0,
+    };
+    this.sessions.set(id, session);
+    this.order.push(id);
+    const key = this.nextKey('m');
+    // The link first: the new session is then created as the original's
+    // (thrown out of it), without making the original a delegating Lead.
+    this.sink.link({
+      fromSessionId: fromId,
+      toSessionId: id,
+      kind: 'spawned',
+      at,
+      preview: request.message,
+      live: true,
+      handoff: true,
+    });
+    this.log(from, {
+      role: 'peerOut',
+      text: request.message,
+      peerSessionId: id,
+      key: `peerOut:${key}`,
+    });
+    this.log(session, { role: 'user', text: request.message, key: this.nextKey('u') });
+    this.count(session, 1);
+    this.refresh();
+    return id;
   }
 
   // ── Reads (Pokédex, Sessions modal, PC Box) ────────────────
@@ -843,6 +941,8 @@ export class DemoWorld {
       externalUrl: deepLinkFor(spec),
       model: spec.model,
       harness: spec.harness,
+      ...(spec.effort ? { effort: spec.effort } : {}),
+      ...(spec.fastMode !== undefined ? { fastMode: spec.fastMode } : {}),
       workspaceId: spec.workspace.id,
       workspaceName: spec.workspace.name,
       workspaceNumber: spec.workspace.number,
@@ -878,7 +978,8 @@ export class DemoWorld {
       summary.archived = true;
       if (session.archivedAt) summary.archivedAt = session.archivedAt;
     }
-    if (spec.leadId) summary.leadSessionId = spec.leadId;
+    const lead = spec.leadId ?? spec.continuedFrom;
+    if (lead) summary.leadSessionId = lead;
     return summary;
   }
 

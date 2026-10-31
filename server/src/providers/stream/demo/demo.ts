@@ -12,6 +12,8 @@
 import type { ConductorScope, ConductorSessionSummary } from '../../../../../core/src/messages.js';
 import type {
   AgentEventSink,
+  ModelChoice,
+  StreamModelCatalog,
   StreamProvider,
   StreamSessionDetail,
 } from '../../../../../core/src/provider.js';
@@ -22,10 +24,12 @@ import {
   CONDUCTOR_SUBAGENT_TOOLS,
   formatConductorToolStatus,
 } from '../conductor/tools.js';
+import { buildModelCatalog, continuationName, parseModelChoice } from '../modelCatalog.js';
 import {
   DEFAULT_DEMO_SEED,
   DEFAULT_DEMO_SPEED,
   DEMO_DISPLAY_NAME,
+  DEMO_FAVORITE_MODELS,
   DEMO_LOG_PREFIX,
   DEMO_PROVIDER_ID,
   DEMO_SPEED_MAX,
@@ -34,7 +38,7 @@ import {
   ENV_DEMO_SPEED,
 } from './constants.js';
 import { createDemoStory } from './story.js';
-import { DemoWorld } from './world.js';
+import { type DemoHarness, DemoWorld } from './world.js';
 
 export interface DemoProviderOptions {
   /** Varies the generated history, replies and later rounds (round 0 is fixed). */
@@ -67,6 +71,8 @@ type DemoControls = Required<
     | 'archiveSession'
     | 'restoreSession'
     | 'setFocus'
+    | 'getModelCatalog'
+    | 'continueWithModel'
   >
 >;
 
@@ -214,6 +220,29 @@ export function createDemoProvider(opts: DemoProviderOptions = {}): DemoProvider
 
     setFocus(): void {
       // Every demo session is always up to date.
+    },
+
+    async getModelCatalog(): Promise<StreamModelCatalog> {
+      return buildModelCatalog({ favoriteModels: DEMO_FAVORITE_MODELS });
+    },
+
+    async continueWithModel(
+      sessionId: string,
+      request: ModelChoice,
+    ): Promise<{ sessionId: string }> {
+      const w = requireWorld();
+      const parsed = parseModelChoice({ ...request }, buildModelCatalog(undefined));
+      if (!parsed.ok) throw new Error(parsed.message);
+      const choice = parsed.choice;
+      const id = w.continueSession(sessionId, {
+        agent: choice.agent as DemoHarness,
+        model: choice.model,
+        effort: choice.effort,
+        fastMode: choice.fastMode,
+        name: continuationName(w.labelOf(sessionId), choice.model),
+        message: choice.message,
+      });
+      return { sessionId: id };
     },
   };
 }

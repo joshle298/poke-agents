@@ -176,6 +176,7 @@ export class AgentStateStore {
         pokemonLine: agent.pokemonLine,
         species: agent.species,
         shiny: agent.shiny,
+        pokemonChosen: agent.pokemonChosen || undefined,
         toolCallCount: agent.toolCallCount || undefined,
       });
     }
