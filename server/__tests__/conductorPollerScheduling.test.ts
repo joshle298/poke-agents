@@ -1,0 +1,485 @@
+/**
+ * What the Conductor poller spends its request budget on, and when sessions
+ * walk in: focus, workspace activity, deferred units, ranking by a session's
+ * own activity, withdrawals from the PC Box, levels, and catch-up batches.
+ * Every scenario runs against the fake API with a manual clock.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import type { AgentEvent } from '../../core/src/provider.js';
+import { createConductorProvider } from '../src/providers/stream/conductor/conductor.js';
+import { planIntervals } from '../src/providers/stream/conductor/poller.js';
+import type { ConductorItem } from '../src/providers/stream/conductor/types.js';
+import { FakeConductorApi } from './fixtures/conductor/fakeConductorApi.js';
+import {
+  boot,
+  fixture,
+  type Harness,
+  idleFeed,
+  KEY,
+  manualClock,
+  NOW,
+  RecordingSink,
+  retime,
+  settle,
+  tmpStateDir,
+  uuid,
+  workingFeed,
+  writeState,
+} from './fixtures/conductor/pollerHarness.js';
+
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+function scope(maxSessions = 24) {
+  return { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions };
+}
+
+/** `turns` copies of the Claude turn fixture (18 items, sessionIndex step 19),
+ *  one minute apart, the last one ending at `endMs`. */
+function longFeed(id: string, turns: number, endMs: number): ConductorItem[] {
+  const turn = fixture('claude-turn.json');
+  const items: ConductorItem[] = [];
+  for (let k = 0; k < turns; k++) {
+    const end = endMs - (turns - 1 - k) * MINUTE;
+    for (const item of retime(turn, id, end)) {
+      items.push({ ...item, id: `${item.id}-t${k}`, sessionIndex: k * 19 + item.sessionIndex });
+    }
+  }
+  return items;
+}
+
+/** Advance the clock in ticks, calling `each` before every tick. */
+async function run(
+  h: Harness,
+  ms: number,
+  each: (t: number) => void = () => {},
+  step = 500,
+): Promise<void> {
+  const until = h.clock.t + ms;
+  while (h.clock.t < until) {
+    h.clock.t += step;
+    each(h.clock.t);
+    await h.provider.tick();
+  }
+}
+
+function messagePolls(api: FakeConductorApi, id: string, from = 0): number {
+  return api.callsTo(`/sessions/${id}/messages`).filter((c) => c.at >= from && c.query.after)
+    .length;
+}
+
+/** A sink that records which events arrived inside a silent seed. */
+class SeedAwareSink extends RecordingSink {
+  seeding = new Set<string>();
+  seeded: Array<[string, AgentEvent]> = [];
+  seedSilently(sessionId: string, runSeed: () => void): void {
+    this.seeding.add(sessionId);
+    try {
+      runSeed();
+    } finally {
+      this.seeding.delete(sessionId);
+    }
+  }
+  emit(sessionId: string, event: AgentEvent): void {
+    super.emit(sessionId, event);
+    if (this.seeding.has(sessionId)) this.seeded.push([sessionId, event]);
+  }
+}
+
+describe('Conductor poller: focus (an open Pokédex)', () => {
+  it('lapses about 10 s after the last request, instead of lasting until restart', async () => {
+    const id = uuid(0x1001);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x1002),
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+        });
+        api.addSession({ id, workspaceId: uuid(0x1002), items: idleFeed(id, NOW - 2 * HOUR) });
+      },
+    });
+    expect(h.sink.adopted.has(id)).toBe(true);
+
+    // The Pokédex asks once and is closed.
+    const opened = h.clock.t;
+    h.provider.setFocus([id]);
+    await run(h, 60_000);
+    expect(messagePolls(h.api, id, opened)).toBeGreaterThan(0);
+    // Cold again once the focus lapsed: no polls at all after it.
+    expect(messagePolls(h.api, id, opened + 12_000)).toBe(0);
+    await h.provider.stop();
+  });
+
+  it('keeps a focused Lead fast and never tails its old children for it', async () => {
+    const lead = uuid(0x1101);
+    const children = Array.from({ length: 20 }, (_, i) => uuid(0x1200 + i));
+    const stateDir = tmpStateDir();
+    writeState(stateDir, { version: 1, scope: scope(3), sessions: {} });
+    const h = await boot({
+      stateDir,
+      budget: 120,
+      prepare: (api) => {
+        api.addWorkspace({ id: uuid(0x1102), lastActivityAt: new Date(NOW).toISOString() });
+        api.addSession({
+          id: lead,
+          workspaceId: uuid(0x1102),
+          items: workingFeed(lead, NOW - 1_000),
+          status: { status: 'working' },
+        });
+        children.forEach((child, i) => {
+          const items = idleFeed(child, NOW - 2 * HOUR - i * MINUTE);
+          items[0].content.senderSessionId = lead;
+          api.addWorkspace({
+            id: uuid(0x1300 + i),
+            state: 'sleeping',
+            lastActivityAt: items.at(-1)?.receivedAt,
+          });
+          api.addSession({ id: child, workspaceId: uuid(0x1300 + i), items });
+        });
+      },
+    });
+    // Settle onboarding at 120/min.
+    await run(h, 3 * MINUTE);
+
+    const before = h.clock.t;
+    await run(h, MINUTE);
+    const unfocused = messagePolls(h.api, lead, before);
+
+    const childCallsBefore = children.map((c) => h.api.callsTo(`/sessions/${c}/messages`).length);
+    const focusedFrom = h.clock.t;
+    await run(h, MINUTE, (t) => {
+      if ((t - focusedFrom) % 5_000 === 0) h.provider.setFocus([lead]);
+    });
+    const focused = messagePolls(h.api, lead, focusedFrom);
+    expect(unfocused).toBeGreaterThan(10);
+    expect(focused).toBeGreaterThanOrEqual(unfocused);
+    // Its old children are not dragged into Focus: none was read for it.
+    const childCallsAfter = children.map((c) => h.api.callsTo(`/sessions/${c}/messages`).length);
+    expect(childCallsAfter).toEqual(childCallsBefore);
+    await h.provider.stop();
+  });
+
+  it('never plans a focused session slower than Hot', () => {
+    for (const hot of [0, 2, 4, 10, 20, 40]) {
+      for (const focus of [1, 2, 3]) {
+        const plan = planIntervals(120, {
+          focus,
+          hot,
+          warm: 6,
+          offscreen: 0,
+          activeWorkspaces: 6,
+        });
+        expect(plan.focusMs).toBeLessThanOrEqual(plan.hotMs);
+      }
+    }
+  });
+});
+
+describe('Conductor poller: workspace activity', () => {
+  it("polls a busy workspace's idle chats once a minute at most, without making them Hot", async () => {
+    const ws = uuid(0x2001);
+    const live = uuid(0x2002);
+    const siblings = Array.from({ length: 9 }, (_, i) => uuid(0x2100 + i));
+    const h = await boot({
+      budget: 120,
+      prepare: (api) => {
+        api.addWorkspace({ id: ws, lastActivityAt: new Date(NOW).toISOString() });
+        api.addSession({
+          id: live,
+          workspaceId: ws,
+          items: workingFeed(live, NOW - 1_000),
+          status: { status: 'working' },
+        });
+        for (const [i, sibling] of siblings.entries()) {
+          api.addSession({
+            id: sibling,
+            workspaceId: ws,
+            items: idleFeed(sibling, NOW - 2 * HOUR - i * MINUTE),
+          });
+        }
+      },
+    });
+    await run(h, MINUTE);
+    const from = h.clock.t;
+    const workspace = h.api.workspaces.find((w) => w.id === ws);
+    // The live session keeps working: the workspace's activity advances on
+    // every discovery pass.
+    await run(h, 2 * MINUTE, (t) => {
+      if (workspace) workspace.lastActivityAt = new Date(t).toISOString();
+    });
+    const siblingPolls = siblings.reduce((n, s) => n + messagePolls(h.api, s, from), 0);
+    expect(siblingPolls).toBeLessThanOrEqual(siblings.length * 3);
+    // ...and the working session keeps its Hot cadence (about every 2.5-3 s).
+    expect(messagePolls(h.api, live, from)).toBeGreaterThan(30);
+    const lists = h.api.callsTo(`/workspaces/${ws}/sessions`).filter((c) => c.at >= from);
+    expect(lists.length).toBeLessThanOrEqual(5);
+    await h.provider.stop();
+  });
+});
+
+describe('Conductor poller: units that wait for a free slot', () => {
+  it('resolves a pinned session from outside the discovery window within seconds of startup', async () => {
+    const pinned = uuid(0x3001);
+    const stateDir = tmpStateDir();
+    writeState(stateDir, {
+      version: 1,
+      scope: scope(24),
+      sessions: { [pinned]: { pinned: true } },
+    });
+    const h = await boot({
+      stateDir,
+      budget: 120,
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x3002),
+          lastActivityAt: new Date(NOW - 8 * HOUR).toISOString(),
+        });
+        api.addSession({
+          id: pinned,
+          workspaceId: uuid(0x3002),
+          items: idleFeed(pinned, NOW - 8 * HOUR),
+        });
+        // More in-scope sessions than the cap keeps background slots busy.
+        for (let i = 0; i < 40; i++) {
+          const id = uuid(0x3100 + i);
+          api.addWorkspace({
+            id: uuid(0x3200 + i),
+            lastActivityAt: new Date(NOW - (i + 1) * MINUTE).toISOString(),
+          });
+          api.addSession({
+            id,
+            workspaceId: uuid(0x3200 + i),
+            items: idleFeed(id, NOW - i * MINUTE),
+          });
+        }
+      },
+    });
+    await run(h, MINUTE);
+    expect(h.sink.adopted.has(pinned)).toBe(true);
+    await h.provider.stop();
+  });
+
+  it('lists archived sessions for a PC Box opened during startup within seconds', async () => {
+    const archived = uuid(0x3301);
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    for (let i = 0; i < 60; i++) {
+      const id = uuid(0x3400 + i);
+      api.addWorkspace({
+        id: uuid(0x3500 + i),
+        lastActivityAt: new Date(NOW - (i + 1) * MINUTE).toISOString(),
+      });
+      api.addSession({ id, workspaceId: uuid(0x3500 + i), items: idleFeed(id, NOW - i * MINUTE) });
+    }
+    api.addSession({
+      id: archived,
+      workspaceId: uuid(0x3500),
+      archivedAt: new Date(NOW - HOUR).toISOString(),
+      items: idleFeed(archived, NOW - 2 * HOUR),
+    });
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+      budgetPerMinute: 120,
+    });
+    await provider.start(new RecordingSink());
+    // The PC Box opens while dozens of sessions are still onboarding.
+    provider.listSessions();
+    const until = clock.t + 30_000;
+    while (clock.t < until) {
+      clock.t += 500;
+      await provider.tick();
+    }
+    expect(provider.listSessions().find((s) => s.sessionId === archived)?.archived).toBe(true);
+    await provider.stop();
+  });
+});
+
+describe('Conductor poller: ranking by a session own activity', () => {
+  it("never shows a busy workspace's old chats ahead of recently active sessions", async () => {
+    const stateDir = tmpStateDir();
+    writeState(stateDir, { version: 1, scope: scope(4), sessions: {} });
+    const busy = uuid(0x4001);
+    const live = uuid(0x4002);
+    const oldChats = Array.from({ length: 6 }, (_, i) => uuid(0x4100 + i));
+    const recent = Array.from({ length: 3 }, (_, i) => uuid(0x4200 + i));
+    const h = await boot({
+      stateDir,
+      prepare: (api) => {
+        api.addWorkspace({ id: busy, lastActivityAt: new Date(NOW).toISOString() });
+        api.addSession({
+          id: live,
+          workspaceId: busy,
+          items: workingFeed(live, NOW - 1_000),
+          status: { status: 'working' },
+        });
+        for (const [i, id] of oldChats.entries()) {
+          api.addSession({
+            id,
+            workspaceId: busy,
+            items: idleFeed(id, NOW - 3 * HOUR - i * MINUTE),
+          });
+        }
+        for (const [i, id] of recent.entries()) {
+          const at = NOW - 20 * MINUTE - i * MINUTE;
+          api.addWorkspace({ id: uuid(0x4300 + i), lastActivityAt: new Date(at).toISOString() });
+          api.addSession({ id, workspaceId: uuid(0x4300 + i), items: idleFeed(id, at) });
+        }
+      },
+    });
+    await settle(h.provider, 40);
+    expect([...h.sink.adopted].sort()).toEqual([live, ...recent].sort());
+    // No old chat walked in and was recalled moments later.
+    const everAdopted = new Set(h.sink.upserts.map((u) => u.sessionId));
+    expect(oldChats.filter((id) => everAdopted.has(id))).toEqual([]);
+    expect(h.sink.removed).toEqual([]);
+    // The Sessions list shows each chat's own time, not its workspace's.
+    const listed = h.provider.listSessions().find((s) => s.sessionId === oldChats[0]);
+    expect(listed?.lastActivityAt).toBeLessThan(NOW - 3 * HOUR + 1_000);
+    await h.provider.stop();
+  });
+});
+
+describe('Conductor poller: withdrawing from the PC Box', () => {
+  it('keeps a withdrawn session that finished hours ago in the office and the lists', async () => {
+    const ws = uuid(0x5001);
+    const old = uuid(0x5002);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({ id: ws, lastActivityAt: new Date(NOW).toISOString() });
+        api.addSession({
+          id: uuid(0x5003),
+          workspaceId: ws,
+          items: workingFeed(uuid(0x5003), NOW - 1_000),
+          status: { status: 'working' },
+        });
+        api.addSession({
+          id: old,
+          workspaceId: ws,
+          archivedAt: new Date(NOW - HOUR).toISOString(),
+          items: idleFeed(old, NOW - 7 * HOUR),
+        });
+      },
+    });
+    h.provider.listSessions();
+    await run(h, 5_000);
+    expect(h.provider.listSessions().find((s) => s.sessionId === old)?.archived).toBe(true);
+
+    await h.provider.restoreSession(old);
+    await run(h, 15_000);
+    expect(h.sink.adopted.has(old)).toBe(true);
+    expect(h.sink.removed.filter(([id]) => id === old)).toEqual([]);
+    const listed = h.provider.listSessions().find((s) => s.sessionId === old);
+    expect(listed).toBeDefined();
+    expect(listed?.archived).toBeUndefined();
+
+    // Past the pin, the withdrawal still counts as activity in the window.
+    await run(h, 15 * MINUTE, () => {}, 5_000);
+    expect(h.sink.adopted.has(old)).toBe(true);
+    await h.provider.stop();
+  });
+});
+
+describe('Conductor poller: levels', () => {
+  it('lets a cold session walk in at its real level, with its activity time', async () => {
+    const cold = uuid(0x6001);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x6002),
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+        });
+        api.addSession({
+          id: cold,
+          workspaceId: uuid(0x6002),
+          items: longFeed(cold, 80, NOW - 2 * HOUR),
+        });
+      },
+    });
+    await settle(h.provider, 20);
+    const first = h.sink.firstUpsert(cold);
+    expect(first?.details).toMatchObject({
+      messageCount: 80 * 19,
+      lastActivityAt: NOW - 2 * HOUR,
+    });
+    // Its count never changed afterwards: nothing "evolved" from loading.
+    const counts = h.sink.upserts
+      .filter((u) => u.sessionId === cold)
+      .map((u) => u.details?.messageCount);
+    expect(new Set(counts)).toEqual(new Set([80 * 19]));
+    await h.provider.stop();
+  });
+});
+
+describe('Conductor poller: catch-up batches', () => {
+  it('shows a whole short turn that started and finished between two polls', async () => {
+    const ws = uuid(0x7001);
+    const side = uuid(0x7002);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: ws,
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 2 * HOUR).toISOString(),
+        });
+        api.addSession({ id: side, workspaceId: ws, items: idleFeed(side, NOW - 2 * HOUR) });
+      },
+    });
+    expect(h.sink.adopted.has(side)).toBe(true);
+    // Quiet for a while: nothing polls a cold session.
+    await run(h, 2 * MINUTE, () => {}, 5_000);
+    const eventsBefore = h.sink.eventsFor(side).length;
+
+    // A message arrives and a 2.5 s turn runs to completion before any poll.
+    const turn = retime(fixture('claude-turn.json'), side, h.clock.t - 1_000).map((item, i) => ({
+      ...item,
+      id: `${item.id}-live`,
+      sessionIndex: 100 + i,
+    }));
+    h.api.sessions.get(side)?.items.push(...turn);
+    const workspace = h.api.workspaces.find((w) => w.id === ws);
+    if (workspace) workspace.lastActivityAt = new Date(h.clock.t).toISOString();
+    await run(h, 16_000);
+
+    const kinds = h.sink
+      .eventsFor(side)
+      .slice(eventsBefore)
+      .map((e) => e.kind)
+      .filter((k) => k === 'turnStart' || k === 'turnEnd');
+    expect(kinds).toEqual(['turnStart', 'turnEnd']);
+    await h.provider.stop();
+  });
+});
+
+describe('Conductor poller: adoption is a silent seed', () => {
+  it('adopts a session already waiting on the user inside a silent seed', async () => {
+    const waiting = uuid(0x8001);
+    const sink = new SeedAwareSink();
+    const h = await boot({
+      sink,
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0x8002),
+          lastActivityAt: new Date(NOW - MINUTE).toISOString(),
+        });
+        api.addSession({
+          id: waiting,
+          workspaceId: uuid(0x8002),
+          items: retime(fixture('wait-ask-user-question-pending.json'), waiting, NOW - MINUTE),
+          status: { status: 'working' },
+        });
+      },
+    });
+    expect(h.sink.adopted.has(waiting)).toBe(true);
+    expect(sink.seeded).toContainEqual([waiting, { kind: 'awaitingInput' }]);
+    await h.provider.stop();
+  });
+});

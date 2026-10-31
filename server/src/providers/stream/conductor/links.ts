@@ -555,15 +555,21 @@ export class LinkTracker {
     return [...this.edges.values()].filter((e) => !e.pending && e.to);
   }
 
-  /** Sessions directly linked to `sessionId` in either direction. */
-  neighbors(sessionId: string): Set<string> {
-    const out = new Set<string>();
+  /** Up to `limit` sessions linked to `sessionId` (either direction) by an edge
+   *  with activity at or after `since`, most recent first. */
+  recentNeighbors(sessionId: string, since: number, limit: number): string[] {
+    const latest = new Map<string, number>();
     for (const edge of this.edges.values()) {
-      if (edge.pending || !edge.to) continue;
-      if (edge.from === sessionId) out.add(edge.to);
-      else if (edge.to === sessionId) out.add(edge.from);
+      if (edge.pending || !edge.to || edge.lastAt < since) continue;
+      const peer =
+        edge.from === sessionId ? edge.to : edge.to === sessionId ? edge.from : undefined;
+      if (peer === undefined || peer === sessionId) continue;
+      latest.set(peer, Math.max(latest.get(peer) ?? 0, edge.lastAt));
     }
-    return out;
+    return [...latest.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, limit)
+      .map(([peer]) => peer);
   }
 
   // ── internals ──

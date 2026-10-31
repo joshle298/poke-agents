@@ -31,6 +31,7 @@ import type {
   AgentEventSink,
   StreamSessionInfo,
 } from '../../../../../core/src/provider.js';
+import { canSeedSilently } from '../silentSeed.js';
 import { ConductorApiError, type ConductorClient } from './client.js';
 import {
   ARCHIVE_INTEREST_MS,
@@ -39,11 +40,15 @@ import {
   CAP_HYSTERESIS,
   DETAILS_THROTTLE_MS,
   DISCOVERY_INTERVAL_MS,
+  FOCUS_PEER_RECENT_MS,
+  FOCUS_PEERS_MAX,
   FOCUS_POLL_MAX_MS,
   FOCUS_POLL_MS,
+  FOCUS_TTL_MS,
   FULL_LIST_INTERVAL_MS,
   HOT_POLL_MS,
   HOT_RECENT_MS,
+  LEVEL_WAIT_MAX_MS,
   LIVE_WINDOW_MS,
   MAX_CHILDREN_PER_LEAD,
   MAX_CONCURRENT_UNITS,
@@ -62,6 +67,7 @@ import {
   PRIORITY_WARM,
   PROMOTION_MS,
   QUIET_RECONCILE_MS,
+  RESTORE_PIN_MS,
   SESSION_LIST_MAX_AGE_MS,
   SESSION_LIST_MIN_GAP_MS,
   SESSIONS_CHANGED_DEBOUNCE_MS,
@@ -80,6 +86,7 @@ import {
   WARM_POLL_MS,
   WARM_READY_WORKSPACE_MS,
   WARM_RECENT_MS,
+  WORKSPACE_CATCHUP_MIN_GAP_MS,
   WORKSPACES_PAGE_LIMIT,
 } from './constants.js';
 import { harnessFromModel, isHarness } from './harness.js';
@@ -150,6 +157,8 @@ interface WorkspaceRecord {
   listedAt: number;
   listedActivityMs: number;
   archivedListedAt: number;
+  /** An archived listing (PC Box) is running for this workspace. */
+  archivedListing: boolean;
   /** The session list should be (re)fetched by a list unit. */
   listPending: boolean;
 }
@@ -172,6 +181,9 @@ interface SessionRecord {
   norm: NormState;
   runStatus?: ConductorRunStatus;
   statusAt?: number;
+  /** /status `updatedAt`: when the run status last changed, which for an idle
+   *  session is about its last activity. Used until the feed says better. */
+  statusUpdatedAt?: number;
   statusMessage?: string;
   lastErrorAt?: string;
   cursor?: { lastId: string; lastIndex: number };
@@ -180,6 +192,8 @@ interface SessionRecord {
   /** Item #1 read (or its sender cached in state). */
   probed: boolean;
   onboarded: boolean;
+  /** When onboarding finished (the level wait counts from here). */
+  onboardedAt?: number;
   firstSender?: string | null;
   /** Item #1 is a user message and nothing else exists yet. */
   loneFirstMessage: boolean;
@@ -227,15 +241,28 @@ export interface PollIntervals {
 
 /**
  * Nominal cadence (Focus 2 s, Hot 2.5 s, Warm 15 s, status 30 s), stretched in
- * steps until the planned requests per minute fit the budget.
+ * steps until the planned requests per minute fit the budget. A focused
+ * session is never planned slower than Hot.
  */
 export function planIntervals(
   budgetPerMinute: number,
   counts: { focus: number; hot: number; warm: number; offscreen: number; activeWorkspaces: number },
 ): PollIntervals {
+  const plan = stretchIntervals(budgetPerMinute, counts);
+  plan.focusMs = Math.min(plan.focusMs, plan.hotMs);
+  return plan;
+}
+
+function stretchIntervals(
+  budgetPerMinute: number,
+  counts: { focus: number; hot: number; warm: number; offscreen: number; activeWorkspaces: number },
+): PollIntervals {
   const available = budgetPerMinute * BUDGET_PLANNING_FRACTION;
+  // An active workspace is re-listed when its activity advances, at most
+  // every SESSION_LIST_MIN_GAP_MS (and at least every SESSION_LIST_MAX_AGE_MS).
   const fixed =
-    60_000 / DISCOVERY_INTERVAL_MS + counts.activeWorkspaces * (60_000 / SESSION_LIST_MAX_AGE_MS);
+    60_000 / DISCOVERY_INTERVAL_MS +
+    counts.activeWorkspaces * (60_000 / Math.min(SESSION_LIST_MIN_GAP_MS, SESSION_LIST_MAX_AGE_MS));
   const plan: PollIntervals = {
     focusMs: FOCUS_POLL_MS,
     hotMs: HOT_POLL_MS,
@@ -297,7 +324,8 @@ export class ConductorPoller {
   private readonly workspaces = new Map<string, WorkspaceRecord>();
   private readonly records = new Map<string, SessionRecord>();
   private readonly archived = new Map<string, { session: ConductorSession; workspaceId: string }>();
-  private focusIds = new Set<string>();
+  /** Focused sessions (an open Pokédex) and when each focus lapses. */
+  private readonly focusUntil = new Map<string, number>();
   private firstSeenCounter = 0;
   private unitOrder = 0;
   private running = 0;
@@ -306,6 +334,7 @@ export class ConductorPoller {
   private nextDiscoveryAt = 0;
   private lastFullListAt = 0;
   private lastPinnedResolveAt = 0;
+  private pinnedResolving = false;
   private archiveInterestUntil = 0;
   private discoveredOnce = false;
   private connection: ConnectionState = 'connecting';
@@ -405,13 +434,25 @@ export class ConductorPoller {
     this.refreshVisibility();
   }
 
+  /**
+   * Keep these sessions in the Focus tier for FOCUS_TTL_MS (an open Pokédex
+   * asks every 5 s; a closed one stops asking and the focus lapses). Each id
+   * has its own expiry, so two offices with different Pokédexes don't take
+   * the focus from each other. A newly focused session polls at once.
+   */
   setFocus(sessionIds: string[]): void {
-    this.focusIds = new Set(sessionIds);
-    for (const id of this.focusSet()) {
+    const now = this.clock.now();
+    let fresh = false;
+    for (const id of sessionIds) {
+      const wasFocused = (this.focusUntil.get(id) ?? 0) > now;
+      this.focusUntil.set(id, now + FOCUS_TTL_MS);
       const rec = this.records.get(id);
-      if (rec) rec.pollSoon = true;
+      if (rec && !wasFocused) {
+        rec.pollSoon = true;
+        fresh = true;
+      }
     }
-    if (this.autoTick) void this.tick();
+    if (fresh && this.autoTick) void this.tick();
   }
 
   /**
@@ -465,10 +506,16 @@ export class ConductorPoller {
     this.scheduleSessionsChanged();
   }
 
-  /** After a successful restore: forget the archived entry and re-adopt it. */
+  /**
+   * After a successful restore: forget the archived entry and re-adopt it. The
+   * withdrawal is the user asking to see the session, so it is shown like a
+   * pinned one for RESTORE_PIN_MS and then counts as activity for the scope
+   * window; otherwise a session older than the window walked in and left.
+   */
   async markRestored(sessionId: string): Promise<void> {
     const entry = this.archived.get(sessionId);
     this.archived.delete(sessionId);
+    this.state.patchSession(sessionId, { restoredAt: this.clock.now() });
     const workspaceId = entry?.workspaceId ?? this.records.get(sessionId)?.workspaceId;
     const ws = workspaceId ? this.workspaces.get(workspaceId) : undefined;
     if (ws) {
@@ -488,10 +535,32 @@ export class ConductorPoller {
 
   // ── Scheduling ──
 
-  private focusSet(): Set<string> {
-    const set = new Set(this.focusIds);
-    for (const id of this.focusIds) for (const peer of this.links.neighbors(id)) set.add(peer);
-    return set;
+  /** Sessions whose focus has not lapsed. */
+  private focusedIds(now: number): Set<string> {
+    const focused = new Set<string>();
+    for (const [id, until] of this.focusUntil) {
+      if (until > now) focused.add(id);
+      else this.focusUntil.delete(id);
+    }
+    return focused;
+  }
+
+  /**
+   * Linked sessions of the focused ones that poll as Hot: only links with
+   * recent activity, only sessions in the office with their tail already read
+   * (focus never starts tail syncs), at most FOCUS_PEERS_MAX per focused one.
+   */
+  private focusPeers(now: number, focused: Set<string>): Set<string> {
+    const peers = new Set<string>();
+    for (const id of focused) {
+      for (const peer of this.links.recentNeighbors(id, now - FOCUS_PEER_RECENT_MS, Infinity)) {
+        const rec = this.records.get(peer);
+        if (!rec || focused.has(peer) || !rec.adopted || !rec.tailed) continue;
+        peers.add(peer);
+        if (peers.size >= FOCUS_PEERS_MAX * focused.size) break;
+      }
+    }
+    return peers;
   }
 
   private collectUnits(now: number): Unit[] {
@@ -527,20 +596,37 @@ export class ConductorPoller {
         'list',
       );
     }
-    if (now - this.lastPinnedResolveAt >= PINNED_RESOLVE_INTERVAL_MS) {
-      this.lastPinnedResolveAt = now;
+    // Pinned sessions outside the discovered workspaces always show, so they
+    // resolve early; the interval starts when the unit actually runs (a unit
+    // skipped on a busy tick is queued again on the next one).
+    if (!this.pinnedResolving && now - this.lastPinnedResolveAt >= PINNED_RESOLVE_INTERVAL_MS) {
       const missing = this.state
         .sessionIds()
         .filter((id) => this.state.session(id)?.pinned && !this.records.has(id));
-      if (missing.length > 0) add(8, () => this.resolvePinned(missing), 'background');
+      if (missing.length > 0) {
+        add(
+          2.6,
+          async () => {
+            this.pinnedResolving = true;
+            this.lastPinnedResolveAt = this.clock.now();
+            try {
+              await this.resolvePinned(missing);
+            } finally {
+              this.pinnedResolving = false;
+            }
+          },
+          'list',
+        );
+      }
     }
 
-    const focus = this.focusSet();
+    const focus = this.focusedIds(now);
+    const peers = this.focusPeers(now, focus);
     const counts = { focus: 0, hot: 0, warm: 0, offscreen: 0, activeWorkspaces: 0 };
     const tiers = new Map<string, Tier>();
     for (const rec of this.records.values()) {
       if (!this.isCandidate(rec, now)) continue;
-      const tier = this.tierOf(rec, now, focus);
+      const tier = this.tierOf(rec, now, focus, peers);
       tiers.set(rec.id, tier);
       if (tier === 'cold') continue;
       if (!rec.adopted) counts.offscreen++;
@@ -552,7 +638,9 @@ export class ConductorPoller {
     // While sessions are still onboarding, steady polls get half the budget.
     const onboardingPending = [...this.records.values()].some(
       (rec) =>
-        tiers.has(rec.id) && (!rec.onboarded || (!rec.tailed && tiers.get(rec.id) !== 'cold')),
+        tiers.has(rec.id) &&
+        (!rec.onboarded ||
+          (!rec.tailed && (tiers.get(rec.id) !== 'cold' || this.awaitsLevel(rec, now)))),
     );
     const pollBudget =
       this.client.effectiveBudget * (onboardingPending ? ONBOARDING_POLL_SHARE : 1);
@@ -567,7 +655,19 @@ export class ConductorPoller {
         continue;
       }
       if (!rec.tailed) {
-        if (tier !== 'cold') {
+        if (this.awaitsLevel(rec, now)) {
+          // Shown but not walked in: its message count (level) comes from the
+          // tail. Working sessions first; idle ones at background priority.
+          const cold = tier === 'cold';
+          add(
+            cold ? 3.4 : 3.35,
+            () =>
+              this.withSession(rec, () =>
+                this.syncTail(rec, cold ? PRIORITY_BACKGROUND : PRIORITY_DISCOVERY),
+              ),
+            'onboard',
+          );
+        } else if (tier !== 'cold') {
           add(
             rec.adopted ? 3.5 : 7,
             () =>
@@ -579,7 +679,8 @@ export class ConductorPoller {
         }
         continue;
       }
-      if (tier === 'cold') continue;
+      // Cold sessions poll only when asked to (a catch-up after workspace activity).
+      if (tier === 'cold' && !rec.pollSoon) continue;
       let interval = tier === 'focus' ? plan.focusMs : tier === 'hot' ? plan.hotMs : plan.warmMs;
       if (!rec.adopted) interval = Math.max(interval, plan.offscreenMs);
       rec.plannedIntervalMs = interval;
@@ -631,11 +732,36 @@ export class ConductorPoller {
       );
     }
 
+    // PC Box listings while it is open, most recently active workspace first.
+    // listWorkspaceSessions stamps archivedListedAt when one completes, so a
+    // unit skipped on a busy tick is queued again on the next one.
     if (now < this.archiveInterestUntil) {
-      for (const ws of this.workspaces.values()) {
-        if (!ws.discovered || now - ws.archivedListedAt < ARCHIVED_LIST_INTERVAL_MS) continue;
-        ws.archivedListedAt = now;
-        add(8, () => this.listWorkspaceSessions(ws, true, PRIORITY_BACKGROUND), 'background');
+      const due = [...this.workspaces.values()]
+        .filter(
+          (ws) =>
+            ws.discovered &&
+            !ws.archivedListing &&
+            now - ws.archivedListedAt >= ARCHIVED_LIST_INTERVAL_MS,
+        )
+        .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
+      for (const ws of due) {
+        add(
+          6.9,
+          async () => {
+            ws.archivedListing = true;
+            try {
+              await this.listWorkspaceSessions(ws, true, PRIORITY_BACKGROUND);
+            } catch (err) {
+              // Try this workspace again after a discovery interval, not every tick.
+              ws.archivedListedAt =
+                this.clock.now() - ARCHIVED_LIST_INTERVAL_MS + DISCOVERY_INTERVAL_MS;
+              this.noteDiscoveryError(err);
+            } finally {
+              ws.archivedListing = false;
+            }
+          },
+          'background',
+        );
       }
     }
     return units;
@@ -766,6 +892,7 @@ export class ConductorPoller {
         listedAt: 0,
         listedActivityMs: 0,
         archivedListedAt: 0,
+        archivedListing: false,
         listPending: false,
       };
       this.workspaces.set(ws.id, rec);
@@ -776,9 +903,19 @@ export class ConductorPoller {
     rec.lastActivityMs = Math.max(rec.lastActivityMs, activity);
     rec.discovered = rec.discovered || discovered;
     if (advanced && this.discoveredOnce) {
-      // Something happened: Cold sessions of this workspace get polled again.
+      // Something happened in this workspace, in one of its sessions. Each
+      // session that is not polled often anyway gets one catch-up poll, which
+      // shows which one it was (that one then turns Hot by its own activity).
+      // No promotion: a busy workspace must not keep its idle chats Hot.
+      const now = this.clock.now();
       for (const session of this.records.values()) {
-        if (session.workspaceId === ws.id) this.promote(session.id);
+        if (
+          session.workspaceId === ws.id &&
+          session.tailed &&
+          now - (session.lastPollAt ?? 0) >= WORKSPACE_CATCHUP_MIN_GAP_MS
+        ) {
+          session.pollSoon = true;
+        }
       }
     }
     return rec;
@@ -965,9 +1102,11 @@ export class ConductorPoller {
       rec.lastPollAt = this.clock.now();
     }
     this.emitCachedSpawnLink(rec);
-    // Ready to adopt, seeded from /status and item #1. Hot and Warm sessions
-    // then replay their tail in a follow-up unit and consolidate.
+    // Ready to adopt, seeded from /status and item #1, once its level is
+    // known (awaitsLevel): sessions without a message count replay their tail
+    // in a follow-up unit first.
     rec.onboarded = true;
+    rec.onboardedAt = this.clock.now();
   }
 
   private async fetchStatus(
@@ -978,6 +1117,7 @@ export class ConductorPoller {
       const status = await this.client.getSessionStatus(rec.id, priority);
       rec.statusAt = this.clock.now();
       rec.runStatus = status?.status ?? 'idle';
+      rec.statusUpdatedAt = parseTime(status?.updatedAt) ?? rec.statusUpdatedAt;
       rec.statusMessage = clipError(status?.errorMessage ?? status?.lastError ?? undefined);
       return status;
     } catch (err) {
@@ -1106,11 +1246,12 @@ export class ConductorPoller {
       resolvedModel: rec.api.resolvedModel ?? undefined,
     });
     if (start > 0) this.logs.markTruncated(rec.id);
-    this.processItems(rec, items, false);
+    const recentTurn = this.processItems(rec, items, false);
     rec.tailed = true;
     rec.pollSoon = false;
     rec.lastPollAt = this.clock.now();
     if (items.length === 0 && !rec.api.model && !rec.api.resolvedModel) rec.neverStarted = true;
+    if (recentTurn) this.showTurnBurst(rec);
     this.consolidate(rec);
     this.upsertInfo(rec);
   }
@@ -1164,11 +1305,25 @@ export class ConductorPoller {
       await this.syncTail(rec, priority);
       return;
     }
-    if (!steady && items.length > 0) this.processItems(rec, items, false);
+    if (!steady && items.length > 0 && this.processItems(rec, items, false)) {
+      this.showTurnBurst(rec);
+    }
     this.consolidate(rec);
     rec.pollSoon = false;
     rec.lastPollAt = this.clock.now();
     this.upsertInfo(rec);
+  }
+
+  /**
+   * A catch-up batch (a session polled after a long gap, a re-read tail) is
+   * replayed silently and only its end state reaches the office. When it
+   * holds a turn that started moments ago and already finished, that turn
+   * would never show: open it now, so the office plays a working burst before
+   * consolidate closes it.
+   */
+  private showTurnBurst(rec: SessionRecord): void {
+    if (!rec.adopted || !rec.mirror || rec.mirror.status === 'active' || rec.norm.turnOpen) return;
+    this.emitToSink(rec, { kind: 'turnStart' });
   }
 
   private async pollStatus(rec: SessionRecord, priority: number): Promise<void> {
@@ -1221,14 +1376,21 @@ export class ConductorPoller {
 
   // ── Feed processing ──
 
-  /** Normalize items in order; `live` routes events to the office as they come. */
-  private processItems(rec: SessionRecord, items: ConductorItem[], live: boolean): void {
+  /**
+   * Normalize items in order; `live` routes events to the office as they come.
+   * Returns whether a turn started within the live window (for catch-ups).
+   */
+  private processItems(rec: SessionRecord, items: ConductorItem[], live: boolean): boolean {
     const now = this.clock.now();
+    let recentTurn = false;
     for (const item of items) {
       if (!item?.id) continue;
       const at = itemTime(item);
       const isLive = live && now - at <= LIVE_WINDOW_MS;
       const events = normalizeItem(item, rec.norm);
+      if (now - at <= LIVE_WINDOW_MS && events.some((e) => e.kind === 'turnStart')) {
+        recentTurn = true;
+      }
       this.route(rec, events, at, live, isLive);
       this.applyLinks(this.links.observe(rec.id, item, { live: isLive }), isLive);
       rec.cursor = {
@@ -1250,6 +1412,7 @@ export class ConductorPoller {
         lastActivityAt: rec.norm.lastItemAt,
       });
     }
+    return recentTurn;
   }
 
   /**
@@ -1489,22 +1652,65 @@ export class ConductorPoller {
     return seed.status === 'active' ? 'working' : seed.status === 'error' ? 'error' : 'idle';
   }
 
+  /**
+   * The session's own newest activity: from its feed, else persisted from an
+   * earlier run, else its /status `updatedAt`; undefined until one is known.
+   * A withdrawal from the PC Box counts as activity. Never the workspace's
+   * time: a busy workspace would make every old chat in it look just active.
+   */
+  private ownActivityOf(rec: SessionRecord): number | undefined {
+    const persisted = this.state.session(rec.id);
+    const own = rec.norm.lastItemAt ?? persisted?.lastActivityAt ?? rec.statusUpdatedAt;
+    const restored = persisted?.restoredAt;
+    if (restored === undefined) return own;
+    return own === undefined ? restored : Math.max(own, restored);
+  }
+
+  /** Own activity, else the workspace's: only to order the first /status pass
+   *  (which is what learns the session's own time). */
   private activityOf(rec: SessionRecord): number {
+    return this.ownActivityOf(rec) ?? this.workspaces.get(rec.workspaceId)?.lastActivityMs ?? 0;
+  }
+
+  /** Withdrawn from the PC Box moments ago: shown like a pinned session. */
+  private justRestored(rec: SessionRecord, now: number): boolean {
+    const restored = this.state.session(rec.id)?.restoredAt;
+    return restored !== undefined && now - restored < RESTORE_PIN_MS;
+  }
+
+  /**
+   * Shown by the cap but not walked in yet because its message count (its
+   * level) is unknown: it walks in once the tail is read, so it never appears
+   * at Lv 1 and then "evolves" when its history loads.
+   */
+  private awaitsLevel(rec: SessionRecord, now: number): boolean {
     return (
-      rec.norm.lastItemAt ??
-      this.state.session(rec.id)?.lastActivityAt ??
-      this.workspaces.get(rec.workspaceId)?.lastActivityMs ??
-      0
+      !rec.adopted &&
+      rec.onboarded &&
+      this.wanted.has(rec.id) &&
+      !this.levelKnown(rec) &&
+      now - (rec.onboardedAt ?? now) < LEVEL_WAIT_MAX_MS
     );
   }
 
-  private tierOf(rec: SessionRecord, now: number, focus: Set<string>): Tier {
+  private levelKnown(rec: SessionRecord): boolean {
+    return (
+      rec.tailed ||
+      rec.feedEmpty ||
+      rec.loneFirstMessage ||
+      (rec.norm.lastIndex ?? rec.cursor?.lastIndex) !== undefined
+    );
+  }
+
+  private tierOf(rec: SessionRecord, now: number, focus: Set<string>, peers: Set<string>): Tier {
     if (focus.has(rec.id)) return 'focus';
     const active = rec.tailed
       ? this.believesActive(rec.norm)
       : this.seedStatus(rec).status === 'active';
     const activity = this.activityOf(rec);
     if (active || now - activity < HOT_RECENT_MS || (rec.promotedUntil ?? 0) > now) return 'hot';
+    // A focused session's recently linked peers: Hot at most.
+    if (peers.has(rec.id)) return 'hot';
     if (now - activity < WARM_RECENT_MS) return 'warm';
     const ws = this.workspaces.get(rec.workspaceId);
     if (ws?.ws.state === 'ready' && now - activity < WARM_READY_WORKSPACE_MS) return 'warm';
@@ -1520,15 +1726,19 @@ export class ConductorPoller {
 
   private inScope(rec: SessionRecord, now: number): boolean {
     if (rec.neverStarted) return false;
-    if (this.state.session(rec.id)?.pinned) return true;
+    const persisted = this.state.session(rec.id);
+    if (persisted?.pinned) return true;
+    const scope = this.state.scope;
+    const windowStart = now - scope.activeWithinHours * 3_600_000;
+    // Withdrawn from the PC Box within the window: the user asked for it,
+    // whatever its feed or workspace says.
+    if (persisted?.restoredAt !== undefined && persisted.restoredAt >= windowStart) return true;
     const ws = this.workspaces.get(rec.workspaceId);
     if (!ws?.discovered) return false;
-    const scope = this.state.scope;
     if (scope.creator === 'me' && ws.ws.creatorId && ws.ws.creatorId !== this.me.userId)
       return false;
-    const windowStart = now - scope.activeWithinHours * 3_600_000;
     if (ws.lastActivityMs && ws.lastActivityMs < windowStart) return false;
-    const own = rec.norm.lastItemAt ?? this.state.session(rec.id)?.lastActivityAt;
+    const own = this.ownActivityOf(rec);
     return own === undefined || own >= windowStart;
   }
 
@@ -1541,7 +1751,8 @@ export class ConductorPoller {
     // Sessions still onboarding hold their rank, so older sessions are not
     // adopted first and pushed out moments later.
     const candidates = [...this.records.values()].filter((rec) => this.isCandidate(rec, now));
-    const pinned = (rec: SessionRecord) => !!this.state.session(rec.id)?.pinned;
+    const pinned = (rec: SessionRecord) =>
+      !!this.state.session(rec.id)?.pinned || this.justRestored(rec, now);
     const seeds = new Map(candidates.map((rec) => [rec.id, this.seedStatus(rec).status]));
     const isActiveChild = (rec: SessionRecord) => {
       const seed = seeds.get(rec.id);
@@ -1565,10 +1776,13 @@ export class ConductorPoller {
     };
     let eligible = candidates;
     if (!scope.showIdle) eligible = eligible.filter((rec) => pinned(rec) || bucket(rec) <= 4);
+    // Within a bucket: known activity before unknown (an untailed sibling must
+    // not outrank sessions with real recent activity), newest first.
+    const activity = new Map(eligible.map((rec) => [rec.id, this.ownActivityOf(rec) ?? -1]));
     const ranked = [...eligible].sort(
       (a, b) =>
         bucket(a) - bucket(b) ||
-        this.activityOf(b) - this.activityOf(a) ||
+        (activity.get(b.id) ?? -1) - (activity.get(a.id) ?? -1) ||
         a.firstSeen - b.firstSeen,
     );
     // At most 12 children per Lead are shown; the rest stay in the Sessions modal.
@@ -1599,7 +1813,9 @@ export class ConductorPoller {
       }
     }
     for (const rec of capped) {
-      if (visible.has(rec.id) && rec.onboarded && !rec.adopted) this.adopt(rec);
+      if (visible.has(rec.id) && rec.onboarded && !rec.adopted && !this.awaitsLevel(rec, now)) {
+        this.adopt(rec);
+      }
     }
     this.scheduleSessionsChanged();
   }
@@ -1611,13 +1827,19 @@ export class ConductorPoller {
     if (seed.status === 'error' && seed.errorMessage) info.errorMessage = seed.errorMessage;
     rec.adopted = true;
     rec.mirror = emptyMirror(seed.status);
-    this.sink.upsertSession(info);
+    // The seed and what the replayed state adds (open tools, an open
+    // question) describe the past: the office must not chime for them.
+    const seedNow = () => {
+      this.sink.upsertSession(info);
+      this.consolidate(rec);
+    };
+    if (canSeedSilently(this.sink)) this.sink.seedSilently(rec.id, seedNow);
+    else seedNow();
     rec.infoSig = this.infoSignature(info);
     rec.detailsSig = this.detailsSignature(info);
     rec.detailsAt = this.clock.now();
     rec.detailsCount = info.details?.messageCount;
     rec.detailsActivity = info.details?.lastActivityAt;
-    this.consolidate(rec);
     // Children adopted before their Lead learn it now.
     for (const child of this.records.values()) {
       if (child.adopted && child.firstSender === rec.id) this.upsertInfo(child);
@@ -1798,7 +2020,7 @@ export class ConductorPoller {
     if (model) summary.model = model;
     const harness = rec?.norm.harness ?? harnessFromModel(model);
     if (harness) summary.harness = harness;
-    const activity = rec ? this.activityOf(rec) : persisted?.lastActivityAt;
+    const activity = rec ? this.ownActivityOf(rec) : persisted?.lastActivityAt;
     if (activity) summary.lastActivityAt = activity;
     if (persisted?.pinned) summary.pinned = true;
     if (session.archivedAt) {

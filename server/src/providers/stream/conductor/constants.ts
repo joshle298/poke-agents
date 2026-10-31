@@ -76,8 +76,9 @@ export const DISCOVERY_INTERVAL_MS = 15_000;
 export const FULL_LIST_INTERVAL_MS = 5 * 60_000;
 /** Lists of recently active workspaces are refreshed when older than this. */
 export const SESSION_LIST_MAX_AGE_MS = 60_000;
-/** A workspace whose lastActivityAt advanced is re-listed at most this often. */
-export const SESSION_LIST_MIN_GAP_MS = 10_000;
+/** A workspace whose lastActivityAt advanced is re-listed at most this often
+ *  (planIntervals budgets for it). */
+export const SESSION_LIST_MIN_GAP_MS = 30_000;
 /** Archived session listings (PC Box) per workspace, at most this often. */
 export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
@@ -121,8 +122,24 @@ export const HOT_RECENT_MS = 60_000;
 export const WARM_RECENT_MS = 15 * 60_000;
 /** Done sessions in a `ready` workspace stay Warm for this long. */
 export const WARM_READY_WORKSPACE_MS = 60 * 60_000;
-/** How long a discovery hit or a link keeps a session Hot. */
+/** How long a live link or a user action keeps a session Hot. */
 export const PROMOTION_MS = 60_000;
+/** A workspace's activity asks each of its other sessions for one catch-up
+ *  poll, at most this often per session (it does not promote them). */
+export const WORKSPACE_CATCHUP_MIN_GAP_MS = 60_000;
+/** A focused session (open Pokédex) stays focused this long after the last
+ *  request asked for it: twice the panel's 5 s refresh. */
+export const FOCUS_TTL_MS = 10_000;
+/** A focused session's linked sessions poll as Hot when their link carried
+ *  activity this recently; at most this many of them. */
+export const FOCUS_PEER_RECENT_MS = 15 * 60_000;
+export const FOCUS_PEERS_MAX = 4;
+/** A shown session walks in once its message count (its level) is known; if
+ *  that cannot be read for this long after onboarding, it walks in anyway. */
+export const LEVEL_WAIT_MAX_MS = 60_000;
+/** A session withdrawn from the PC Box is shown like a pinned one this long;
+ *  afterwards the withdrawal counts as its activity for the scope window. */
+export const RESTORE_PIN_MS = 10 * 60_000;
 /** Polls further apart than this are catch-ups, not steady tail polls. */
 export const STEADY_POLL_GAP_MS = 60_000;
 /** Feed items newer than this (and from a steady poll) animate links and notices. */

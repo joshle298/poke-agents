@@ -138,8 +138,10 @@ describe('createSpeciesDelivery', () => {
   it('retries a species that failed to load for an idle agent, backing off', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // Real I/O (the cache writes files) still needs the event loop to turn.
-    const flush = async () => {
-      for (let i = 0; i < 400; i++) await new Promise((resolve) => setImmediate(resolve));
+    const until = async (done: () => boolean) => {
+      for (let i = 0; i < 20_000 && !done(); i++) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
     };
     try {
       setPmdCache(
@@ -161,20 +163,21 @@ describe('createSpeciesDelivery', () => {
       // Offline at startup: the idle agent's species fails and nothing else
       // will ever ask for it again.
       delivery.send({ type: 'existingAgents', agents: [1] });
-      await flush();
+      await until(() => speciesRetryAt(7, false) !== undefined);
       expect(labels(out)).toEqual(['existingAgents']);
       expect(speciesRetryAt(7, false)).toBe(Date.now() + PMD_SPECIES_RETRY_MS);
 
       // Still offline at the first retry: the wait doubles.
+      const firstRetryAt = speciesRetryAt(7, false);
       await vi.advanceTimersByTimeAsync(PMD_SPECIES_RETRY_MS);
-      await flush();
+      await until(() => speciesRetryAt(7, false) !== firstRetryAt);
       expect(labels(out)).toEqual(['existingAgents']);
       expect(speciesRetryAt(7, false)).toBe(Date.now() + 2 * PMD_SPECIES_RETRY_MS);
 
       // Back online: the next retry delivers it without any new message.
       upstream.failHosts.clear();
       await vi.advanceTimersByTimeAsync(2 * PMD_SPECIES_RETRY_MS);
-      await flush();
+      await until(() => labels(out).includes('species:7'));
       expect(labels(out)).toEqual(['existingAgents', 'species:7']);
       delivery.dispose();
     } finally {
