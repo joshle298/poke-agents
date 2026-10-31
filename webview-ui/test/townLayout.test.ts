@@ -114,6 +114,22 @@ test('the Lab seats at least 16 working sessions, all outside the Meadow and the
   }
 });
 
+test('the Lab keeps two lectern seats for Leads; the Center has a bed per side wall slot', () => {
+  const roles = areaRoleTiles(town)!;
+  const seats = [...layoutToSeats(town.furniture).values()];
+  const lectern = seats.filter((s) => roles.lectern.has(tileKey(s.seatCol, s.seatRow)));
+  assert.equal(lectern.length, 2, 'two lectern seats');
+  assert.ok(seats.length - lectern.length >= 16, `${seats.length - lectern.length} desks`);
+  const beds = town.furniture.filter((f) => f.type.startsWith('CENTER_BED_'));
+  assert.equal(beds.length, 4);
+  for (const bed of beds) {
+    assert.ok(
+      roles.center.has(tileKey(bed.col, bed.row)),
+      `bed at (${bed.col},${bed.row}) is in the Center`,
+    );
+  }
+});
+
 test('the town has a Meadow and a Pokémon Center, as Area roles', () => {
   const roles = areaRoleTiles(town);
   assert.ok(roles, 'the layout has role areas');

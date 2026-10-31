@@ -64,6 +64,9 @@ export interface ForegroundEntity {
   tileCol: number;
   tileRow: number;
   path: ReadonlyArray<{ col: number; row: number }>;
+  /** Highest world y the grass may cover on this entity (a small sprite keeps
+   *  its top visible); undefined = no limit. */
+  coverTopY?: number;
 }
 
 /** One foreground half to draw at a tile, sorted with the entities of `zRow`. */
@@ -73,6 +76,9 @@ export interface ForegroundPiece {
   part: 'own' | 'below';
   /** The row whose occupants it covers: draw just after them. */
   zRow: number;
+  /** Draw only from this world y down (the lowest limit among the entities
+   *  it covers); undefined = the whole half. */
+  clipTopY?: number;
 }
 
 /**
@@ -86,13 +92,25 @@ export function foregroundPieces(
   hasForeground: (col: number, row: number) => boolean,
 ): ForegroundPiece[] {
   const out: ForegroundPiece[] = [];
-  const seen = new Set<string>();
-  const add = (col: number, row: number, part: ForegroundPiece['part'], zRow: number) => {
+  const seen = new Map<string, ForegroundPiece>();
+  const add = (
+    col: number,
+    row: number,
+    part: ForegroundPiece['part'],
+    zRow: number,
+    clipTopY: number | undefined,
+  ) => {
     if (!hasForeground(col, row)) return;
     const key = `${part}:${col},${row}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ col, row, part, zRow });
+    const held = seen.get(key);
+    if (held) {
+      if (clipTopY !== undefined) held.clipTopY = Math.max(held.clipTopY ?? clipTopY, clipTopY);
+      return;
+    }
+    const piece: ForegroundPiece = { col, row, part, zRow };
+    if (clipTopY !== undefined) piece.clipTopY = clipTopY;
+    seen.set(key, piece);
+    out.push(piece);
   };
   for (const e of entities) {
     const stands = [{ col: e.tileCol, row: e.tileRow }];
@@ -101,8 +119,8 @@ export function foregroundPieces(
     for (const t of stands) {
       if (!hasForeground(t.col, t.row)) continue;
       for (let dc = -1; dc <= 1; dc++) {
-        add(t.col + dc, t.row, 'own', t.row);
-        add(t.col + dc, t.row - 1, 'below', t.row);
+        add(t.col + dc, t.row, 'own', t.row, e.coverTopY);
+        add(t.col + dc, t.row - 1, 'below', t.row, e.coverTopY);
       }
     }
   }

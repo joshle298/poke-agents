@@ -28,6 +28,13 @@ export const TOWN_RETRY_SEC = 3.0;
 export const TOWN_TARGET_TRIES = 6;
 /** How long a character the user walked somewhere stays before heading back. */
 export const TOWN_USER_WALK_HOLD_SEC = 30;
+/** Pixels a seated wide Pokémon may overlap the wall beside its desk before it
+ *  moves to a roomier desk (see townRoomNeeded). */
+export const TOWN_WALL_OVERLAP_PX = 6;
+/** After a character is created, how long a status saying it is idle or
+ *  fainted still places it straight in the Meadow or the Center (the status
+ *  follows agentCreated within a message or two). */
+export const TOWN_SPAWN_GRACE_SEC = 1.5;
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
@@ -54,6 +61,9 @@ export const FLOOR_FOREGROUND_ALPHA = 254;
 /** Foreground rows from here down are blade tips that cover the occupant of
  *  the tile below (feet sit near the top of their own tile). */
 export const FLOOR_FOREGROUND_BELOW_ROW = 12;
+/** Tall grass covers at most this share of a Pokémon's height (small species
+ *  would otherwise all but vanish in it). */
+export const FLOOR_FOREGROUND_MAX_COVER = 0.4;
 /** Foreground sorts just after the characters of its row (CHARACTER_Z_SORT_OFFSET)
  *  and before anything on the next row. */
 export const FLOOR_FOREGROUND_Z_OFFSET = 0.75;
@@ -697,6 +707,8 @@ export const LINK_COLORS = {
   messaged: 'rgba(110, 170, 255, 0.9)',
   watched: 'rgba(255, 255, 255, 0.3)',
 } as const;
+/** Opacity of a faint link (the town's, unless its family is hovered or selected). */
+export const LINK_DIM_ALPHA = 0.3;
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
@@ -734,6 +746,11 @@ export const HP_BG = '#304030';
 export const HP_BAR_WIDTH_PX = 48;
 export const HP_BAR_HEIGHT_PX = 4;
 export const STATUS_BADGE_TEXT_COLOR = '#ffffff';
+/** In the town, always-shown labels at or below this CSS scale (zoom ÷ device
+ *  pixel ratio) are one-line chips; hover or select shows the full card. */
+export const TOWN_COMPACT_LABEL_MAX_SCALE = 2;
+/** Nickname characters a one-line town chip shows. */
+export const TOWN_COMPACT_LABEL_CHARS = 12;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',

@@ -5,7 +5,9 @@
  *   node scripts/generate-world-assets.mjs
  *
  * Writes, under webview-ui/public/assets/:
- *   floors/floor_9.png .. floor_13.png    grass, speckled grass, tall grass, dirt, cobbles
+ *   floors/floor_9.png .. floor_16.png    grass, speckled grass, tall grass (three
+ *                                         variants: 11, 15, 16), dirt, cobbles, the
+ *                                         Pokémon Center's tiles (14)
  *   carpets/carpet_3.png                  an auto-tiled dirt path
  *   furniture/<ID>/                       outdoor items, the Center's and the Lab's furniture
  *   layouts/pokemon-town.json             the town (the standalone default layout)
@@ -39,9 +41,12 @@ function writeJson(rel, value) {
 const floors = [
   ['floor_9.png', art.grassFloor()],
   ['floor_10.png', art.grassFloorSpeckled()],
-  ['floor_11.png', art.tallGrassFloor()],
+  ['floor_11.png', art.tallGrassFloor(0)],
   ['floor_12.png', art.dirtPathFloor()],
   ['floor_13.png', art.cobbleFloor()],
+  ['floor_14.png', art.centerTileFloor()],
+  ['floor_15.png', art.tallGrassFloor(1)],
+  ['floor_16.png', art.tallGrassFloor(2)],
 ];
 for (const [file, canvas] of floors) write(`floors/${file}`, canvas.png());
 
@@ -50,9 +55,11 @@ write('carpets/carpet_3.png', art.pathCarpet().png());
 
 // ── Furniture ──
 const NO_FLAGS = { canPlaceOnWalls: false, canPlaceOnSurfaces: false };
+let furnitureCount = 0;
 
 /** One single-asset furniture item: its folder, PNG and manifest. */
 function item(id, name, category, canvas, footprintW, footprintH, backgroundTiles, flags = {}) {
+  furnitureCount++;
   write(`furniture/${id}/${id}.png`, canvas.png());
   writeJson(`furniture/${id}/manifest.json`, {
     id,
@@ -70,6 +77,7 @@ function item(id, name, category, canvas, footprintW, footprintH, backgroundTile
 }
 
 item('TREE', 'Tree', 'outdoor', art.tree(), 2, 2, 1);
+item('TALL_TREE', 'Tall Tree', 'outdoor', art.tallTree(), 2, 3, 2);
 item('PINE_TREE', 'Pine Tree', 'outdoor', art.pineTree(), 2, 3, 2);
 item('CYPRESS', 'Cypress', 'outdoor', art.cypress(), 1, 2, 1);
 item('BUSH', 'Bush', 'outdoor', art.bush(), 1, 1, 0);
@@ -81,40 +89,70 @@ item('PARK_BENCH', 'Park Bench', 'outdoor', art.parkBench(), 2, 1, 0);
 item('SIGNPOST', 'Signpost', 'outdoor', art.signpost(), 1, 2, 1);
 item('LAMP_POST', 'Lamp Post', 'outdoor', art.lampPost(), 1, 2, 1);
 item('LOW_WALL', 'Low Wall', 'outdoor', art.lowWall(), 1, 1, 0);
+item('LOW_WALL_WINDOW', 'Low Wall Window', 'outdoor', art.lowWall({ window: true }), 1, 1, 0);
+// Doormats and beds are all background: characters step onto them.
+item('DOORMAT', 'Doormat', 'decor', art.doormat(), 2, 1, 1);
 item('COUNTER', 'Counter', 'desks', art.counter(), 4, 2, 1);
+item('PROFESSOR_DESK', 'Professor Desk', 'desks', art.professorDesk(), 4, 2, 1);
 item('HEALING_MACHINE', 'Healing Machine', 'electronics', art.healingMachine(), 2, 2, 1, {
   canPlaceOnSurfaces: true,
 });
 item('LAB_MACHINE', 'Lab Machine', 'electronics', art.labMachine(), 2, 2, 1);
-item('CENTER_SIGN', 'Center Sign', 'wall', art.centerSign(), 2, 1, 0, { canPlaceOnWalls: true });
-item('LAB_SIGN', 'Lab Sign', 'wall', art.labSign(), 2, 1, 0, { canPlaceOnWalls: true });
+item('CENTER_SIGN', 'Center Sign', 'outdoor', art.centerSign(), 2, 2, 1);
+item('LAB_SIGN', 'Lab Sign', 'outdoor', art.labSign(), 2, 2, 1);
+// A roof edge hangs on a back wall tile and covers its top face. Every row is
+// background, so it stacks over the wall and the wall items already there.
+item('ROOF_TRIM', 'Roof Trim', 'wall', art.roofTrim(), 1, 2, 2, { canPlaceOnWalls: true });
+
+/** A two-member rotation group (R swaps them): `front` then `side`. */
+function rotationPair(id, name, category, [front, side], footprintW, footprintH, backgroundTiles) {
+  furnitureCount++;
+  const members = [
+    ['front', front],
+    ['side', side],
+  ];
+  for (const [orientation, canvas] of members) {
+    write(`furniture/${id}/${id}_${orientation.toUpperCase()}.png`, canvas.png());
+  }
+  writeJson(`furniture/${id}/manifest.json`, {
+    id,
+    name,
+    category,
+    type: 'group',
+    groupType: 'rotation',
+    rotationScheme: '2-way',
+    ...NO_FLAGS,
+    backgroundTiles,
+    members: members.map(([orientation, canvas]) => ({
+      type: 'asset',
+      id: `${id}_${orientation.toUpperCase()}`,
+      file: `${id}_${orientation.toUpperCase()}.png`,
+      width: canvas.w,
+      height: canvas.h,
+      footprintW,
+      footprintH,
+      orientation,
+    })),
+  });
+}
+
+// A Pokémon Center bed: R puts the pillow on the other side.
+rotationPair(
+  'CENTER_BED',
+  'Bed',
+  'decor',
+  [art.centerBed('left'), art.centerBed('right')],
+  2,
+  1,
+  1,
+);
 
 // A fence turns: R swaps the horizontal run for the vertical one.
-write('furniture/FENCE/FENCE_FRONT.png', art.fenceFront().png());
-write('furniture/FENCE/FENCE_SIDE.png', art.fenceSide().png());
-writeJson('furniture/FENCE/manifest.json', {
-  id: 'FENCE',
-  name: 'Fence',
-  category: 'outdoor',
-  type: 'group',
-  groupType: 'rotation',
-  rotationScheme: '2-way',
-  ...NO_FLAGS,
-  backgroundTiles: 0,
-  members: ['front', 'side'].map((orientation) => ({
-    type: 'asset',
-    id: `FENCE_${orientation.toUpperCase()}`,
-    file: `FENCE_${orientation.toUpperCase()}.png`,
-    width: 16,
-    height: 16,
-    footprintW: 1,
-    footprintH: 1,
-    orientation,
-  })),
-});
+rotationPair('FENCE', 'Fence', 'outdoor', [art.fenceFront(), art.fenceSide()], 1, 1, 0);
 
 // The pond shimmers: an animation group with no on/off state loops on its own.
 const POND_FRAMES = 3;
+furnitureCount++;
 for (let f = 0; f < POND_FRAMES; f++) write(`furniture/POND/POND_${f + 1}.png`, art.pond(f).png());
 writeJson('furniture/POND/manifest.json', {
   id: 'POND',
@@ -166,6 +204,6 @@ function layoutJson(layout) {
 write('layouts/pokemon-town.json', layoutJson(town));
 
 console.log(
-  `generate-world-assets: ${floors.length} floors, 1 carpet, 18 furniture items, ` +
+  `generate-world-assets: ${floors.length} floors, 1 carpet, ${furnitureCount} furniture items, ` +
     `town ${town.cols}×${town.rows} with ${town.furniture.length} placed items`,
 );

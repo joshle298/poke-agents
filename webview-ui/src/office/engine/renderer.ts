@@ -22,6 +22,7 @@ import {
   CHARACTER_Z_SORT_OFFSET,
   DELETE_BUTTON_BG,
   FALLBACK_FLOOR_COLOR,
+  FLOOR_FOREGROUND_MAX_COVER,
   FLOOR_FOREGROUND_Z_OFFSET,
   GHOST_BORDER_HOVER_FILL,
   GHOST_BORDER_HOVER_STROKE,
@@ -35,6 +36,7 @@ import {
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
+  POKEMON_FEET_BELOW_GROUND_PX,
   ROTATE_BUTTON_BG,
   SEAT_AVAILABLE_COLOR,
   SEAT_BUSY_COLOR,
@@ -86,6 +88,7 @@ import { renderMatrixEffect } from './matrixEffect.js';
 import { spawnEffectStyle } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
 import { renderPokeballEffect } from './pokeballEffect.js';
+import { pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
 import type { ZDrawable } from './pokemonRender.js';
 import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
 
@@ -432,12 +435,37 @@ export function floorForegroundDrawables(
     const cached = getCachedSprite(sprite, zoom);
     const x = offsetX + piece.col * s;
     const y = offsetY + piece.row * s;
+    // A small sprite's limit: skip the half's rows above it (whole sprite px).
+    const skip =
+      piece.clipTopY === undefined
+        ? 0
+        : Math.min(TILE_SIZE, Math.max(0, Math.ceil(piece.clipTopY - piece.row * TILE_SIZE)));
+    if (skip >= TILE_SIZE) continue;
+    const sy = skip * zoom;
     out.push({
       zY: (piece.zRow + 1) * TILE_SIZE + FLOOR_FOREGROUND_Z_OFFSET,
-      draw: (c) => c.drawImage(cached, x, y),
+      draw:
+        skip === 0
+          ? (c) => c.drawImage(cached, x, y)
+          : (c) => c.drawImage(cached, 0, sy, s, s - sy, x, y + sy, s, s - sy),
     });
   }
   return out;
+}
+
+/** What tall grass may cover of a character: a Pokémon keeps the top
+ *  (1 − FLOOR_FOREGROUND_MAX_COVER) of its body in view; others, no limit. */
+function foregroundEntityOf(ch: Character): ForegroundEntity {
+  const g = pokemonGeometryOf(ch);
+  if (!g) return ch;
+  const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
+  const height = g.headRise + POKEMON_FEET_BELOW_GROUND_PX;
+  return {
+    tileCol: ch.tileCol,
+    tileRow: ch.tileRow,
+    path: ch.path,
+    coverTopY: feetY - height * FLOOR_FOREGROUND_MAX_COVER,
+  };
 }
 
 /** @internal */
@@ -1109,7 +1137,7 @@ export function renderFrame(
     tileMap,
     tileColors,
     cols,
-    [...characters, ...(pets ?? [])],
+    [...characters.map(foregroundEntityOf), ...(pets ?? [])],
     offsetX,
     offsetY,
     zoom,

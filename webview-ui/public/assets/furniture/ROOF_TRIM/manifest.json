@@ -1,0 +1,13 @@
+{
+  "id": "ROOF_TRIM",
+  "name": "Roof Trim",
+  "category": "wall",
+  "type": "asset",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 2,
+  "width": 16,
+  "height": 32,
+  "footprintW": 1,
+  "footprintH": 2
+}

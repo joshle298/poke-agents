@@ -26,10 +26,11 @@ import {
   PROJECTILE_MIN_SEC,
   PROJECTILE_SPEED_PX_PER_SEC,
   TEAMMATE_CLUSTER_MAX_CHILDREN,
+  TOWN_SPAWN_GRACE_SEC,
   TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
-import { areaRoleTiles, tileKey } from '../layout/areaRoles.js';
+import { areaRoleTiles, centerClearance, tileKey } from '../layout/areaRoles.js';
 import {
   getAmbientAnimationFrames,
   getAnimationFrames,
@@ -76,11 +77,22 @@ import {
   characterChest,
   isPokemonCharacter,
   pokemonAnimSourceOf,
+  pokemonGeometryOf,
   pokemonHitBox,
+  pokemonRestHalfWidth,
 } from './pokemonCharacter.js';
 import { anchorTile, closestFreeSeat } from './seatPlacement.js';
 import type { TownWorld } from './townBehavior.js';
-import { pickTownTile, setTownGoal, stepTownCharacter, townGoalFor } from './townBehavior.js';
+import {
+  pickTownTile,
+  rowRoom,
+  setTownGoal,
+  stepTownCharacter,
+  townGoalFor,
+  townRoomNeeded,
+  townSeatMove,
+  townSpawnTile,
+} from './townBehavior.js';
 
 /** Pokémon identity and display facts carried by agentCreated / agentDetails.
  *  Absent fields are unknown, never a reason to clear what is known. */
@@ -205,7 +217,7 @@ export class OfficeState {
     this.rebuildPetsFromLayout(this.layout);
   }
 
-  /** Derive the Meadow / Center tiles from the layout's Area roles. */
+  /** Derive the Meadow / Center tiles and lectern seats from the layout's Area roles. */
   private rebuildTown(): void {
     const roles = areaRoleTiles(this.layout);
     if (!roles) {
@@ -214,13 +226,42 @@ export class OfficeState {
     }
     const walkableIn = (keys: ReadonlySet<string>) =>
       this.walkableTiles.filter((t) => keys.has(tileKey(t.col, t.row)));
+    // Beds: the bottom footprint row of a placed item, where it can be stood on.
+    const bedTiles = new Set<string>();
+    for (const item of this.layout.furniture) {
+      const entry = getCatalogEntry(item.type);
+      if (!entry) continue;
+      const bottom = item.row + entry.footprintH - 1;
+      for (let dc = 0; dc < entry.footprintW; dc++) bedTiles.add(tileKey(item.col + dc, bottom));
+    }
+    const centerTiles = walkableIn(roles.center);
+    const lecternSeats = new Set<string>();
+    const seatRoom = new Map<string, number>();
+    for (const [uid, seat] of this.seats) {
+      if (roles.lectern.has(tileKey(seat.seatCol, seat.seatRow))) lecternSeats.add(uid);
+      seatRoom.set(uid, rowRoom(this.tileMap, seat.seatCol, seat.seatRow));
+    }
     this.town = {
       roles,
       meadowTiles: walkableIn(roles.meadow),
-      centerTiles: walkableIn(roles.center),
+      centerTiles,
+      restSpots: centerTiles.filter((t) => bedTiles.has(tileKey(t.col, t.row))),
+      centerClearance: centerClearance(roles.center),
+      lecternSeats,
+      seatRoom,
       tileMap: this.tileMap,
       blockedTiles: this.blockedTiles,
     };
+  }
+
+  /** In the town, a character away from its desk (Meadow, Center) keeps its
+   *  spot when the layout is rebuilt, as long as it can still stand there. */
+  private keepsTownSpot(ch: Character): boolean {
+    return (
+      this.town !== null &&
+      (ch.townGoal === 'meadow' || ch.townGoal === 'center') &&
+      isWalkable(ch.tileCol, ch.tileRow, this.tileMap, this.blockedTiles)
+    );
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -270,6 +311,7 @@ export class OfficeState {
         const seat = this.seats.get(ch.seatId)!;
         if (!seat.assigned) {
           seat.assigned = true;
+          if (this.keepsTownSpot(ch)) continue;
           // Snap character to seat position
           ch.tileCol = seat.seatCol;
           ch.tileRow = seat.seatRow;
@@ -291,6 +333,7 @@ export class OfficeState {
       if (seatId) {
         this.seats.get(seatId)!.assigned = true;
         ch.seatId = seatId;
+        if (this.keepsTownSpot(ch)) continue;
         const seat = this.seats.get(seatId)!;
         ch.tileCol = seat.seatCol;
         ch.tileRow = seat.seatRow;
@@ -505,7 +548,8 @@ export class OfficeState {
     const electronicsTiles = this.buildElectronicsTileSet();
     const freeSeats: string[] = [];
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned) freeSeats.push(uid);
+      // The lectern's seats are kept for Leads (the town seat steward moves them).
+      if (!seat.assigned && !this.town?.lecternSeats.has(uid)) freeSeats.push(uid);
     }
     if (freeSeats.length === 0) return null;
 
@@ -602,7 +646,7 @@ export class OfficeState {
       }
     }
     if (!seatId && anchorAt) {
-      seatId = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row);
+      seatId = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, this.town?.lecternSeats);
     }
     if (!seatId) {
       seatId = this.findFreeSeat(directoryName);
@@ -630,6 +674,9 @@ export class OfficeState {
     if (!skipSpawnEffect) {
       startMatrixEffect(ch, 'spawn');
     }
+    // In the town, a character that turns out idle or fainted moments after it
+    // is created appears in the Meadow or the Center rather than at its desk.
+    if (this.town) ch.townSpawnGrace = TOWN_SPAWN_GRACE_SEC;
     this.characters.set(id, ch);
   }
 
@@ -783,7 +830,7 @@ export class OfficeState {
     if (!teammate || !lead) return;
     const anchorAt = anchorTile(lead, this.seats);
     if (!anchorAt) return;
-    const target = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row);
+    const target = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, this.town?.lecternSeats);
     if (!target || target === teammate.seatId) return;
     const targetSeat = this.seats.get(target)!;
     const targetDist =
@@ -793,8 +840,109 @@ export class OfficeState {
       ? Math.abs(currentSeat.seatCol - anchorAt.col) + Math.abs(currentSeat.seatRow - anchorAt.row)
       : Infinity;
     if (targetDist < currentDist) {
-      this.reassignSeat(teammateId, target);
+      if (this.town && !teammate.isActive) this.moveTownSeat(teammate, target);
+      else this.reassignSeat(teammateId, target);
     }
+  }
+
+  /**
+   * Give `ch` the seat `uid` in the town. Whoever held it becomes seatless (and
+   * takes a desk again when it next works). A working character walks there;
+   * one that is away keeps its spot and only the claim moves.
+   */
+  private moveTownSeat(ch: Character, uid: string): void {
+    const seat = this.seats.get(uid);
+    if (!seat) return;
+    for (const other of this.characters.values()) {
+      if (other !== ch && other.seatId === uid) other.seatId = null;
+    }
+    if (ch.seatId) {
+      const old = this.seats.get(ch.seatId);
+      if (old) old.assigned = false;
+    }
+    seat.assigned = false;
+    if (ch.isActive) {
+      ch.seatId = null;
+      this.reassignSeat(ch.id, uid);
+      return;
+    }
+    seat.assigned = true;
+    ch.seatId = uid;
+  }
+
+  /** The town's seat rules for one character (see townSeatMove), plus room
+   *  for wide Pokémon: one whose body reaches over the wall beside its desk
+   *  moves to a free desk with room. Cheap unless a move is due. */
+  private stewardTownSeat(ch: Character, town: TownWorld): void {
+    if (ch.isSubagent || ch.matrixEffect) return;
+    const onLectern = ch.seatId !== null && town.lecternSeats.has(ch.seatId);
+    const due =
+      (ch.isTeamLead === true && town.lecternSeats.size > 0 && !onLectern) ||
+      (ch.isTeamLead !== true && onLectern) ||
+      (ch.isActive && ch.seatId === null);
+    if (!due) {
+      if (ch.seatId !== null && !onLectern) this.giveWideRoom(ch, ch.seatId, town);
+      return;
+    }
+    const holders = new Map<string, Character>();
+    for (const other of this.characters.values()) {
+      if (other.seatId) holders.set(other.seatId, other);
+    }
+    const seats = [...this.seats.keys()].map((uid) => ({ uid, holder: holders.get(uid) ?? null }));
+    const target = townSeatMove(ch, seats, town.lecternSeats, (free) =>
+      free.length > 0 ? this.findFreeSeat(ch.directoryName) : null,
+    );
+    if (target && target !== ch.seatId) this.moveTownSeat(ch, target);
+  }
+
+  /** A wide Pokémon at a desk too close to a wall moves to a free desk with room. */
+  private giveWideRoom(ch: Character, seatId: string, town: TownWorld): void {
+    const halfW = pokemonGeometryOf(ch)?.bodyHalfW;
+    if (halfW === undefined) return;
+    const need = townRoomNeeded(halfW);
+    if (need <= (town.seatRoom.get(seatId) ?? 0)) return;
+    const roomy: string[] = [];
+    for (const [uid, seat] of this.seats) {
+      if (seat.assigned || town.lecternSeats.has(uid)) continue;
+      if ((town.seatRoom.get(uid) ?? 0) >= need) roomy.push(uid);
+    }
+    if (roomy.length === 0) return;
+    const target = this.pickFromSeats(roomy, this.buildElectronicsTileSet());
+    if (target) this.moveTownSeat(ch, target);
+  }
+
+  /** Tiles of Center a resting character's sprite needs to each side of its own. */
+  private townClearance(ch: Character): number {
+    const halfW = pokemonRestHalfWidth(ch);
+    return halfW === null ? 0 : townRoomNeeded(halfW);
+  }
+
+  /** During its spawn grace, put a character whose status just arrived as idle
+   *  or fainted straight into the Meadow or the Center. */
+  private placeFreshInTown(ch: Character, town: TownWorld, dt: number): void {
+    const goal = townGoalFor(ch, town.roles);
+    if (goal === 'meadow' || goal === 'center') {
+      ch.townSpawnGrace = undefined;
+      const area = goal === 'meadow' ? town.roles.meadow : town.roles.center;
+      if (area.has(tileKey(ch.tileCol, ch.tileRow))) return;
+      const tile = townSpawnTile(goal, town, this.occupiedTiles(ch.id), this.townClearance(ch));
+      if (!tile) return;
+      ch.tileCol = tile.col;
+      ch.tileRow = tile.row;
+      ch.x = tile.col * TILE_SIZE + TILE_SIZE / 2;
+      ch.y = tile.row * TILE_SIZE + TILE_SIZE / 2;
+      ch.path = [];
+      ch.moveProgress = 0;
+      ch.state = CharacterState.IDLE;
+      ch.dir = Direction.DOWN;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+      setTownGoal(ch, goal);
+      ch.townRetryTimer = 0;
+      return;
+    }
+    const left = (ch.townSpawnGrace ?? 0) - dt;
+    ch.townSpawnGrace = left > 0 && ch.state !== CharacterState.WALK ? left : undefined;
   }
 
   /** Send an agent back to their currently assigned seat */
@@ -1211,7 +1359,9 @@ export class OfficeState {
   }
 
   /** Links to draw: both ends present, one per pair of agents (spawned beats
-   *  messaged beats watched; the winner's direction is kept). */
+   *  messaged beats watched; the winner's direction is kept). In the town a
+   *  Lead's fan of a dozen links would hatch the map, so links are faint
+   *  unless the hovered or selected character, or its Lead, is an end. */
   getLinkSegments(): LinkSegment[] {
     const best = new Map<string, AgentLink>();
     for (const link of this.links) {
@@ -1222,12 +1372,22 @@ export class OfficeState {
       const held = best.get(key);
       if (!held || LINK_KIND_RANK[link.kind] > LINK_KIND_RANK[held.kind]) best.set(key, link);
     }
+    const focus = new Set<number>();
+    if (this.town) {
+      for (const id of [this.hoveredAgentId, this.selectedAgentId]) {
+        if (id === null) continue;
+        focus.add(id);
+        const lead = this.characters.get(id)?.leadAgentId;
+        if (lead !== undefined) focus.add(lead);
+      }
+    }
     const segments: LinkSegment[] = [];
     for (const link of best.values()) {
       segments.push({
         from: this.characters.get(link.fromId)!,
         to: this.characters.get(link.toId)!,
         kind: link.kind,
+        ...(this.town && !focus.has(link.fromId) && !focus.has(link.toId) ? { dim: true } : {}),
       });
     }
     return segments;
@@ -1548,6 +1708,7 @@ export class OfficeState {
 
     const toDelete: number[] = [];
     for (const ch of this.characters.values()) {
+      if (this.town && ch.townSpawnGrace !== undefined) this.placeFreshInTown(ch, this.town, dt);
       const effect = advanceMatrixEffect(ch, dt);
       if (effect !== 'none') {
         if (effect === 'despawned') toDelete.push(ch.id);
@@ -1563,6 +1724,7 @@ export class OfficeState {
       // In the Pokémon Town an inactive character heads for its area (Meadow,
       // Center); everywhere else, and for active agents, the upstream FSM runs.
       const town = this.town;
+      if (town) this.stewardTownSeat(ch, town);
       const goal = town ? townGoalFor(ch, town.roles) : null;
       if (town || ch.townGoal !== undefined) setTownGoal(ch, goal);
       const restInPlace =
@@ -1576,6 +1738,7 @@ export class OfficeState {
           stepTownCharacter(ch, dt, goal, town, {
             asleep: pokemon && isPokemonAsleep(ch),
             occupied: () => this.occupiedTiles(ch.id),
+            clearance: goal === 'center' ? this.townClearance(ch) : 0,
           });
         } else {
           // Temporarily unblock own seat so character can pathfind to it

@@ -27,6 +27,8 @@ import {
   STATUS_BADGE_TEXT_COLOR,
   TEAM_LEAD_COLOR,
   TEAM_ROLE_COLOR,
+  TOWN_COMPACT_LABEL_CHARS,
+  TOWN_COMPACT_LABEL_MAX_SCALE,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
@@ -152,6 +154,78 @@ function bubbleFor(ch: Character, themed: boolean): { sprite: SpriteData; alpha:
     return { sprite: BUBBLE_SLEEP_SPRITE, alpha: 1 };
   }
   return null;
+}
+
+/** A fainted character resting in the town's Pokémon Center: a small FNT
+ *  chip over its head, so it reads without hovering (theme on or off). */
+function FaintChip({ left, top }: { left: number; top: number }) {
+  return (
+    <div
+      className="absolute pointer-events-none leading-none px-2"
+      style={{
+        left,
+        top,
+        transform: 'translate(-50%, -100%)',
+        fontSize: '14px',
+        background: STATUS_BADGE_COLORS.fainted,
+        color: STATUS_BADGE_TEXT_COLOR,
+        zIndex: OVERLAY_LABEL_Z_INDEX,
+      }}
+    >
+      {CONDITION_BADGE.fainted}
+    </div>
+  );
+}
+
+/** A nickname cut to `max` characters, with an ellipsis when cut. */
+function shortName(name: string, max: number): string {
+  return name.length > max ? `${name.slice(0, max - 1).trimEnd()}…` : name;
+}
+
+/** Always-shown labels in the town at low zoom: one line (status badge and a
+ *  short nickname), so a busy Lab isn't buried under cards. Hover or select
+ *  brings back the full card. */
+function CompactLabel({
+  ch,
+  id,
+  left,
+  top,
+}: {
+  ch: Character;
+  id: number;
+  left: number;
+  top: number;
+}) {
+  const label = pokemonLabel(ch);
+  return (
+    <div
+      className="absolute flex items-center gap-3 px-4 pb-2 pixel-panel whitespace-nowrap leading-none pointer-events-none"
+      style={{
+        left,
+        top,
+        transform: 'translate(-50%, -100%)',
+        fontSize: '16px',
+        opacity: 0.85,
+        zIndex: OVERLAY_LABEL_Z_INDEX,
+      }}
+      data-testid="agent-overlay"
+      data-agent-id={id}
+    >
+      {label.condition && (
+        <span
+          className="shrink-0 px-2 leading-none"
+          style={{
+            fontSize: '12px',
+            background: STATUS_BADGE_COLORS[label.condition],
+            color: STATUS_BADGE_TEXT_COLOR,
+          }}
+        >
+          {CONDITION_BADGE[label.condition]}
+        </span>
+      )}
+      <span>{shortName(label.nickname ?? '', TOWN_COMPACT_LABEL_CHARS)}</span>
+    </div>
+  );
 }
 
 interface ThemedLabelProps {
@@ -443,9 +517,23 @@ export function ToolOverlay({
         }
 
         // Only show the label for hovered or selected agents (unless
-        // always-show is on) — the bubble renders regardless.
+        // always-show is on) — the bubble renders regardless. A fainted
+        // character resting in the town shows a FNT chip instead.
         if (!alwaysShowOverlay && !isSelected && !isHovered) {
-          return bubbleNode && <Fragment key={id}>{bubbleNode}</Fragment>;
+          const faintChip =
+            ch.isErrored && ch.townGoal === 'center' ? (
+              <FaintChip
+                left={project.toScreenX(ch.x)}
+                top={project.toScreenY(overlayAnchorY(ch, 'bubble'))}
+              />
+            ) : null;
+          if (!bubbleNode && !faintChip) return null;
+          return (
+            <Fragment key={id}>
+              {bubbleNode}
+              {faintChip}
+            </Fragment>
+          );
         }
 
         // Position above character
@@ -469,6 +557,22 @@ export function ToolOverlay({
                 data-testid="agent-overlay"
                 data-agent-id={id}
               />
+            </Fragment>
+          );
+        }
+
+        // In the town at low zoom, always-shown labels shrink to one line.
+        if (
+          themed &&
+          !isSelected &&
+          !isHovered &&
+          officeState.town !== null &&
+          zoom / dpr <= TOWN_COMPACT_LABEL_MAX_SCALE
+        ) {
+          return (
+            <Fragment key={id}>
+              {bubbleNode}
+              <CompactLabel ch={ch} id={id} left={screenX} top={screenY} />
             </Fragment>
           );
         }

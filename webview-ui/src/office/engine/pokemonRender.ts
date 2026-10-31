@@ -84,7 +84,10 @@ export function pushPokemonDrawables(
   const drawX = Math.round(offsetX + ch.x * zoom - frame.anchorX * zoom);
   const drawY = Math.round(offsetY + groundY * zoom - frame.anchorY * zoom);
   const zY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
-  const alpha = ghostAlpha * (ch.isErrored ? POKEMON_FAINT_ALPHA : 1);
+  // Fainted: see-through, except in the town, where it walks to the Pokémon
+  // Center and rests there at full strength (still grey), so it reads clearly.
+  const faintAlpha = ch.townGoal === 'center' ? 1 : POKEMON_FAINT_ALPHA;
+  const alpha = ghostAlpha * (ch.isErrored ? faintAlpha : 1);
 
   if (ch.matrixEffect) {
     const headRise = pokemonGeometryOf(ch)?.headRise ?? frame.anchorY;

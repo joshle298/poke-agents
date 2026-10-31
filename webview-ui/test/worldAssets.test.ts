@@ -32,25 +32,43 @@ test('the editor palette has an Outdoor category with the town’s outdoor items
   const outdoor = getCatalogByCategory('outdoor').map((e) => e.type);
   for (const type of [
     'TREE',
+    'TALL_TREE',
     'BUSH',
     'FLOWERS',
     'FENCE_FRONT',
     'POND_1',
     'SIGNPOST',
     'LAMP_POST',
+    'LOW_WALL',
+    'LOW_WALL_WINDOW',
+    'LAB_SIGN',
+    'CENTER_SIGN',
   ]) {
     assert.ok(outdoor.includes(type), `${type} in Outdoor`);
   }
   assert.ok(!outdoor.includes('POND_2') && !outdoor.includes('POND_3'), 'one pond, not its frames');
   assert.ok(!outdoor.includes('FENCE_SIDE'), 'one fence; R turns it');
   assert.equal(getCatalogEntry('COUNTER')?.isDesk, true, 'the counter is a desk');
+  assert.equal(getCatalogEntry('PROFESSOR_DESK')?.isDesk, true, 'the lectern is a desk');
   assert.equal(getCatalogEntry('HEALING_MACHINE')?.canPlaceOnSurfaces, true);
-  assert.equal(getCatalogEntry('CENTER_SIGN')?.canPlaceOnWalls, true);
+  assert.ok(
+    getCatalogByCategory('decor').some((e) => e.type === 'CENTER_BED_FRONT'),
+    'a bed',
+  );
+  assert.ok(
+    getCatalogByCategory('decor').some((e) => e.type === 'DOORMAT'),
+    'a doormat',
+  );
+  const trim = getCatalogEntry('ROOF_TRIM');
+  assert.equal(trim?.canPlaceOnWalls, true, 'the roof trim hangs on walls');
+  assert.equal(trim?.backgroundTiles, trim?.footprintH, 'and never blocks what is there');
 });
 
-test('the fence turns between its horizontal and vertical runs', () => {
+test('the fence turns between its horizontal and vertical runs; a bed swaps its pillow', () => {
   assert.equal(getRotatedType('FENCE_FRONT', 'cw'), 'FENCE_SIDE');
   assert.equal(getRotatedType('FENCE_SIDE', 'cw'), 'FENCE_FRONT');
+  assert.equal(getRotatedType('CENTER_BED_FRONT', 'cw'), 'CENTER_BED_SIDE');
+  assert.equal(getRotatedType('CENTER_BED_SIDE', 'cw'), 'CENTER_BED_FRONT');
 });
 
 test('the pond is an ambient animation; a PC screen (on/off state) is not', () => {
@@ -79,7 +97,7 @@ test('both bundled maps load, and loading one keeps the pets already placed', as
   const ids = BUNDLED_LAYOUTS.map((l) => l.id);
   assert.deepEqual(ids, ['town', 'classic']);
   const [town, classic] = await Promise.all(BUNDLED_LAYOUTS.map((l) => l.load()));
-  assert.equal(town.cols, 36);
+  assert.equal(town.cols, 37);
   assert.ok(town.areas?.some((a) => a.role === 'meadow'));
   assert.equal(classic.areas, undefined, 'the classic office has no roles');
 

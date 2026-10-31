@@ -23,6 +23,7 @@ import type { PokemonGeometry } from '../sprites/pokemonSprites.js';
 import {
   getPokemonAnimSource,
   getPokemonGeometry,
+  getPokemonRestHalfWidth,
   getPokemonSpeciesInfo,
   isPokemonReady,
 } from '../sprites/pokemonSprites.js';
@@ -58,6 +59,13 @@ export function isPokemonCharacter(ch: Character): boolean {
 export function pokemonGeometryOf(ch: Character): PokemonGeometry | null {
   if (!isPokemonCharacter(ch) || ch.species === undefined) return null;
   return getPokemonGeometry(ch.species, ch.shiny === true);
+}
+
+/** How far a character drawn as a Pokémon reaches sideways when it lies
+ *  fainted (world px from its ground point), else null. */
+export function pokemonRestHalfWidth(ch: Character): number | null {
+  if (!isPokemonCharacter(ch) || ch.species === undefined) return null;
+  return getPokemonRestHalfWidth(ch.species, ch.shiny === true);
 }
 
 /** Decoded animations of the character's species (metadata only, no theme check). */

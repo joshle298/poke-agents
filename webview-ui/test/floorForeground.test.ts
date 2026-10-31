@@ -100,13 +100,41 @@ test('pieces: a walker stepping into the grass is covered by its next tile, once
   );
 });
 
+test('pieces: a small sprite limits how high the grass covers it; the lowest limit wins', () => {
+  const grass = (c: number, r: number) => c >= 3 && c <= 5 && r >= 3 && r <= 5;
+  const pieces = foregroundPieces([{ tileCol: 4, tileRow: 4, path: [], coverTopY: 70 }], grass);
+  assert.ok(pieces.length > 0);
+  for (const p of pieces) assert.equal(p.clipTopY, 70);
+  const shared = foregroundPieces(
+    [
+      { tileCol: 4, tileRow: 4, path: [], coverTopY: 66 },
+      { tileCol: 5, tileRow: 4, path: [] },
+      { tileCol: 5, tileRow: 4, path: [], coverTopY: 72 },
+    ],
+    grass,
+  );
+  const own5 = shared.find((p) => p.part === 'own' && p.col === 5 && p.row === 4)!;
+  assert.equal(own5.clipTopY, 72, 'the smallest sprite keeps its top in view');
+  const free = foregroundPieces([{ tileCol: 4, tileRow: 4, path: [] }], grass);
+  for (const p of free) assert.equal(p.clipTopY, undefined, 'no limit, no clip');
+});
+
 test('the bundled tall grass marks its blades as foreground; plain grass does not', () => {
   const read = (file: string) =>
     decodeFloorPng(fs.readFileSync(path.join(ASSETS_DIR, 'floors', file)));
-  const tall = splitFloorForeground(read('floor_11.png'));
-  assert.ok(tall.own, 'blade bodies cover the tile’s own occupant');
-  assert.ok(tall.below, 'blade tips cover the occupant of the tile below');
-  for (const file of ['floor_0.png', 'floor_9.png', 'floor_10.png', 'floor_12.png']) {
+  // Three blade variants, one per tile in the town.
+  for (const file of ['floor_11.png', 'floor_15.png', 'floor_16.png']) {
+    const tall = splitFloorForeground(read(file));
+    assert.ok(tall.own, `${file}: blades cover the tile’s own occupant`);
+    assert.ok(tall.below, `${file}: the lower blades cover the occupant of the tile below`);
+  }
+  for (const file of [
+    'floor_0.png',
+    'floor_9.png',
+    'floor_10.png',
+    'floor_12.png',
+    'floor_14.png',
+  ]) {
     assert.equal(hasForegroundPixels(read(file)), false, `${file} has no foreground`);
   }
 });

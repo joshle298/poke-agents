@@ -144,11 +144,13 @@ export interface CarpetTile {
 /**
  * What an Area does beyond Directory mapping. Idle characters wander and nap in
  * the `meadow`; fainted (errored) ones walk to the `center` and rest there until
- * revived. A layout with neither keeps the upstream behavior.
+ * revived; the seats of a `lectern` are kept for Leads. A layout with none of
+ * them keeps the upstream behavior.
  */
 export const AreaRole = {
   MEADOW: 'meadow',
   CENTER: 'center',
+  LECTERN: 'lectern',
 } as const;
 export type AreaRole = (typeof AreaRole)[keyof typeof AreaRole];
 
@@ -309,6 +311,9 @@ export interface Character {
   townGoal?: TownGoal;
   /** Seconds until the next try at heading toward `townGoal`'s area. */
   townRetryTimer?: number;
+  /** Seconds left in which a status that sends it to the Meadow or the Center
+   *  places it there directly (just created); undefined once over. */
+  townSpawnGrace?: number;
 }
 
 /** Where an inactive character belongs in a layout with Area roles. */
@@ -354,6 +359,8 @@ export interface LinkSegment {
   from: Character;
   to: Character;
   kind: AgentLinkKind;
+  /** Drawn faint: in the town, unless its family is hovered or selected. */
+  dim?: boolean;
 }
 
 export const PetState = { IDLE: 'idle', WALK: 'walk', FOLLOW: 'follow' } as const;
