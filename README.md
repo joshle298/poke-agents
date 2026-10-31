@@ -16,6 +16,7 @@ Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel
 - **Sessions modal.** Choose which sessions are visible: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search across every session in scope.
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
+- **The town.** A new office opens on a small town. Working sessions sit at the desks in the Lab, idle ones wander and nap in the Meadow's tall grass, and fainted ones rest at the Pokémon Center until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back.
 - **Desktop window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
@@ -174,7 +175,7 @@ This repository contains no Pokémon artwork. When the Pokémon theme is on, the
 
 The Poke Agents source code is MIT-licensed. The MIT license does not cover the downloaded artwork.
 
-The office, its characters and furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
+The town's art (grass, tall grass, paths, trees, the pond, and the Lab and Pokémon Center furniture) is original to Poke Agents and drawn in code by `scripts/generate-world-assets.mjs`. The office, its characters and the rest of the furniture come from Pixel Agents. Its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack). Support upstream Pixel Agents:
 
 <a href="https://github.com/sponsors/pablodelucca">
   <img src="https://img.shields.io/badge/Sponsor-GitHub-ea4aaa?logo=github" alt="GitHub Sponsors">

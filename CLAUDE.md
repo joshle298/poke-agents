@@ -134,7 +134,8 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
       toolUtils.ts                   STATUS_TO_TOOL mapping, extractToolName (DOM-free; defaultZoom lives in useEditorActions)
       projection.ts                  World→screen math shared by renderer + DOM overlays (mapOffset, overlayProjection)
       colorize.ts                    Colorize (grayscale→HSL) + Adjust (HSL shift)
-      floorTiles.ts                  Floor sprite storage + colorized cache
+      floorTiles.ts                  Floor sprite storage + colorized cache (+ tall-grass foreground halves)
+      floorForeground.ts             Tall grass: alpha-254 floor pixels drawn again over whoever stands in them (pure)
       wallTiles.ts                   Wall auto-tile: 16 bitmask sprites
       sprites/
         spriteData.ts                Pixel data (characters, furniture, tiles, bubbles)
@@ -148,6 +149,8 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
         furnitureCatalog.ts          Dynamic catalog from loaded assets
         layoutSerializer.ts          OfficeLayout ↔ runtime (tileMap, furniture, seats)
         tileMap.ts                   Walkability, BFS pathfinding
+        areaRoles.ts                 Meadow / Center tiles from Areas with a `role` (pure)
+        bundledLayouts.ts            The Templates panel's layouts (Pokémon Town, Classic Office), lazy chunks
       engine/
         characters.ts                Character FSM (idle/walk/type) + wander AI
         officeState.ts               Game world (layout, characters, seats, selection, subagents, consent greeter)
@@ -163,6 +166,7 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
         frameCanvas.ts               Lazily built, cached derived frame canvases (outline, silhouette, tint)
         connectionsRender.ts         Link lines (floor pass) and message projectiles
         teammatePlacement.ts         Where a teammate sits (stream children cluster only by a small Lead)
+        townBehavior.ts              Pokémon Town: where inactive characters go (Meadow, Center, stay) and the step there (pure)
       components/
         OfficeCanvas.tsx             Canvas, resize, DPR, mouse hit-testing, drag-to-move
         useCanvasTouchGestures.ts    Touch pan / pinch zoom / tap on the canvas
@@ -204,6 +208,7 @@ scripts/
   npm-package-contract.mjs           Package identity (@joshle298/poke-agents, bin poke-agents) + tarball file allowlist
   verify-npm-package.mjs             Packs, installs and smoke-runs the tarball (--no-conductor --claude, sprites off)
   generate-pokemon-catalog.mjs       Regenerates server/src/pokemon/speciesCatalog.ts from a species.json
+  generate-world-assets.mjs          Draws the Pokémon Town's floors, path carpet, furniture and layout in code (world/*.mjs)
   run-e2e.mjs                        Playwright wrapper (run-id namespacing, video attach flags)
   generate-e2e-inventory.mjs         Splices test list into e2e/README.md (CI drift check)
   build-allure-report.mjs            Combine e2e+server+webview Allure results
@@ -420,7 +425,7 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
   config.json              { vscode, standalone, externalAssetDirectories, hooksConsent, hooksEnabled (both per-provider) }
   vscode-state.json        { agents, seats }
   standalone-state.json    { agents, seats, streamAgents }  (streamAgents: 'conductor:<uuid>' → { agentId, pokemonLine, species, shiny })
-  layout.json              OfficeLayout (shared across surfaces)
+  layout.json              OfficeLayout (shared across surfaces; until one is saved, standalone shows the Pokémon Town, VS Code the classic office)
   server.json              { port, pid, authToken }
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
   conductor-state.json     Conductor scope + per-session { hidden, pinned, cursor, harness, firstSender } (0600, never the token)
@@ -495,6 +500,10 @@ Custom ESLint rules (`eslint-rules/pixel-agents-rules.mjs`) enforce: `no-inline-
 
 **Seats**: Derived from chair furniture. `layoutToSeats()` creates a seat at every footprint tile of every chair. Multi-tile chairs produce multiple seats keyed `uid` / `uid:1` / `uid:2`. Facing direction priority: 1) chair `orientation` from catalog (front→DOWN, back→UP, left→LEFT, right→RIGHT), 2) adjacent desk direction, 3) forward (DOWN). Click character → select (white outline) → click available seat → reassign.
 
+**Pokémon Town (Area roles)**: an Area may carry `role: 'meadow' | 'center'` (`AreaDefinition.role`; rename, recolor, export and import keep it, and the Areas tool paints role tiles like any Area). `areaRoleTiles(layout)` returns the role tiles, or null when there are none — then `OfficeState.town` is null and every character runs the upstream FSM unchanged (the classic office and user layouts). With roles, `townGoalFor()` (`engine/townBehavior.ts`, pure) decides per frame for **inactive** non-sub-agents: errored → `center` (walk to a free Center tile with the Walk anim, then rest and faint there until revived), awaiting input or a permission → `stay` (keeps its pose, usually seated at its desk), otherwise `meadow` (walk out after `TOWN_MEADOW_DELAY_SEC`, then wander with Meadow tiles as the only destinations; an asleep Pokémon naps where it lies once inside). Active agents always get null: the seat logic is untouched, so a revived agent walks back to its desk. Walks and stand-ups still run through `updateCharacter` (with no seats, so a stroll never ends in a chair); destinations avoid tiles other characters stand on or head to. Seatless agents appear on a free Meadow tile; a right-click walk holds `TOWN_USER_WALK_HOLD_SEC` before the character heads back.
+
+**Tall grass**: a floor pattern's pixels stored at alpha 254 (`FLOOR_FOREGROUND_ALPHA`, visually opaque) are foreground. `renderFrame` asks `foregroundPieces()` which tiles characters and pets stand on or step into, and draws those tiles' foreground (and their side neighbors') again with `zY = (row + 1) * TILE_SIZE + FLOOR_FOREGROUND_Z_OFFSET`, just after that row's characters: rows above `FLOOR_FOREGROUND_BELOW_ROW` cover the tile's own occupant, rows from it down (blade tips) cover the occupant of the tile below, whose feet sit near the top of its own tile. Colorized halves are cached per (pattern, color) and as canvases per zoom; with no foreground pattern loaded the pass is skipped.
+
 ## Pokémon Theme
 
 On by default (`AdapterSettings.pokemonTheme`; `setPokemonTheme` → `pokemonThemeUpdated`). Off restores the upstream look and fetches nothing. VS Code keeps upstream characters.
@@ -525,17 +534,23 @@ Toggle via "Layout" button. Tools: SELECT (default), Floor paint, Wall paint, Er
 
 **Layout model**: `{ version: 1, cols, rows, tiles: TileType[], furniture: PlacedFurniture[], tileColors?: ColorValue[] }`. Grid dimensions are dynamic. Persisted via debounced saveLayout message → `writeLayoutToFile()` → `~/.pixel-agents/layout.json`.
 
+**Templates**: the tool row's **Templates** button opens the bundled layouts (`layout/bundledLayouts.ts`: Pokémon Town, Classic Office). Loading one is an ordinary undoable edit (`applyEdit`, saved like any edit) that keeps the placed pets; when the grid size changes, characters without a seat are moved off unwalkable tiles and the camera re-centers (also on undo / redo / reset). The JSON loads as its own lazy chunk.
+
 ## Asset System
 
-**Loading**: `esbuild.js` copies `webview-ui/public/assets/` → `dist/assets/`. Loader checks bundled path first, falls back to workspace root. PNG → pngjs → SpriteData (2D hex array, alpha≥2 = visible, `#RRGGBBAA` for semi-transparent). `loadDefaultLayout()` reads `assets/default-layout.json` as fallback for new workspaces.
+**Loading**: `esbuild.js` copies `webview-ui/public/assets/` → `dist/assets/`. Loader checks bundled path first, falls back to workspace root. PNG → pngjs → SpriteData (2D hex array, alpha≥2 = visible, `#RRGGBBAA` for semi-transparent). `loadDefaultLayout()` reads the highest `assets/default-layout-N.json` (the classic office; VS Code's default, and its `layoutRevision` reset logic). The standalone server's default is `loadStandaloneDefaultLayout()`: `assets/layouts/pokemon-town.json` (falling back to the classic one), sent only while no `~/.pixel-agents/layout.json` exists, so a saved layout is never replaced. The town keeps `layoutRevision: 1`, the classic default's, so VS Code never resets a town saved by standalone.
 
-**Catalog**: `furniture-catalog.json` with `id, name, label, category, footprint, isDesk, canPlaceOnWalls, groupId?, orientation?, state?, canPlaceOnSurfaces?, backgroundTiles?`. String-based type system. Categories: desks, chairs, storage, electronics, decor, wall, misc. Wall-placeable items use the `wall` category and appear in a dedicated "Wall" tab. Asset naming convention: `{BASE}[_{ORIENTATION}][_{STATE}]` (e.g., `MONITOR_FRONT_OFF`).
+**The Pokémon Town's art** is original and drawn in code: `node scripts/generate-world-assets.mjs` (`scripts/world/pixels.mjs` canvas, `art.mjs` drawings, `town.mjs` layout) writes `floors/floor_9..13.png` (grass, speckled grass, tall grass, dirt, cobbles), `carpets/carpet_3.png` (an auto-tiled path), the furniture folders below and `layouts/pokemon-town.json`, deterministically. Edit the code and rerun it rather than editing its PNGs.
+
+**Catalog**: `furniture-catalog.json` with `id, name, label, category, footprint, isDesk, canPlaceOnWalls, groupId?, orientation?, state?, canPlaceOnSurfaces?, backgroundTiles?`. String-based type system. Categories: desks, chairs, storage, electronics, decor, outdoor, wall, misc. Wall-placeable items use the `wall` category and appear in a dedicated "Wall" tab; the town's trees, bushes, flowers (all-background, so walkable), fence (front/side rotation), signpost, lamp post, rock, bench, pond and low front wall are in **Outdoor**. The town's buildings use `LOW_WALL` (colored `colorize: true` like their walls) for their front side, so it never hides the room. Asset naming convention: `{BASE}[_{ORIENTATION}][_{STATE}]` (e.g., `MONITOR_FRONT_OFF`).
 
 **Per-furniture manifests**: Each furniture item lives in its own folder under `assets/furniture/` with a `manifest.json` that declares its sprites, rotation groups, state groups (on/off), and animation frames. Floor tiles are individual PNGs in `assets/floors/`; wall tile sets in `assets/walls/`.
 
 **Rotation groups**: `buildDynamicCatalog()` builds `rotationGroups` Map from assets sharing a `groupId`. Supports 2+ orientations (e.g., front/back only). Editor palette shows 1 item per group (front orientation preferred). `getRotatedType()` cycles through available orientations.
 
 **State groups**: Items with `state: "on"` / `"off"` sharing the same `groupId` + `orientation` form toggle pairs. `stateGroups` Map enables `getToggledType()` lookup. Editor palette hides on-state variants. State groups are mirrored across orientations.
+
+**Ambient animations**: an animation group none of whose frames has a `state` (the pond) loops all the time (`getAmbientAnimationFrames()`; frame time `AMBIENT_ANIM_INTERVAL_SEC`), swapped in by `rebuildFurnitureInstances` without touching the saved layout. The palette shows frame 0 only.
 
 **Auto-state**: `officeState.rebuildFurnitureInstances()` swaps electronics to ON sprites when an active agent faces a desk with that item nearby (3 tiles deep in facing direction, 1 tile to each side). Operates at render time without modifying the saved layout.
 
@@ -547,7 +562,7 @@ Toggle via "Layout" button. Tools: SELECT (default), Floor paint, Wall paint, Er
 
 **Colorize module**: `colorize.ts` with two modes selected by `ColorValue.colorize?` flag. **Colorize mode** (Photoshop-style): grayscale → luminance → contrast → brightness → fixed HSL; always used for floor tiles. **Adjust mode** (default for furniture and character hue shifts): shifts original pixel HSL. `adjustSprite()` exported for character hue shifts. Cache keyed by arbitrary string (includes colorize flag).
 
-**Floor tiles**: `floors.png` (112×16, 7 patterns). Cached by (pattern, h, s, b, c).
+**Floor tiles**: one 16×16 grayscale PNG per pattern (`floors/floor_N.png`, tile value = N + 1). Cached by (pattern, h, s, b, c). Pixels at alpha 254 are tall-grass foreground (see Office UI).
 
 **Wall tiles**: `walls.png` (64×128, 4×4 grid of 16×32 pieces). 4-bit auto-tile bitmask (N=1, E=2, S=4, W=8). Sprites extend 16 px above tile (3D face). `wallTiles.ts` computes bitmask at render time. Colorizable via HSBC sliders. Wall sprites z-sorted with furniture/characters (`getWallInstances()` builds `FurnitureInstance[]`).
 

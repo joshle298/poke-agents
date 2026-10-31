@@ -157,6 +157,14 @@ A decorative layer painted over floor tiles.
 A named region of tiles. Areas exist so directories can be mapped to them.
 _Avoid_: zone, region
 
+**Area role**:
+What an Area does beyond directory mapping. A **Meadow** is where characters whose agents are done wander and nap; a **Pokémon Center** is where characters whose sessions errored rest until the session works again. A layout with neither role keeps the plain office behavior.
+_Avoid_: zone
+
+**Pokémon Town**:
+The bundled layout a new standalone office opens on: the Lab (desks for working agents), the Meadow with tall grass, and the Pokémon Center. The classic office is the other bundled layout; the editor's Templates panel switches between them.
+_Avoid_: map
+
 **Area mapping**:
 The assignment of a directory to one or more areas. Many directories may share an area. Agents launched into a directory prefer seats inside any of its areas.
 
