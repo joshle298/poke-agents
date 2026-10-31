@@ -4,6 +4,7 @@ import { useConductor } from '../conductor/conductorStore.js';
 import { conductorStatusLine } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
+import { JukeboxMenuItem } from '../music/JukeboxButton.js';
 import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
@@ -252,6 +253,7 @@ export function SettingsModal({
           transport.send({ type: 'setSoundEnabled', enabled: newVal });
         }}
       />
+      <JukeboxMenuItem onBeforeOpen={onClose} />
       <Checkbox label="Pokémon Theme" checked={pokemonTheme} onChange={onTogglePokemonTheme} />
       <Checkbox
         label="Show Connections"

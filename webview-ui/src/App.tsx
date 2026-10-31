@@ -53,6 +53,8 @@ import { useKeyboardViewport } from './hooks/useKeyboardViewport.js';
 import { useTerminalDrawer } from './hooks/useTerminalDrawer.js';
 import { MobileShell } from './mobile/MobileShell.js';
 import { useMobileShell } from './mobile/useMobileShell.js';
+import { Jukebox } from './music/Jukebox.js';
+import { JukeboxButton } from './music/JukeboxButton.js';
 import { OfficeCanvas } from './office/components/OfficeCanvas.js';
 import { ToolOverlay } from './office/components/ToolOverlay.js';
 import { EditorState } from './office/editor/editorState.js';
@@ -849,6 +851,7 @@ function App() {
           >
             Settings
           </Button>
+          <JukeboxButton size="sm" className="border-border! shadow-pixel" />
           {conductorActive && (
             <>
               <Button
@@ -1193,6 +1196,8 @@ function App() {
         />
       )}
       <Toasts />
+      {/* Jukebox (local music, never Conductor): privileged standalone offices. */}
+      {isBrowserRuntime && !officeReadOnly && <Jukebox isMobile={isMobile} />}
 
       {showMigrationNotice && (
         <MigrationNotice onDismiss={() => setMigrationNoticeDismissed(true)} />

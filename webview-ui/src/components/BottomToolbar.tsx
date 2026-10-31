@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import type { Directory } from '../hooks/useExtensionMessages.js';
+import { JukeboxButton } from '../music/JukeboxButton.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { LaunchDrawer } from './LaunchDrawer.js';
@@ -144,6 +145,7 @@ export function BottomToolbar({
           </Button>
         </>
       )}
+      <JukeboxButton />
       <Button
         variant={isEditMode ? 'active' : 'default'}
         onClick={onToggleEditMode}

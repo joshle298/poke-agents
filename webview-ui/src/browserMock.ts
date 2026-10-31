@@ -295,6 +295,8 @@ export function dispatchMockMessages(): void {
   console.log('[BrowserMock] Messages dispatched');
 
   dispatchMockConductor(dispatch);
+  // Jukebox: a made-up library and silent audio (music/musicMock.ts).
+  void import('./music/musicMock.js').then(({ installMusicMock }) => installMusicMock(dispatch));
 }
 
 // ── Conductor mock (Vite dev only) ─────────────────────────────────────────────
