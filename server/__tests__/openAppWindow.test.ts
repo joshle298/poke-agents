@@ -1,6 +1,8 @@
+import { execFile, type ExecFileException } from 'child_process';
+import * as path from 'path';
 import { describe, expect, it, vi } from 'vitest';
 
-import { APP_BROWSERS, openAppWindow, openWithSystem } from '../src/openAppWindow.js';
+import { APP_BROWSERS, execFailure, openAppWindow, openWithSystem } from '../src/openAppWindow.js';
 
 const URL = 'http://127.0.0.1:41510/?token=3f1c2b8e-0000-4000-8000-000000000000';
 
@@ -103,5 +105,37 @@ describe('openWithSystem', () => {
     await expect(
       openWithSystem(LINK, { platform: 'darwin', exec: fakeExec(() => true).exec }),
     ).rejects.toThrow();
+  });
+});
+
+describe('execFailure', () => {
+  /** The error a real execFile hands its callback. */
+  const realFailure = (file: string, args: string[]) =>
+    new Promise<ExecFileException>((resolve, reject) => {
+      execFile(file, args, (err) => (err ? resolve(err) : reject(new Error('it succeeded'))));
+    });
+
+  it('says why in one line, without the command line or the stderr', async () => {
+    const launchUrl = 'http://127.0.0.1:41510/launch/one-time-code';
+    const err = await realFailure(process.execPath, [
+      '-e',
+      `process.stderr.write("xdg-open: no method available for opening '${launchUrl}'\\n"); process.exit(3)`,
+      launchUrl,
+    ]);
+    expect(err.message).toContain(launchUrl);
+    const short = execFailure(process.execPath, err).message;
+    expect(short).toBe(`${path.basename(process.execPath)} exited with code 3`);
+    expect(short).not.toContain('launch');
+  });
+
+  it('names a missing program, a timeout and a signal', async () => {
+    const missing = await realFailure('/nonexistent/xdg-open', ['http://x/launch/c']);
+    expect(execFailure('/nonexistent/xdg-open', missing).message).toBe('xdg-open was not found');
+    expect(execFailure('xdg-open', { killed: true, signal: 'SIGTERM' }).message).toBe(
+      'xdg-open did not finish',
+    );
+    expect(execFailure('xdg-open', { signal: 'SIGKILL' }).message).toBe(
+      'xdg-open was stopped (SIGKILL)',
+    );
   });
 });

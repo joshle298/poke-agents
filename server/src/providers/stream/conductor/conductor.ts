@@ -233,6 +233,9 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
         });
         if (stopped) return;
         if (!auth.token) {
+          // The office shows the sign-in steps; say it in the terminal too,
+          // where a first run is usually watched.
+          log(`no sign-in found. ${AUTH_REQUIRED_MESSAGE}`);
           setStatus({ state: 'authRequired', message: AUTH_REQUIRED_MESSAGE });
           return;
         }

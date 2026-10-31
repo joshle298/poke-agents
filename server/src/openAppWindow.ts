@@ -11,6 +11,7 @@
  */
 
 import { execFile } from 'child_process';
+import * as path from 'path';
 
 import {
   LAUNCH_CODE_API_PATH,
@@ -135,8 +136,25 @@ export async function openWithSystem(url: string, options: OpenOptions = {}): Pr
 function execFileAsync(file: string, args: readonly string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     execFile(file, [...args], { timeout: OPEN_COMMAND_TIMEOUT_MS }, (err) => {
-      if (err) reject(err);
+      if (err) reject(execFailure(file, err));
       else resolve();
     });
   });
+}
+
+/**
+ * One line saying why a launch failed. Never execFile's own message: it
+ * repeats the command line (the launch URL) and the program's whole stderr,
+ * which on a headless Linux box is a page of xdg-open diagnostics.
+ */
+export function execFailure(
+  file: string,
+  err: { code?: unknown; killed?: boolean; signal?: unknown },
+): Error {
+  const name = path.basename(file);
+  if (err.code === 'ENOENT') return new Error(`${name} was not found`);
+  if (err.killed) return new Error(`${name} did not finish`);
+  if (typeof err.code === 'number') return new Error(`${name} exited with code ${err.code}`);
+  if (typeof err.signal === 'string') return new Error(`${name} was stopped (${err.signal})`);
+  return new Error(`${name} failed`);
 }

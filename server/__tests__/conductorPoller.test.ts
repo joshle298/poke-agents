@@ -297,21 +297,26 @@ describe('Conductor provider startup', () => {
     await h.provider.stop();
   });
 
-  it('reports authRequired without a token and never touches the network', async () => {
+  it('reports authRequired without a token, says so once in the log, and never touches the network', async () => {
     const api = new FakeConductorApi(() => NOW);
     const sink = new RecordingSink();
+    const logs: string[] = [];
     const provider = createConductorProvider({
       fetchImpl: api.fetch,
       env: {},
       platform: 'linux',
       stateDir: tmpStateDir(),
       autoTick: false,
+      log: (message) => logs.push(message),
     });
     await provider.start(sink);
     expect(sink.lastStatus()).toMatchObject({
       state: 'authRequired',
       message: 'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
     });
+    expect(logs).toEqual([
+      'no sign-in found. Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
+    ]);
     expect(api.calls).toEqual([]);
   });
 
