@@ -1,12 +1,12 @@
 {
-  "name": "pixel-agents",
+  "name": "@joshle298/poke-agents",
   "displayName": "Poke Agents",
-  "description": "Pixel art office where your Conductor sessions appear as Pokémon (in progress). Fork of Pixel Agents.",
-  "version": "1.5.0",
+  "description": "Your Conductor cloud sessions as Pokémon in a pixel-art office. Fork of Pixel Agents.",
+  "version": "0.1.0",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",
-    "url": "https://github.com/pixel-agents-hq/pixel-agents"
+    "url": "https://github.com/joshle298/poke-agents"
   },
   "workspaces": [
     "server",
@@ -29,7 +29,7 @@
   ],
   "main": "./dist/extension.js",
   "bin": {
-    "pixel-agents": "./dist/cli.js"
+    "poke-agents": "./dist/cli.js"
   },
   "files": [
     "CHANGELOG.md",
@@ -93,6 +93,8 @@
     "prepack": "npm run package",
     "build:extension": "node esbuild.js --production",
     "build:webview": "cd webview-ui && npm run build",
+    "build:app": "node esbuild.js --production && npm run build:webview",
+    "start": "node dist/cli.js --open",
     "compile": "npm run asyncapi:generate && npm run check-types && npm run lint && node esbuild.js && npm run build:webview",
     "build": "npm run compile",
     "watch": "npm-run-all -p watch:*",
@@ -102,7 +104,7 @@
     "asyncapi:generate": "tsx scripts/generate-messages.ts",
     "asyncapi:validate": "node scripts/validate-asyncapi.mjs",
     "check-types": "tsc --noEmit && tsc --noEmit -p server/tsconfig.test.json",
-    "prepare": "husky",
+    "prepare": "node scripts/prepare.mjs",
     "lint": "eslint adapters/vscode server core && cd webview-ui && eslint .",
     "lint:fix": "eslint adapters/vscode server core --fix && cd webview-ui && eslint . --fix",
     "import-tileset": "tsx scripts/import-tileset-cli.ts",
@@ -110,7 +112,7 @@
     "format:check": "prettier --check \"adapters/vscode/**/*.ts\" \"server/**/*.ts\" \"core/src/**/*.ts\" \"webview-ui/src/**/*.{ts,tsx,css}\" \"*.{js,mjs}\" \"webview-ui/*.{js,ts}\"",
     "test:webview": "cd webview-ui && npm test",
     "test:server": "cd server && npm test",
-    "test:package-contract": "node --test scripts/npm-package-contract.test.mjs",
+    "test:package-contract": "node --test scripts/npm-package-contract.test.mjs scripts/prepare.test.mjs",
     "test": "npm run test:webview && npm run test:server && npm run test:package-contract",
     "verify:npm-package": "node scripts/verify-npm-package.mjs",
     "e2e": "node scripts/run-e2e.mjs",

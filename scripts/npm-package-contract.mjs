@@ -3,12 +3,20 @@ import fs from 'node:fs';
 
 import semver from 'semver';
 
-export const EXPECTED_PACKAGE_NAME = 'pixel-agents';
-export const EXPECTED_REPOSITORY_URL = 'https://github.com/pixel-agents-hq/pixel-agents';
+export const EXPECTED_PACKAGE_NAME = '@joshle298/poke-agents';
+export const EXPECTED_REPOSITORY_URL = 'https://github.com/joshle298/poke-agents';
+// The only bin. Never `pixel-agents` (upstream's command) and never document the
+// unscoped `npx poke-agents`: that npm name belongs to an unrelated package.
+export const EXPECTED_BIN_NAME = 'poke-agents';
+export const EXPECTED_BIN_TARGET = './dist/cli.js';
+// First words of the CLI's `--help` usage line and of its startup line, which
+// carries the tokened URL (`Poke Agents running at http://…?token=…`).
+export const EXPECTED_HELP_USAGE = `Usage: ${EXPECTED_BIN_NAME}`;
+export const STARTUP_BANNER = 'Poke Agents running at';
 
 // fastify + @fastify/{cors,static,websocket} are root runtime `dependencies` even though
 // no root source file imports them: esbuild marks them `external` when bundling
-// dist/cli.js (see esbuild.js), so the published `pixel-agents` bin resolves them from
+// dist/cli.js (see esbuild.js), so the installed `poke-agents` bin resolves them from
 // node_modules at runtime. server/ ships its own copy for local dev but is excluded from
 // the tarball (FORBIDDEN_PACKAGE_PREFIXES below), so dropping the root declarations would
 // publish a CLI that crashes on require(). knip.json ignores them for this reason.
@@ -109,6 +117,36 @@ export function validatePackageFiles(files) {
     throw new Error(`Invalid npm package contents:\n- ${problems.join('\n- ')}`);
   }
   return paths;
+}
+
+/** The package identity: name, repository and exactly one bin, `poke-agents`. */
+export function validatePackageManifest(manifest) {
+  const problems = [];
+  if (manifest?.name !== EXPECTED_PACKAGE_NAME) {
+    problems.push(`expected name ${EXPECTED_PACKAGE_NAME}, received ${String(manifest?.name)}`);
+  }
+  if (manifest?.repository?.url !== EXPECTED_REPOSITORY_URL) {
+    problems.push(
+      `expected repository ${EXPECTED_REPOSITORY_URL}, received ${String(manifest?.repository?.url)}`,
+    );
+  }
+  const bin = manifest?.bin;
+  const binNames = bin && typeof bin === 'object' ? Object.keys(bin) : [];
+  if (binNames.length !== 1 || bin[EXPECTED_BIN_NAME] !== EXPECTED_BIN_TARGET) {
+    problems.push(
+      `expected bin { "${EXPECTED_BIN_NAME}": "${EXPECTED_BIN_TARGET}" }, received ${JSON.stringify(bin)}`,
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(`Invalid package manifest:\n- ${problems.join('\n- ')}`);
+  }
+}
+
+/** The tokened URL from the CLI's startup line, or null until the full line arrived. */
+export function parseStartupUrl(output) {
+  // The trailing \s matters: output arrives in chunks, and a half-delivered line
+  // would otherwise yield a truncated URL that still parses.
+  return new RegExp(`${STARTUP_BANNER} (\\S+)\\s`).exec(output)?.[1] ?? null;
 }
 
 export function validateReleaseIdentity({
