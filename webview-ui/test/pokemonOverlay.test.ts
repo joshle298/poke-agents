@@ -89,9 +89,11 @@ test('badges: SLP asleep, ! needs you, FNT fainted', () => {
   assert.equal(pokemonLabel(ch).condition, 'fainted');
 });
 
-test('themed overlay: theme on and a species; sub-agents and theme off stay upstream', () => {
+test('themed overlay: theme on and a known species; others stay upstream', () => {
   const ch = pokemon();
-  assert.equal(isThemedOverlay(ch), true);
+  assert.equal(isThemedOverlay(ch), false, 'species 25 was never described by the server');
+  setPokemonSpecies({ ...speciesMessage(25), anims: {} });
+  assert.equal(isThemedOverlay(ch), true, 'themed before any sheet decodes');
   ch.isSubagent = true;
   assert.equal(isThemedOverlay(ch), false);
   ch.isSubagent = false;

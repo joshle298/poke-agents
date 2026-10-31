@@ -12,14 +12,15 @@ import {
 } from '../../constants.js';
 import type { PokemonCondition } from '../engine/pokemonAnim.js';
 import { pokemonCondition } from '../engine/pokemonAnim.js';
-import { isPokemonThemeEnabled } from '../engine/pokemonTheme.js';
+import { hasPokemonIdentity } from '../engine/pokemonCharacter.js';
 import { getPokemonSpeciesName } from '../sprites/pokemonSprites.js';
 import type { Character } from '../types.js';
 
-/** The overlay is themed for any character with a species while the theme is
- *  on — even before its sheets decode. Theme off: the upstream label. */
+/** The overlay is themed for a known Pokémon while the theme is on — even
+ *  before its sheets decode. Theme off, sub-agents, and hosts that send no
+ *  species (VS Code, `--no-sprites`): the upstream label. */
 export function isThemedOverlay(ch: Character): boolean {
-  return isPokemonThemeEnabled() && ch.species !== undefined && !ch.isSubagent;
+  return hasPokemonIdentity(ch) && !ch.isSubagent;
 }
 
 export interface PokemonLabel {

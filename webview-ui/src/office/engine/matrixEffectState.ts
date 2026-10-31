@@ -17,15 +17,16 @@
 import { MATRIX_SPRITE_COLS, POKEBALL_RECALL_SEC, POKEBALL_SPAWN_SEC } from '../../constants.js';
 import type { Character } from '../types.js';
 import { MATRIX_EFFECT_DURATION } from '../types.js';
-import { isPokemonThemeEnabled } from './pokemonTheme.js';
+import { hasPokemonIdentity } from './pokemonCharacter.js';
 
 export type SpawnEffectStyle = 'matrix' | 'pokeball';
 
-/** Poké Ball for anything with a species while the theme is on (even before
- *  its sheets decode — the ball then opens on the upstream character). The
- *  greeter and every theme-off character keep the matrix rain. */
+/** Poké Ball for a known Pokémon while the theme is on (even before its
+ *  sheets decode — the ball then opens on the upstream character). The
+ *  greeter, theme-off characters and hosts without species keep the matrix
+ *  rain. */
 export function spawnEffectStyle(ch: Character): SpawnEffectStyle {
-  return isPokemonThemeEnabled() && ch.species !== undefined ? 'pokeball' : 'matrix';
+  return hasPokemonIdentity(ch) ? 'pokeball' : 'matrix';
 }
 
 /** How long the character's current effect runs. */

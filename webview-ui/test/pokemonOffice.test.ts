@@ -217,7 +217,16 @@ test('without a species (or theme off) the matrix rain keeps its 0.3 s', () => {
   assert.equal(os.characters.get(2)!.matrixEffect, null);
 });
 
-test('with a species the Poké Ball spawn and recall run their own durations', () => {
+test('a species the server never described (VS Code, --no-sprites) keeps the matrix rain', () => {
+  const os = new OfficeState(floorLayout());
+  os.addAgent(1);
+  os.setAgentIdentity(1, { species: 25 });
+  os.update(MATRIX_EFFECT_DURATION + 0.01);
+  assert.equal(os.characters.get(1)!.matrixEffect, null);
+});
+
+test('with a known species the Poké Ball spawn and recall run their own durations', async () => {
+  await loadSpecies(25);
   const os = new OfficeState(floorLayout());
   os.addAgent(1);
   os.setAgentIdentity(1, { species: 25 });
