@@ -94,6 +94,24 @@ describe('startStandalone', () => {
     expect(again.port).toBe(port);
     expect(again.token).toBe(office.token); // the standalone token persists
   });
+
+  it('stops while a window is still connected, and starts again on the same port', async () => {
+    const port = await freePort();
+    const office = await startOffice(port);
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = reject;
+    });
+    const closed = new Promise((resolve) => (socket.onclose = resolve));
+
+    await office.stop();
+    await closed; // the open socket did not hold the server up
+
+    const again = await startOffice(port);
+    started.push(again);
+    expect(again.port).toBe(port);
+  });
 });
 
 describe('displayHostFor', () => {

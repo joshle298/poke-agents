@@ -1,0 +1,22 @@
+{
+  "name": "poke-agents-desktop",
+  "productName": "Poke Agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poke Agents as a macOS app: your Conductor cloud sessions as Pokémon in a pixel-art office.",
+  "author": "Josh Le",
+  "license": "MIT",
+  "homepage": "https://github.com/joshle298/poke-agents",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/build.mjs && electron .",
+    "smoke": "node scripts/build.mjs && electron . --smoke",
+    "check-types": "tsc --noEmit -p tsconfig.json",
+    "dist:mac": "node scripts/build.mjs --production && electron-builder --mac --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "26.18.0"
+  }
+}

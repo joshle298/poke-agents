@@ -25,6 +25,7 @@ allure-report/
 
 # Build artifacts
 *.vsix
+/desktop/release/
 *.map
 
 # Environment files
