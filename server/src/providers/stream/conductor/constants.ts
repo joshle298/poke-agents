@@ -14,7 +14,7 @@ export const ENV_API_KEY = 'CONDUCTOR_API_KEY';
 export const ENV_API_TOKEN = 'CONDUCTOR_API_TOKEN';
 export const ENV_API_URL = 'CONDUCTOR_API_URL';
 /** Budget override (requests per minute), same as `--conductor-budget`. */
-export const ENV_BUDGET = 'CONDUCTOR_BUDGET';
+export const ENV_BUDGET = 'POKE_AGENTS_CONDUCTOR_BUDGET';
 /** The Conductor CLI stores its token as a generic password under this service. */
 export const KEYCHAIN_SERVICE = 'com.conductor.cli';
 /** Keychain account prefix; the account is `default:<normalized base url>`. */
@@ -83,8 +83,19 @@ export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
 export const ARCHIVE_INTEREST_MS = 5 * 60_000;
 export const WORKSPACES_PAGE_LIMIT = 100;
-/** Sessions onboarded (status, item #1, tail) concurrently. */
-export const MAX_CONCURRENT_UNITS = 6;
+export const SESSIONS_PAGE_LIMIT = 100;
+/** A workspace's session list is read at most this many pages deep. */
+export const MAX_SESSION_LIST_PAGES = 10;
+/** Units of work (a poll, a session's onboarding, a list) in flight at once. */
+export const MAX_CONCURRENT_UNITS = 8;
+/** Per-class limits, so slow background work never holds every slot. */
+export const UNIT_CLASS_LIMITS = {
+  discovery: 1,
+  list: 2,
+  onboard: 3,
+  background: 2,
+  poll: 6,
+} as const;
 /** Pinned sessions outside the discovered workspaces are resolved this often. */
 export const PINNED_RESOLVE_INTERVAL_MS = 10 * 60_000;
 
@@ -101,6 +112,8 @@ export const STATUS_POLL_MAX_MS = 60_000;
 export const POLL_STRETCH_MAX_MS = 120_000;
 /** Fraction of the effective budget the planner may schedule. */
 export const BUDGET_PLANNING_FRACTION = 0.9;
+/** Share of the budget steady polls get while sessions are still onboarding. */
+export const ONBOARDING_POLL_SHARE = 0.5;
 
 /** A message within this window keeps a session Hot. */
 export const HOT_RECENT_MS = 60_000;

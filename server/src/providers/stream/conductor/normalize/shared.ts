@@ -11,7 +11,7 @@
 import type { AgentEvent } from '../../../../../../core/src/provider.js';
 import { ERROR_MESSAGE_MAX } from '../constants.js';
 import type { Harness } from '../harness.js';
-import { ASK_USER_QUESTION_TOOL, isSubagentTool } from '../tools.js';
+import { ASK_USER_QUESTION_TOOL, isSubagentTool, SUBAGENT_SPAWN_TOOL } from '../tools.js';
 import type { ConductorItem } from '../types.js';
 
 export interface LogEvent {
@@ -270,6 +270,11 @@ export function closeTool(state: NormState, toolId: string, out: ProviderEvent[]
   }
 }
 
+/**
+ * A sub-agent's tool call. Its records prove the spawn is still running, so a
+ * spawn we never saw start (it predates the replayed tail) is opened as a
+ * background Agent with `spawnDescription`; it ends with its completion event.
+ */
 export function openSubTool(
   state: NormState,
   parentToolId: string,
@@ -277,10 +282,19 @@ export function openSubTool(
   name: string,
   input: unknown,
   out: ProviderEvent[],
+  spawnDescription = '',
 ): void {
-  // Sub-agent records only count while their spawn is known to be running;
-  // otherwise a replay starting mid-subagent would conjure a ghost Subtask.
-  if (!toolId || !state.openTools.has(parentToolId) || state.openSubTools.has(toolId)) return;
+  if (!toolId || state.openSubTools.has(toolId)) return;
+  if (!state.openTools.has(parentToolId)) {
+    openTool(
+      state,
+      parentToolId,
+      SUBAGENT_SPAWN_TOOL,
+      { description: spawnDescription },
+      out,
+      true,
+    );
+  }
   state.openSubTools.set(toolId, { parentToolId, name, input });
   out.push({ kind: 'subagentStart', parentToolId, toolId, toolName: name, input });
 }

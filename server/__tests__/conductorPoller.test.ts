@@ -13,12 +13,13 @@ import type {
 } from '../../core/src/provider.js';
 import type { ClientClock } from '../src/providers/stream/conductor/client.js';
 import {
+  conductorContextWindow,
   type ConductorProvider,
   createConductorProvider,
 } from '../src/providers/stream/conductor/conductor.js';
 import { planIntervals } from '../src/providers/stream/conductor/poller.js';
 import type { ConductorItem } from '../src/providers/stream/conductor/types.js';
-import { FakeConductorApi, ME } from './fixtures/conductor/fakeConductorApi.js';
+import { FakeConductorApi, type FakeSession, ME } from './fixtures/conductor/fakeConductorApi.js';
 
 const FIXTURES = path.join(__dirname, 'fixtures', 'conductor');
 const KEY = 'test-api-key-not-real';
@@ -136,7 +137,7 @@ interface Harness {
   logs: string[];
 }
 
-async function settle(provider: ConductorProvider, rounds = 8): Promise<void> {
+async function settle(provider: ConductorProvider, rounds = 20): Promise<void> {
   for (let i = 0; i < rounds; i++) await provider.tick();
 }
 
@@ -235,12 +236,13 @@ describe('Conductor provider startup', () => {
     const { sink, api, provider } = await boot({ prepare: orchestration });
     expect([...sink.adopted].sort()).toEqual([ORCH, CHILD].sort());
 
-    const orch = sink.firstUpsert(ORCH);
+    // Seeded from /status at adoption; the tail replay then fills in the counters.
+    expect(sink.firstUpsert(ORCH)?.initialStatus).toBe('active');
+    const orch = sink.lastUpsert(ORCH);
     expect(orch).toMatchObject({
       sessionId: ORCH,
       label: 'Orchestrator',
       directoryName: 'example-repo',
-      initialStatus: 'active',
       details: {
         harness: 'claude',
         model: 'claude-opus-5-5[1m]',
@@ -308,7 +310,7 @@ describe('Conductor provider startup', () => {
         });
         a.addWorkspace({
           id: uuid(0x202),
-          lastActivityAt: new Date(NOW - 20 * 60_000).toISOString(),
+          lastActivityAt: new Date(NOW - 5 * 60_000).toISOString(),
         });
         a.addWorkspace({ id: uuid(0x203), lastActivityAt: new Date(NOW - 60_000).toISOString() });
         a.addSession({
@@ -319,7 +321,7 @@ describe('Conductor provider startup', () => {
         a.addSession({
           id: working,
           workspaceId: uuid(0x202),
-          items: workingFeed(working, NOW - 20 * 60_000),
+          items: workingFeed(working, NOW - 5 * 60_000),
           status: { status: 'working' },
         });
         a.addSession({
@@ -341,6 +343,59 @@ describe('Conductor provider startup', () => {
     expect(probeOrder.slice(0, 3)).toEqual([pinned, working, recent]);
     expect(sink.adopted.size).toBe(3);
     await provider.stop();
+  });
+
+  it('lists only enough workspaces to fill the office before start() resolves', async () => {
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    for (let i = 0; i < 40; i++) {
+      const ws = uuid(0x1000 + i);
+      const id = uuid(0x2000 + i);
+      api.addWorkspace({ id: ws, lastActivityAt: new Date(NOW - (i + 1) * 60_000).toISOString() });
+      api.addSession({ id, workspaceId: ws, items: idleFeed(id, NOW - (i + 1) * 60_000) });
+    }
+    const sink = new RecordingSink();
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+      budgetPerMinute: 60_000,
+    });
+    await provider.start(sink);
+    const lists = () => api.calls.filter((c) => c.path.endsWith('/sessions'));
+    // Cap 24 + hysteresis 4, most recently active first.
+    expect(lists()).toHaveLength(28);
+    expect(lists()[0].path).toContain(uuid(0x1000));
+    await settle(provider, 40);
+    expect(lists()).toHaveLength(40);
+    expect(sink.adopted.size).toBe(24);
+    await provider.stop();
+  });
+
+  it('pages through long session lists', async () => {
+    const ws = uuid(0x3000);
+    const ids = Array.from({ length: 7 }, (_, i) => uuid(0x3100 + i));
+    const h = await boot({
+      prepare: (api) => {
+        api.sessionsPageLimit = 3;
+        api.addWorkspace({ id: ws, lastActivityAt: new Date(NOW - 30_000).toISOString() });
+        for (const id of ids)
+          api.addSession({ id, workspaceId: ws, items: idleFeed(id, NOW - 30_000) });
+      },
+    });
+    const pages = h.api.calls.filter((c) => c.path.endsWith('/sessions'));
+    expect(pages.map((c) => c.query.offset)).toEqual(['0', '3', '6']);
+    expect(pages.every((c) => c.query.limit === '100')).toBe(true);
+    expect(
+      h.provider
+        .listSessions()
+        .map((s) => s.sessionId)
+        .sort(),
+    ).toEqual([...ids].sort());
+    await h.provider.stop();
   });
 
   it('reports authRequired without a token and never touches the network', async () => {
@@ -425,7 +480,13 @@ describe('Conductor provider polling', () => {
         ),
     );
     await h.provider.tick();
-    expect(h.sink.statuses.some((s) => s.state === 'rateLimited')).toBe(true);
+    // The budget (60 000/min in these tests) is halved.
+    expect(h.sink.statuses).toContainEqual(
+      expect.objectContaining({
+        state: 'rateLimited',
+        message: 'Conductor is rate limiting requests; slowed to 30000/min.',
+      }),
+    );
     // Requests issued once the 429 has been handled wait for retry-after (+ jitter).
     const handled = h.api.calls.length;
     h.provider.setFocus([ORCH]);
@@ -540,11 +601,49 @@ describe('Conductor provider polling', () => {
         });
       },
     });
-    expect(h.sink.firstUpsert(id)?.initialStatus).toBe('active');
+    // /status says idle at adoption; the tail shows the open turn.
+    expect(h.sink.firstUpsert(id)?.initialStatus).toBe('waiting');
+    expect(h.sink.eventsFor(id)).toContainEqual({ kind: 'turnStart' });
+    expect(h.sink.eventsFor(id).filter((e) => e.kind === 'turnEnd')).toEqual([]);
     h.clock.t += 31_000;
     await settle(h.provider, 3);
-    expect(h.sink.eventsFor(id)).toContainEqual({ kind: 'turnEnd', outcome: 'done' });
+    expect(h.sink.eventsFor(id).at(-1)).toEqual({ kind: 'turnEnd', outcome: 'done' });
     await h.provider.stop();
+  });
+
+  it('declares context windows: Claude from its table, gpt-* 272k, others unknown', () => {
+    expect(conductorContextWindow('claude-opus-5-5[1m]')).toBe(1_000_000);
+    expect(conductorContextWindow('claude-haiku-4-5')).toBe(200_000);
+    expect(conductorContextWindow('gpt-6.1-sol')).toBe(272_000);
+    expect(conductorContextWindow('grok-4.7')).toBeUndefined();
+    expect(conductorContextWindow(undefined)).toBeUndefined();
+  });
+
+  it('takes the budget from the option, then POKE_AGENTS_CONDUCTOR_BUDGET', async () => {
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    api.override(
+      (c) => c.path === '/v0/workspaces',
+      () =>
+        new Response(JSON.stringify({ userMessage: 'Rate limit exceeded for API requests.' }), {
+          status: 429,
+          headers: { 'retry-after': '1' },
+        }),
+    );
+    const sink = new RecordingSink();
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY, POKE_AGENTS_CONDUCTOR_BUDGET: '90' },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+    });
+    await provider.start(sink);
+    expect(sink.lastStatus()?.message).toBe(
+      'Conductor is rate limiting requests; slowed to 45/min.',
+    );
+    await provider.stop();
   });
 
   it('plans slower intervals when demand exceeds the budget', () => {
@@ -630,12 +729,20 @@ describe('Conductor provider scope and visibility', () => {
       scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 4 },
       sessions: { [pinned]: { pinned: true } },
     });
+    const limit = "You've hit your session limit · resets 1:00pm (UTC)";
     const h = await boot({
       stateDir,
       prepare: (api) => {
+        // /status as Conductor reports it: a running turn (also while asking) is working.
+        const statusFor = (id: string): FakeSession['status'] =>
+          id === working || id === waiting
+            ? { status: 'working' }
+            : id === errored
+              ? { status: 'error', errorMessage: limit }
+              : { status: 'idle' };
         const add = (id: string, items: ConductorItem[], n: number) => {
           api.addWorkspace({ id: uuid(0x600 + n), lastActivityAt: items.at(-1)?.receivedAt });
-          api.addSession({ id, workspaceId: uuid(0x600 + n), items });
+          api.addSession({ id, workspaceId: uuid(0x600 + n), items, status: statusFor(id) });
         };
         add(pinned, idleFeed(pinned, NOW - 3 * 3_600_000), 1);
         add(idle, idleFeed(idle, NOW - 10_000), 2);
@@ -651,7 +758,7 @@ describe('Conductor provider scope and visibility', () => {
     expect([...h.sink.adopted].sort()).toEqual([pinned, waiting, working, errored].sort());
     expect(h.sink.firstUpsert(errored)).toMatchObject({
       initialStatus: 'error',
-      errorMessage: "You've hit your session limit · resets 1:00pm (UTC)",
+      errorMessage: limit,
     });
     expect(h.sink.eventsFor(waiting)).toContainEqual({ kind: 'awaitingInput' });
     await h.provider.stop();

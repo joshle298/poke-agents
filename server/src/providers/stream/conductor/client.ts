@@ -242,13 +242,17 @@ export class ConductorClient {
 
   listWorkspaceSessions(
     workspaceId: string,
-    opts: { includeArchived?: boolean },
+    page: { includeArchived?: boolean; limit: number; offset: number },
     priority: number,
   ): Promise<ConductorPage<ConductorSession>> {
     return this.request({
       method: 'GET',
       path: `/v0/workspaces/${encodeURIComponent(workspaceId)}/sessions`,
-      query: opts.includeArchived ? { includeArchived: true } : undefined,
+      query: {
+        limit: page.limit,
+        offset: page.offset,
+        includeArchived: page.includeArchived ? true : undefined,
+      },
       priority,
       backoffKey: 'discovery',
     });

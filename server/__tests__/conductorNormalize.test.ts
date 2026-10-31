@@ -213,6 +213,99 @@ describe('Claude harness', () => {
   });
 });
 
+describe('sub-agents whose spawn predates the replayed tail', () => {
+  it('opens the unseen Claude spawn as a background Agent and ends it on its notification', () => {
+    let index = 0;
+    const item = (rawPayload: Record<string, unknown>): ConductorItem => ({
+      id: `late-${++index}`,
+      sessionId: 'late',
+      sessionIndex: 900 + index,
+      type: 'agent',
+      content: { rawPayload },
+      receivedAt: '2026-01-01T12:00:00.000Z',
+    });
+    const items = [
+      item({
+        type: 'assistant',
+        parent_tool_use_id: 'toolu_old_spawn',
+        message: {
+          content: [
+            { type: 'tool_use', id: 'toolu_sub1', name: 'Read', input: { file_path: '/a/b.ts' } },
+          ],
+        },
+      }),
+      item({
+        type: 'user',
+        parent_tool_use_id: 'toolu_old_spawn',
+        task_description: 'Profile lookups',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_sub1', content: 'ok' }] },
+      }),
+      item({
+        type: 'system',
+        subtype: 'task_notification',
+        tool_use_id: 'toolu_old_spawn',
+        status: 'completed',
+      }),
+      item({
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'b1',
+        tool_use_id: 'toolu_by_subagent',
+        task_type: 'local_bash',
+        description: 'Run the unit tests',
+        owned_by_subagent: true,
+      }),
+    ];
+    const state = createNormState({ harness: 'claude' });
+    const events = replay(items, state);
+    const agent = agentEvents(events);
+    expect(trace(agent)).toEqual([
+      'toolStart:Agent',
+      'subagentStart:Read',
+      'subagentEnd',
+      'toolEnd',
+    ]);
+    // A task with no tool call in view still shows up in the Pokédex.
+    expect(events.filter((e) => e.kind === 'log')).toEqual([
+      expect.objectContaining({ role: 'tool', text: 'Running: Run the unit tests' }),
+    ]);
+    expect(agent[0]).toMatchObject({ toolId: 'toolu_old_spawn', runInBackground: true });
+    // A background sub-agent does not make the session itself active.
+    expect(state.turnOpen).toBe(false);
+  });
+
+  it('opens a Codex sub-agent reported working whose spawn was not replayed', () => {
+    const state = createNormState({ harness: 'codex' });
+    const agent = agentEvents(
+      normalizeItem(
+        {
+          id: 'status-1',
+          sessionId: 'codex-late',
+          sessionIndex: 5_000,
+          type: 'agent',
+          content: {
+            rawPayload: {
+              event: { type: 'codex.subAgentStatus', parentToolUseId: 'call_old', working: true },
+              thread_id: 'thread',
+            },
+          },
+          receivedAt: '2026-01-01T12:00:00.000Z',
+        },
+        state,
+      ),
+    );
+    expect(agent).toEqual([
+      {
+        kind: 'toolStart',
+        toolId: 'call_old',
+        toolName: 'Agent',
+        input: { description: '' },
+        runInBackground: true,
+      },
+    ]);
+  });
+});
+
 describe('Cursor harness', () => {
   it('normalizes lowercase tools and ends the turn on result, without usage', () => {
     const state = createNormState();

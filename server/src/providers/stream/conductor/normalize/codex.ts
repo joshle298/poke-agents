@@ -15,7 +15,7 @@
 import * as path from 'path';
 
 import { LOG_ASSISTANT_MAX, NOTICE_TEXT_MAX } from '../constants.js';
-import { AGENT_WAIT_TOOL, COMPACT_TOOL, conductorToolName } from '../tools.js';
+import { AGENT_WAIT_TOOL, COMPACT_TOOL, conductorToolName, SUBAGENT_SPAWN_TOOL } from '../tools.js';
 import type { ConductorItem } from '../types.js';
 import {
   asRecord,
@@ -151,7 +151,7 @@ function handleSubAgentActivity(
     const description = agentLabel(item);
     state.codexAgents.set(callId, { description, threadId });
     if (threadId) state.codexAgentByThread.set(threadId, callId);
-    openTool(state, callId, 'Agent', { description }, out, true);
+    openTool(state, callId, SUBAGENT_SPAWN_TOOL, { description }, out, true);
   } else if (item.kind === 'completed' && event.type === 'item.started' && threadId) {
     const spawn = state.codexAgentByThread.get(threadId);
     if (spawn) endCodexAgent(state, spawn, out);
@@ -195,8 +195,10 @@ function handleItem(ci: ConductorItem, event: Rec, state: NormState, out: Provid
   if (parentToolId) {
     const tool = toolForItem(item);
     if (!tool || !itemId) return;
-    if (started) openSubTool(state, parentToolId, itemId, tool.name, tool.input, out);
-    else closeSubTool(state, itemId, out);
+    if (started) {
+      const spawn = state.codexAgents.get(parentToolId)?.description ?? '';
+      openSubTool(state, parentToolId, itemId, tool.name, tool.input, out, spawn);
+    } else closeSubTool(state, itemId, out);
     return;
   }
 
@@ -288,11 +290,10 @@ export function normalizeCodexItem(item: ConductorItem, state: NormState): Provi
     case 'codex.subAgentStatus': {
       const callId = asString(event.parentToolUseId);
       if (!callId) return out;
-      if (event.working === true) {
-        const known = state.codexAgents.get(callId);
-        if (known && !state.openTools.has(callId)) {
-          openTool(state, callId, 'Agent', { description: known.description }, out, true);
-        }
+      if (event.working === true && !state.openTools.has(callId)) {
+        // Also a spawn that predates the replayed tail: it is working now.
+        const description = state.codexAgents.get(callId)?.description ?? '';
+        openTool(state, callId, SUBAGENT_SPAWN_TOOL, { description }, out, true);
       } else if (event.working === false) {
         endCodexAgent(state, callId, out);
       }

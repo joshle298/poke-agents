@@ -57,7 +57,7 @@ import {
 export interface ConductorProviderOptions {
   /** Directory for conductor-state.json. Defaults to ~/.pixel-agents. */
   stateDir?: string;
-  /** Client-side request budget per minute (default 120, or CONDUCTOR_BUDGET). */
+  /** Client-side request budget per minute (default 120, or POKE_AGENTS_CONDUCTOR_BUDGET). */
   budgetPerMinute?: number;
   /** Injected for tests. */
   fetchImpl?: typeof fetch;

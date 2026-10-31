@@ -18,6 +18,8 @@ export const AGENT_WAIT_TOOL = 'AgentWait';
 export const COMPACT_TOOL = 'Compact';
 export const ASK_USER_QUESTION_TOOL = 'AskUserQuestion';
 export const EXIT_PLAN_MODE_TOOL = 'ExitPlanMode';
+/** Canonical name for a sub-agent spawn (Claude Agent/Task, Codex native sub-agents). */
+export const SUBAGENT_SPAWN_TOOL = 'Agent';
 
 const RAW_TO_CANONICAL: ReadonlyMap<string, string> = new Map([
   ['grep', 'Grep'],

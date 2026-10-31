@@ -48,8 +48,10 @@ import {
   MAX_CHILDREN_PER_LEAD,
   MAX_CONCURRENT_UNITS,
   MAX_DRAIN_PAGES,
+  MAX_SESSION_LIST_PAGES,
   MESSAGES_PAGE_LIMIT,
   OFFSCREEN_POLL_MS,
+  ONBOARDING_POLL_SHARE,
   PINNED_RESOLVE_INTERVAL_MS,
   POLL_STRETCH_MAX_MS,
   PRIORITY_BACKGROUND,
@@ -63,6 +65,7 @@ import {
   SESSION_LIST_MAX_AGE_MS,
   SESSION_LIST_MIN_GAP_MS,
   SESSIONS_CHANGED_DEBOUNCE_MS,
+  SESSIONS_PAGE_LIMIT,
   STARTING_GRACE_MS,
   STATUS_POLL_MAX_MS,
   STATUS_POLL_MS,
@@ -71,6 +74,7 @@ import {
   TAIL_PROBE_START,
   TAIL_WINDOW,
   TICK_MS,
+  UNIT_CLASS_LIMITS,
   WARM_POLL_MAX_MS,
   WARM_POLL_MS,
   WARM_READY_WORKSPACE_MS,
@@ -106,6 +110,8 @@ import type {
 } from './types.js';
 
 type Tier = 'focus' | 'hot' | 'warm' | 'cold';
+/** Onboarding tier for sessions neither pinned nor recently active. */
+const ONBOARD_TIER_OTHER = 4;
 type TurnEndEvent = Extract<AgentEvent, { kind: 'turnEnd' }>;
 type ToolStartEvent = Extract<AgentEvent, { kind: 'toolStart' }>;
 type ContextUsageEvent = Extract<AgentEvent, { kind: 'contextUsage' }>;
@@ -137,6 +143,8 @@ interface WorkspaceRecord {
   listedAt: number;
   listedActivityMs: number;
   archivedListedAt: number;
+  /** The session list should be (re)fetched by a list unit. */
+  listPending: boolean;
 }
 
 /** What the office was last told about a session (mirrors the runtime's rules). */
@@ -187,11 +195,16 @@ interface SessionRecord {
   infoSig?: string;
   detailsSig?: string;
   detailsAt?: number;
+  detailsCount?: number;
+  detailsActivity?: number;
 }
+
+type UnitClass = keyof typeof UNIT_CLASS_LIMITS;
 
 interface Unit {
   priority: number;
   order: number;
+  cls: UnitClass;
   run: () => Promise<void>;
 }
 
@@ -279,6 +292,7 @@ export class ConductorPoller {
   private firstSeenCounter = 0;
   private unitOrder = 0;
   private running = 0;
+  private readonly runningByClass = new Map<UnitClass, number>();
   private discoveryBusy = false;
   private nextDiscoveryAt = 0;
   private lastFullListAt = 0;
@@ -298,6 +312,8 @@ export class ConductorPoller {
   private lastSessionsAt = 0;
   /** An explicit scope change applies at once, without cap hysteresis. */
   private capReset = false;
+  /** Sessions the cap would show, onboarded or not (they onboard first). */
+  private wanted = new Set<string>();
 
   constructor(opts: PollerOptions) {
     this.client = opts.client;
@@ -340,8 +356,13 @@ export class ConductorPoller {
     this.links.prune(now);
     const units = this.collectUnits(now);
     units.sort((a, b) => a.priority - b.priority || a.order - b.order);
-    const slots = Math.max(0, MAX_CONCURRENT_UNITS - this.running);
-    await Promise.all(units.slice(0, slots).map((unit) => this.runUnit(unit)));
+    const started: Array<Promise<void>> = [];
+    for (const unit of units) {
+      if (this.running >= MAX_CONCURRENT_UNITS) break;
+      if ((this.runningByClass.get(unit.cls) ?? 0) >= UNIT_CLASS_LIMITS[unit.cls]) continue;
+      started.push(this.runUnit(unit));
+    }
+    await Promise.all(started);
     this.emitStatus();
   }
 
@@ -466,16 +487,43 @@ export class ConductorPoller {
 
   private collectUnits(now: number): Unit[] {
     const units: Unit[] = [];
-    const add = (priority: number, run: () => Promise<void>) =>
-      units.push({ priority, order: this.unitOrder++, run });
+    const add = (priority: number, run: () => Promise<void>, cls: UnitClass = 'poll') =>
+      units.push({ priority, order: this.unitOrder++, cls, run });
 
-    if (!this.discoveryBusy && now >= this.nextDiscoveryAt) add(1, () => this.discover());
+    if (!this.discoveryBusy && now >= this.nextDiscoveryAt) {
+      add(1, () => this.discover(), 'discovery');
+    }
+    // Session lists, most recently active workspace first.
+    const lists = [...this.workspaces.values()]
+      .filter((ws) => ws.listPending && ws.discovered)
+      .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
+    for (const ws of lists) {
+      const recent = now - ws.lastActivityMs < WARM_RECENT_MS;
+      add(
+        recent ? 2.5 : 6.5,
+        async () => {
+          if (!ws.listPending) return;
+          ws.listPending = false;
+          try {
+            await this.listWorkspaceSessions(
+              ws,
+              false,
+              recent ? PRIORITY_DISCOVERY : PRIORITY_BACKGROUND,
+            );
+          } catch (err) {
+            ws.listPending = true;
+            this.noteDiscoveryError(err);
+          }
+        },
+        'list',
+      );
+    }
     if (now - this.lastPinnedResolveAt >= PINNED_RESOLVE_INTERVAL_MS) {
       this.lastPinnedResolveAt = now;
       const missing = this.state
         .sessionIds()
         .filter((id) => this.state.session(id)?.pinned && !this.records.has(id));
-      if (missing.length > 0) add(8, () => this.resolvePinned(missing));
+      if (missing.length > 0) add(8, () => this.resolvePinned(missing), 'background');
     }
 
     const focus = this.focusSet();
@@ -492,7 +540,14 @@ export class ConductorPoller {
     for (const ws of this.workspaces.values()) {
       if (ws.discovered && now - ws.lastActivityMs < WARM_RECENT_MS) counts.activeWorkspaces++;
     }
-    const plan = planIntervals(this.client.effectiveBudget, counts);
+    // While sessions are still onboarding, steady polls get half the budget.
+    const onboardingPending = [...this.records.values()].some(
+      (rec) =>
+        tiers.has(rec.id) && (!rec.onboarded || (!rec.tailed && tiers.get(rec.id) !== 'cold')),
+    );
+    const pollBudget =
+      this.client.effectiveBudget * (onboardingPending ? ONBOARDING_POLL_SHARE : 1);
+    const plan = planIntervals(pollBudget, counts);
 
     const onboarding: SessionRecord[] = [];
     for (const rec of this.records.values()) {
@@ -503,8 +558,16 @@ export class ConductorPoller {
         continue;
       }
       if (!rec.tailed) {
-        if (tier !== 'cold')
-          add(5, () => this.withSession(rec, () => this.syncTail(rec, PRIORITY_HOT)));
+        if (tier !== 'cold') {
+          add(
+            rec.adopted ? 3.5 : 7,
+            () =>
+              this.withSession(rec, () =>
+                this.syncTail(rec, rec.adopted ? PRIORITY_WARM : PRIORITY_BACKGROUND),
+              ),
+            rec.adopted ? 'onboard' : 'background',
+          );
+        }
         continue;
       }
       if (tier === 'cold') continue;
@@ -530,33 +593,47 @@ export class ConductorPoller {
     }
 
     // Onboarding order: pinned, working, recently active (stable by first seen).
-    onboarding.sort((a, b) => this.onboardingRank(a, b));
-    for (const rec of onboarding) {
-      add(3, () => this.withSession(rec, () => this.onboard(rec)));
+    const ranked = onboarding.map((rec) => ({ rec, tier: this.onboardingTier(rec, now) }));
+    ranked.sort(
+      (a, b) =>
+        a.tier - b.tier ||
+        this.activityOf(b.rec) - this.activityOf(a.rec) ||
+        a.rec.firstSeen - b.rec.firstSeen,
+    );
+    for (const { rec, tier } of ranked) {
+      const background = tier === ONBOARD_TIER_OTHER && !this.wanted.has(rec.id);
+      add(
+        background ? 7.5 : 3 + tier / 10,
+        () =>
+          this.withSession(rec, () =>
+            this.onboard(rec, !background, background ? PRIORITY_BACKGROUND : PRIORITY_DISCOVERY),
+          ),
+        background ? 'background' : 'onboard',
+      );
     }
 
     if (now < this.archiveInterestUntil) {
       for (const ws of this.workspaces.values()) {
         if (!ws.discovered || now - ws.archivedListedAt < ARCHIVED_LIST_INTERVAL_MS) continue;
         ws.archivedListedAt = now;
-        add(8, () => this.listWorkspaceSessions(ws, true, PRIORITY_BACKGROUND));
+        add(8, () => this.listWorkspaceSessions(ws, true, PRIORITY_BACKGROUND), 'background');
       }
     }
     return units;
   }
 
-  private onboardingRank(a: SessionRecord, b: SessionRecord): number {
-    const pin = (r: SessionRecord) => (this.state.session(r.id)?.pinned ? 0 : 1);
-    const working = (r: SessionRecord) => (r.runStatus === 'working' ? 0 : 1);
-    const statusKnown = (r: SessionRecord) => (r.statusAt === undefined ? 0 : 1);
-    return (
-      pin(a) - pin(b) ||
-      // Everyone's status first (cheap), then feeds for the working ones.
-      statusKnown(a) - statusKnown(b) ||
-      working(a) - working(b) ||
-      this.activityOf(b) - this.activityOf(a) ||
-      a.firstSeen - b.firstSeen
-    );
+  /**
+   * Pinned first; then a cheap /status pass over recently active sessions (the
+   * only ones that can be working), feeds of the working ones, the rest of the
+   * recent ones, and finally everything else in one low-priority unit each.
+   */
+  private onboardingTier(rec: SessionRecord, now: number): number {
+    if (this.state.session(rec.id)?.pinned) return 0;
+    const recent = now - this.activityOf(rec) < WARM_RECENT_MS;
+    if (recent && rec.statusAt === undefined) return 1;
+    if (rec.runStatus === 'working') return 2;
+    if (recent) return 3;
+    return ONBOARD_TIER_OTHER;
   }
 
   private statusDue(rec: SessionRecord, now: number, statusMs: number): boolean {
@@ -572,12 +649,14 @@ export class ConductorPoller {
 
   private async runUnit(unit: Unit): Promise<void> {
     this.running++;
+    this.runningByClass.set(unit.cls, (this.runningByClass.get(unit.cls) ?? 0) + 1);
     try {
       await unit.run();
     } catch (err) {
       this.log(`unit failed: ${(err as Error).message}`);
     } finally {
       this.running--;
+      this.runningByClass.set(unit.cls, (this.runningByClass.get(unit.cls) ?? 1) - 1);
       this.refreshVisibility();
     }
   }
@@ -630,7 +709,11 @@ export class ConductorPoller {
         (ws) => ws.discovered && this.needsList(ws, now, full),
       );
       toList.sort((a, b) => b.lastActivityMs - a.lastActivityMs);
-      await this.mapLimit(toList, 4, (ws) =>
+      // The first pass lists only as many workspaces as can fill the office;
+      // the rest are listed by list units, most recent first.
+      const first = this.discoveredOnce ? [] : toList.slice(0, scope.maxSessions + CAP_HYSTERESIS);
+      for (const ws of toList) if (!first.includes(ws)) ws.listPending = true;
+      await this.mapLimit(first, 4, (ws) =>
         this.listWorkspaceSessions(ws, false, PRIORITY_DISCOVERY),
       );
       this.lastSyncAt = this.clock.now();
@@ -645,7 +728,9 @@ export class ConductorPoller {
   }
 
   private needsList(ws: WorkspaceRecord, now: number, full: boolean): boolean {
-    if (ws.listedAt === 0 || full) return true;
+    if (ws.listPending) return false;
+    if (ws.listedAt === 0) return true;
+    if (full && now - ws.lastActivityMs < WARM_READY_WORKSPACE_MS) return true;
     const age = now - ws.listedAt;
     if (ws.lastActivityMs > ws.listedActivityMs && age >= SESSION_LIST_MIN_GAP_MS) return true;
     return age >= SESSION_LIST_MAX_AGE_MS && now - ws.lastActivityMs < WARM_RECENT_MS;
@@ -662,6 +747,7 @@ export class ConductorPoller {
         listedAt: 0,
         listedActivityMs: 0,
         archivedListedAt: 0,
+        listPending: false,
       };
       this.workspaces.set(ws.id, rec);
       return rec;
@@ -686,12 +772,16 @@ export class ConductorPoller {
   ): Promise<void> {
     const sessions: ConductorSession[] = [];
     let offset = 0;
-    for (;;) {
-      const page = await this.client.listWorkspaceSessions(ws.ws.id, { includeArchived }, priority);
+    for (let pages = 0; pages < MAX_SESSION_LIST_PAGES; pages++) {
+      const page = await this.client.listWorkspaceSessions(
+        ws.ws.id,
+        { includeArchived, limit: SESSIONS_PAGE_LIMIT, offset },
+        priority,
+      );
       const data = Array.isArray(page?.data) ? page.data : [];
       sessions.push(...data);
       offset += data.length;
-      if (!page?.hasMore || data.length === 0 || offset > 1_000) break;
+      if (!page?.hasMore || data.length === 0) break;
     }
     const now = this.clock.now();
     if (includeArchived) ws.archivedListedAt = now;
@@ -794,7 +884,7 @@ export class ConductorPoller {
         this.halt(err);
         return;
       case 'rateLimited':
-        this.setConnection('rateLimited', 'Conductor is rate limiting requests; slowing down.');
+        this.setConnection('rateLimited', this.rateLimitedMessage());
         return;
       case 'network':
         this.nextDiscoveryAt = Math.max(this.nextDiscoveryAt, this.client.pausedUntil);
@@ -828,7 +918,7 @@ export class ConductorPoller {
     } else if (err.kind === 'unauthorized' && err.status === 401) {
       this.halt(err);
     } else if (err.kind === 'rateLimited' && err.scope === 'global') {
-      this.setConnection('rateLimited', 'Conductor is rate limiting requests; slowing down.');
+      this.setConnection('rateLimited', this.rateLimitedMessage());
     } else if (err.kind === 'network') {
       this.setConnection('unreachable', "Can't reach Conductor. Retrying.");
     }
@@ -836,23 +926,23 @@ export class ConductorPoller {
 
   // ── Onboarding ──
 
-  private async onboard(rec: SessionRecord): Promise<void> {
+  private async onboard(rec: SessionRecord, split: boolean, priority: number): Promise<void> {
     if (rec.statusAt === undefined) {
-      await this.fetchStatus(rec, PRIORITY_DISCOVERY);
+      await this.fetchStatus(rec, priority);
       if (!this.records.has(rec.id)) return;
       // The feed phase runs in a later unit so working sessions go first.
-      if (rec.runStatus !== undefined) return;
+      if (split && rec.runStatus !== undefined) return;
     }
-    if (!rec.probed) await this.probeFirstItem(rec);
+    if (!rec.probed) await this.probeFirstItem(rec, priority);
     if (rec.neverStarted || !this.records.has(rec.id)) return;
     if (rec.feedEmpty) {
       // Nothing to replay; steady polls read the feed from its start.
       rec.tailed = true;
       rec.lastPollAt = this.clock.now();
-    } else if (this.tierOf(rec, this.clock.now(), this.focusSet()) !== 'cold') {
-      await this.syncTail(rec, PRIORITY_HOT);
     }
     this.emitCachedSpawnLink(rec);
+    // Ready to adopt, seeded from /status and item #1. Hot and Warm sessions
+    // then replay their tail in a follow-up unit and consolidate.
     rec.onboarded = true;
   }
 
@@ -879,12 +969,8 @@ export class ConductorPoller {
     }
   }
 
-  private async probeFirstItem(rec: SessionRecord): Promise<void> {
-    const page = await this.client.listMessages(
-      rec.id,
-      { offset: 0, limit: 1 },
-      PRIORITY_DISCOVERY,
-    );
+  private async probeFirstItem(rec: SessionRecord, priority: number): Promise<void> {
+    const page = await this.client.listMessages(rec.id, { offset: 0, limit: 1 }, priority);
     const item = page?.data?.[0];
     rec.probed = true;
     if (!item) {
@@ -1170,6 +1256,8 @@ export class ConductorPoller {
           this.logs.addUser(rec.id, event.text, event.at, event.itemId);
         } else if (event.role === 'assistant') {
           this.logs.addAssistant(rec.id, event.text, event.at, event.itemId);
+        } else {
+          this.logs.addTool(rec.id, event.text, event.at, event.itemId);
         }
         continue;
       }
@@ -1294,7 +1382,9 @@ export class ConductorPoller {
 
   /** Emit whatever separates the office's view from the reconstructed state. */
   private consolidate(rec: SessionRecord): void {
-    if (!rec.adopted || !rec.mirror) return;
+    // Before its tail is replayed the normalizer knows nothing; the /status
+    // seed stands until then.
+    if (!rec.adopted || !rec.mirror || !rec.tailed) return;
     const n = rec.norm;
     const m = rec.mirror;
     if (n.turnOpen) {
@@ -1424,9 +1514,9 @@ export class ConductorPoller {
     const scope = this.state.scope;
     const hysteresis = this.capReset ? 0 : CAP_HYSTERESIS;
     this.capReset = false;
-    const candidates = [...this.records.values()].filter(
-      (rec) => rec.onboarded && this.isCandidate(rec, now),
-    );
+    // Sessions still onboarding hold their rank, so older sessions are not
+    // adopted first and pushed out moments later.
+    const candidates = [...this.records.values()].filter((rec) => this.isCandidate(rec, now));
     const pinned = (rec: SessionRecord) => !!this.state.session(rec.id)?.pinned;
     const seeds = new Map(candidates.map((rec) => [rec.id, this.seedStatus(rec).status]));
     const isActiveChild = (rec: SessionRecord) => {
@@ -1478,13 +1568,14 @@ export class ConductorPoller {
       rank++;
     }
 
+    this.wanted = visible;
     for (const rec of this.records.values()) {
       if (rec.adopted && !visible.has(rec.id)) {
         this.unadopt(rec, this.state.session(rec.id)?.hidden ? 'hidden' : 'scope');
       }
     }
     for (const rec of capped) {
-      if (visible.has(rec.id) && !rec.adopted) this.adopt(rec);
+      if (visible.has(rec.id) && rec.onboarded && !rec.adopted) this.adopt(rec);
     }
     this.scheduleSessionsChanged();
   }
@@ -1500,6 +1591,8 @@ export class ConductorPoller {
     rec.infoSig = this.infoSignature(info);
     rec.detailsSig = this.detailsSignature(info);
     rec.detailsAt = this.clock.now();
+    rec.detailsCount = info.details?.messageCount;
+    rec.detailsActivity = info.details?.lastActivityAt;
     this.consolidate(rec);
     // Children adopted before their Lead learn it now.
     for (const child of this.records.values()) {
@@ -1573,14 +1666,20 @@ export class ConductorPoller {
     const sig = this.infoSignature(info);
     const detailsSig = this.detailsSignature(info);
     const now = this.clock.now();
+    // Counters that were unknown are sent at once; changes are throttled.
+    const firstCounters =
+      (rec.detailsCount === undefined && info.details?.messageCount !== undefined) ||
+      (rec.detailsActivity === undefined && info.details?.lastActivityAt !== undefined);
     const detailsDue =
       detailsSig !== rec.detailsSig &&
-      (forceDetails || now - (rec.detailsAt ?? 0) >= DETAILS_THROTTLE_MS);
+      (forceDetails || firstCounters || now - (rec.detailsAt ?? 0) >= DETAILS_THROTTLE_MS);
     if (sig === rec.infoSig && !detailsDue) return;
     this.sink.upsertSession(info);
     rec.infoSig = sig;
     rec.detailsSig = detailsSig;
     rec.detailsAt = now;
+    rec.detailsCount = info.details?.messageCount;
+    rec.detailsActivity = info.details?.lastActivityAt;
   }
 
   private labelFor(sessionId: string): string | undefined {
@@ -1590,6 +1689,10 @@ export class ConductorPoller {
   }
 
   // ── Status and the Sessions modal ──
+
+  private rateLimitedMessage(): string {
+    return `Conductor is rate limiting requests; slowed to ${this.client.effectiveBudget}/min.`;
+  }
 
   private setConnection(state: ConnectionState, message?: string): void {
     if (this.halted && state !== 'unauthorized') return;

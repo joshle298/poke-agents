@@ -16,7 +16,12 @@
 
 import { extractContextTokens } from '../../../../contextUsage.js';
 import { LOG_ASSISTANT_MAX } from '../constants.js';
-import { ASK_USER_QUESTION_TOOL, COMPACT_TOOL, conductorToolName } from '../tools.js';
+import {
+  ASK_USER_QUESTION_TOOL,
+  COMPACT_TOOL,
+  conductorToolName,
+  formatConductorToolStatus,
+} from '../tools.js';
 import type { ConductorItem } from '../types.js';
 import {
   asRecord,
@@ -117,11 +122,12 @@ function handleAssistant(
   const at = itemTime(item);
 
   if (parentToolId) {
+    const spawn = asString(raw.task_description) ?? '';
     for (const block of contentBlocks(raw)) {
       if (block.type !== 'tool_use') continue;
       const id = asString(block.id);
       const name = conductorToolName(asString(block.name) ?? 'Unknown');
-      if (id) openSubTool(state, parentToolId, id, name, block.input, out);
+      if (id) openSubTool(state, parentToolId, id, name, block.input, out, spawn);
     }
     return;
   }
@@ -245,6 +251,20 @@ function handleSystem(item: ConductorItem, raw: Raw, state: NormState, out: Prov
       if (taskId && toolId) state.taskTools.set(taskId, toolId);
       const tool = toolId ? state.openTools.get(toolId) : undefined;
       if (tool && raw.is_backgrounded === true) tool.runInBackground = true;
+      const description = asString(raw.description)?.trim();
+      if (!tool && description) {
+        // A task we have no tool call for (often run by a sub-agent whose own
+        // records never reach this feed): still worth a line in the Pokédex.
+        const label = raw.task_type === 'local_agent' ? 'Agent' : 'Bash';
+        const input = label === 'Agent' ? { description } : { command: description };
+        out.push({
+          kind: 'log',
+          role: 'tool',
+          text: formatConductorToolStatus(label, input),
+          at,
+          itemId: item.id,
+        });
+      }
       return;
     }
     case 'task_updated': {

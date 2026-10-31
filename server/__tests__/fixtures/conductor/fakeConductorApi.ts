@@ -50,6 +50,8 @@ export class FakeConductorApi {
   workspaces: ConductorWorkspace[] = [];
   readonly sessions = new Map<string, FakeSession>();
   readonly calls: FakeCall[] = [];
+  /** Server-side cap on session list pages (tests lower it to force paging). */
+  sessionsPageLimit = 100;
   private readonly overrides: Override[] = [];
 
   constructor(private readonly now: () => number) {}
@@ -137,10 +139,14 @@ export class FakeConductorApi {
     }
     if (parts[1] === 'workspaces' && parts[3] === 'sessions') {
       const includeArchived = call.query.includeArchived === 'true';
-      const data = [...this.sessions.values()]
+      const all = [...this.sessions.values()]
         .filter((s) => s.workspaceId === parts[2] && (includeArchived || !s.archivedAt))
         .map((s) => this.sessionJson(s));
-      return json(200, { data, offset: 0, hasMore: false });
+      // Like the real API: a small default page, honoring limit/offset.
+      const offset = Number(call.query.offset ?? 0);
+      const limit = Math.min(this.sessionsPageLimit, Number(call.query.limit ?? 20));
+      const data = all.slice(offset, offset + limit);
+      return json(200, { data, offset, hasMore: offset + limit < all.length });
     }
     if (parts[1] === 'sessions' && parts[2]) {
       const session = this.sessions.get(parts[2]);
