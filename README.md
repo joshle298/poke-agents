@@ -17,6 +17,7 @@ Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
 - **Desktop window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
+- **Jukebox.** Background music from albums you own or play in the Music or Spotify app. See [Music](#music).
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
 
@@ -91,6 +92,20 @@ A session becomes a Lead when it creates another session with a first message, f
 - dots: one session messaged the other
 - faint: one session read the other's messages
 
+## Music
+
+The Jukebox (♪ in the toolbar, or Settings → Jukebox…) plays background music while you watch the office. It plays only music you already have:
+
+- **My music** (any platform): audio files you own in `~/.pixel-agents/music/`, one folder per game or album, for example `~/.pixel-agents/music/Pokémon X & Y/03 - Title.m4a`. MP3, M4A/AAC, OGG/Opus, WAV and FLAC play in the office window; Apple Lossless (ALAC) `.m4a` files and copy-protected `.m4p` files don't. Titles and track numbers come from the file names (`03 - Title`, `1-03 Title`), and a `Disc 2` folder joins its album. **Open folder** creates the folder and opens it. Tracks crossfade for 1.5 seconds. Shuffle all, shuffle one game, or pick a track.
+- **Apple Music** (macOS): **Look in my Music library** finds albums whose album or artist name contains "Pokémon", such as Super Music Collections you bought, and plays them in the Music app, in order or shuffled. To queue an album, the Jukebox fills a playlist named "Poke Agents Jukebox" in your library; delete it whenever you like. A pasted `music.apple.com` album or playlist link opens in Music, where you press play.
+- **Spotify** (macOS, with the Spotify app): paste an `open.spotify.com` or `spotify:` album, playlist or track link, then play or shuffle it in Spotify.
+
+The first time the Jukebox controls Music or Spotify, macOS asks whether your terminal (or the Poke Agents app) may control it. If you chose Don't Allow, turn it on in System Settings › Privacy & Security › Automation.
+
+While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you click, so folder music you were playing comes back on your first click after a reload.
+
+**About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
+
 ## Configuration
 
 | Flag                     | Default      | Effect                                                                                                                                                                         |
@@ -117,13 +132,14 @@ Upstream's `--no-terminal`, `--allowed-host` and `--rotate-token` work as descri
 
 Without either variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
 
-Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents: `conductor-state.json` holds the scope, hidden and pinned sessions and each session's Pokémon (never the token), and `cache/pmd/` holds downloaded sprites.
+Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Agents: `conductor-state.json` holds the scope, hidden and pinned sessions and each session's Pokémon (never the token), `cache/pmd/` holds downloaded sprites, `music/` holds your Jukebox albums, and `music.json` the Apple Music and Spotify links you saved.
 
 ## Privacy
 
 - Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`) and, for sprites, to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
+- When you save a Spotify link in the Jukebox, Poke Agents asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
 - There is no telemetry or analytics.
 
 ## Troubleshooting
