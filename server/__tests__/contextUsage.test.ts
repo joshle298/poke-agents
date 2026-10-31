@@ -7,6 +7,7 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { CONTEXT_SEED_TAIL_BYTES, DEFAULT_MAX_CONTEXT_TOKENS } from '../src/constants.js';
 import {
   extractContextTokens,
+  reportContextUsage,
   seedContextUsage,
   updateContextUsage,
   widenContextWindow,
@@ -132,6 +133,41 @@ describe('widenContextWindow', () => {
 
   it('rounds up past the largest known tier instead of pinning at 100%', () => {
     expect(widenContextWindow(1_400_000, DEFAULT_MAX_CONTEXT_TOKENS)).toBe(2_000_000);
+  });
+});
+
+describe('reportContextUsage', () => {
+  function setup() {
+    const agents = new AgentStateStore();
+    const agent = createTestAgent({ jsonlFile: '' });
+    agents.set(1, agent);
+    const sent: Array<Record<string, unknown>> = [];
+    agents.on('broadcast', (m) => sent.push(m));
+    return { agents, agent, sent };
+  }
+
+  it("measures a provider's snapshot against the window it declares", () => {
+    const { agents, agent, sent } = setup();
+    reportContextUsage(1, agent, agents, 50_000, 272_000);
+    expect(sent).toEqual([
+      { type: 'agentContextUsage', id: 1, contextTokens: 50_000, maxContextTokens: 272_000 },
+    ]);
+    expect(agent.sawMainChainUsage).toBe(true);
+  });
+
+  it('widens the running estimate when the provider names no window', () => {
+    const { agents, agent, sent } = setup();
+    reportContextUsage(1, agent, agents, 300_000, undefined);
+    expect(sent[0]).toMatchObject({ contextTokens: 300_000, maxContextTokens: 1_000_000 });
+  });
+
+  it('treats zero, negative and non-finite counts as no news', () => {
+    const { agents, agent, sent } = setup();
+    for (const tokens of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      reportContextUsage(1, agent, agents, tokens, 200_000);
+    }
+    expect(sent).toEqual([]);
+    expect(agent.contextTokens).toBe(0);
   });
 });
 

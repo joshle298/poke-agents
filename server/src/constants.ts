@@ -157,6 +157,52 @@ export const DIRECTORY_WRITE_FAILED_REASON =
  *  embedded (VS Code) server still mints a fresh token per process. */
 export const STANDALONE_TOKEN_FILE_NAME = 'standalone-token';
 
+/** unavailableReason() when Claude Code tracking is off (the default; --claude
+ *  turns it on). The embedded terminal only ever launches Claude Code, so a
+ *  Conductor-only office has nothing to run in it. */
+export const TERMINAL_DISABLED_NO_CLAUDE_REASON =
+  'Terminal needs Claude Code tracking. Restart with --claude to launch agents from the browser.';
+
+// ── Standalone CLI ──────────────────────────────────────────
+/** Port tried first when --port is not given. A fixed port keeps the office's
+ *  origin stable across restarts (installed PWA, app-window bounds,
+ *  localStorage). Busy -> the CLI falls back to an OS-assigned port. */
+export const DEFAULT_STANDALONE_PORT = 41510;
+/** Bounds for --conductor-budget (Conductor API requests per minute). */
+export const CONDUCTOR_BUDGET_MIN = 1;
+export const CONDUCTOR_BUDGET_MAX = 6_000;
+/** How long `open` / `xdg-open` may take before the attempt counts as failed. */
+export const OPEN_COMMAND_TIMEOUT_MS = 10_000;
+
+// ── Stream providers (Conductor) ────────────────────────────
+/** The agentLinks snapshot is broadcast at most this often (debounced). */
+export const STREAM_SNAPSHOT_DEBOUNCE_MS = 500;
+/** agentMessage animations: at most one per sender/receiver pair in this window... */
+export const AGENT_MESSAGE_PAIR_INTERVAL_MS = 2_000;
+/** ...and at most this many per second across the whole office. */
+export const AGENT_MESSAGE_MAX_PER_SECOND = 6;
+/** Error messages shown on an errored (fainted) agent are cut to this length. */
+export const AGENT_ERROR_MESSAGE_MAX_LENGTH = 200;
+/** Notices and link previews are cut to this length. */
+export const STREAM_TEXT_MAX_LENGTH = 200;
+/** Links kept in memory; the oldest (by last message) go first past this. */
+export const STREAM_LINKS_MAX = 500;
+/** Remembered stream sessions (agent id + Pokémon) in <namespace>-state.json;
+ *  the oldest entries go first past this. */
+export const STREAM_AGENT_MEMORY_MAX = 1_000;
+/** Upper bounds a setConductorScope request may ask for (a year of activity,
+ *  and more characters than any office can seat). */
+export const CONDUCTOR_SCOPE_MAX_HOURS = 24 * 365;
+export const CONDUCTOR_SCOPE_MAX_SESSIONS = 500;
+/** Longest message the office may send to a session. */
+export const SESSION_MESSAGE_MAX_LENGTH = 32_000;
+/** Longest deep link openExternal accepts. */
+export const EXTERNAL_URL_MAX_LENGTH = 2_048;
+/** Deep-link schemes openExternal opens on the host (conductor:, conductor-dev:, ...). */
+export const EXTERNAL_URL_SCHEME_PATTERN = /^conductor(-[a-z0-9-]+)?:$/;
+/** The only host a deep link may name (conductor://workspace?id=...&session=...). */
+export const EXTERNAL_URL_HOST = 'workspace';
+
 // ── Layout/Config Persistence ──────────────────────────────
 export const LAYOUT_FILE_DIR = '.pixel-agents';
 export const LAYOUT_FILE_NAME = 'layout.json';

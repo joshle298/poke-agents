@@ -92,6 +92,24 @@ function applyContextTokens(
 }
 
 /**
+ * Feed the gauge from a provider that reports usage directly (stream providers)
+ * rather than through transcript records. `tokens` is the newest turn's
+ * snapshot; `declaredWindow` is the provider's window for the model, or
+ * undefined when it can't name one (the running estimate then widens as
+ * needed). Zero or negative tokens are "no news" and leave the gauge alone.
+ */
+export function reportContextUsage(
+  agentId: number,
+  agent: AgentState,
+  agents: AgentStateStore,
+  tokens: number,
+  declaredWindow: number | undefined,
+): void {
+  if (!(tokens > 0) || !Number.isFinite(tokens)) return;
+  applyContextTokens(agentId, agent, agents, tokens, true, declaredWindow);
+}
+
+/**
  * Fold one freshly-read transcript record into the agent's context gauge.
  *
  * Sidechain records are another agent's turn, but WHOSE depends on the file:

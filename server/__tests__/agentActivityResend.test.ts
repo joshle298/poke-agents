@@ -182,7 +182,8 @@ describe('resendAgentActivity', () => {
     store.set(1, createTestAgent({ id: 1, isWaiting: true }));
     let sent: Array<Record<string, unknown>> = [];
     resendAgentActivity((msg) => sent.push(msg), store);
-    expect(sent).toEqual([{ type: 'agentStatus', id: 1, status: 'waiting' }]);
+    // Silent: a replay must not chime or show the checkmark again.
+    expect(sent).toEqual([{ type: 'agentStatus', id: 1, status: 'waiting', silent: true }]);
 
     store = new AgentStateStore();
     store.set(2, createTestAgent({ id: 2, isWaiting: false }));
@@ -230,5 +231,48 @@ describe('resendAgentActivity', () => {
     expect(sent).toHaveLength(2);
     expect(sent[0]).toMatchObject({ type: 'agentToolStart', id: 1 });
     expect(sent[1]).toMatchObject({ type: 'agentStatus', id: 2, status: 'waiting' });
+  });
+
+  it('replays provider details right after team info, before tools', () => {
+    const store = new AgentStateStore();
+    store.set(
+      1,
+      createTestAgent({
+        id: 1,
+        sessionId: 'conductor:s1',
+        providerId: 'conductor',
+        label: 'Fix the flaky test',
+        agentName: 'Fix the flaky test',
+        leadAgentId: 2,
+        details: { repo: 'hue-run/fern' },
+        species: 25,
+        activeToolStatuses: new Map([['tool-1', 'Running']]),
+        activeToolNames: new Map([['tool-1', 'Bash']]),
+      }),
+    );
+    const sent: Array<Record<string, unknown>> = [];
+    resendAgentActivity((msg) => sent.push(msg), store);
+    expect(sent.map((m) => m.type)).toEqual(['agentTeamInfo', 'agentDetails', 'agentToolStart']);
+    expect(sent[1]).toMatchObject({
+      id: 1,
+      providerId: 'conductor',
+      label: 'Fix the flaky test',
+      conductorSessionId: 's1',
+      repo: 'hue-run/fern',
+      species: 25,
+    });
+  });
+
+  it('replays an errored agent as error, not waiting, silently', () => {
+    const store = new AgentStateStore();
+    store.set(
+      1,
+      createTestAgent({ id: 1, isWaiting: true, isErrored: true, errorMessage: 'API overloaded' }),
+    );
+    const sent: Array<Record<string, unknown>> = [];
+    resendAgentActivity((msg) => sent.push(msg), store);
+    expect(sent).toEqual([
+      { type: 'agentStatus', id: 1, status: 'error', errorMessage: 'API overloaded', silent: true },
+    ]);
   });
 });

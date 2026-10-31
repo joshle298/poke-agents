@@ -24,7 +24,12 @@ import { readLayoutFromFile, writeLayoutToFile } from './layoutPersistence.js';
 import type { ConsentEffects } from './providers/hook/consentExecutor.js';
 import { applyConsentChoice } from './providers/hook/consentExecutor.js';
 import { hooksConsentRequest } from './providers/hook/consentGate.js';
-import { claudeProvider, hookProviderById, hookProviders } from './providers/index.js';
+import { claudeProvider, hookProviders } from './providers/index.js';
+import {
+  handleStreamSessionMessage,
+  refuseStreamSessionMessage,
+  STREAM_SESSION_MESSAGE_TYPES,
+} from './streamSessionMessages.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { launchStandaloneAgent } from './terminal/standaloneAgentLauncher.js';
 
@@ -42,6 +47,10 @@ export type SetHooksEnabledSideEffect = (
  * which owns the dist root needed to re-run the loaders.
  */
 export type ReloadAssetsSideEffect = (send: WsSend) => Promise<void> | void;
+
+/** Open an already-validated deep link on the host (standalone: `open` /
+ *  `xdg-open`). Rejects when the host could not open it. */
+export type OpenExternalSideEffect = (url: string) => Promise<void>;
 
 /** Cached assets loaded at server startup. Sent to each WebSocket client on webviewReady. */
 export interface AssetCache {
@@ -74,6 +83,14 @@ export interface ClientMessageContext {
   /** PTY terminals for standalone-launched agents. Absent in VS Code embedded
    *  mode, where the editor owns terminal lifecycle. */
   ptyManager?: PtySessionManager;
+  /** Hook providers this office runs: who gets a hooks status and a consent
+   *  ask, and which hooks a toggle may install. Absent = every bundled hook
+   *  provider; empty when Claude Code tracking is off (standalone without
+   *  --claude). Stream providers are attached to the runtime instead
+   *  (`runtime.streamDriver`). */
+  hookProviders?: readonly HookProvider[];
+  /** Opens a Conductor deep link on the host. Absent = this adapter can't. */
+  openExternal?: OpenExternalSideEffect;
 }
 
 // ── Setting key constants (mirror adapters/vscode/constants.ts) ──
@@ -86,6 +103,23 @@ const KEY_HOOKS_INFO_SHOWN = 'pixel-agents.hooksInfoShown';
 const KEY_SHOW_AREAS = 'pixel-agents.showAreas';
 const KEY_BYPASS_PERMISSIONS = 'pixel-agents.bypassPermissions';
 const KEY_SHOW_HOST_DIRECTORIES = 'pixel-agents.showHostDirectories';
+const KEY_POKEMON_THEME = 'pixel-agents.pokemonTheme';
+
+/** The hook providers this office runs (see ClientMessageContext.hookProviders). */
+function activeHookProviders(ctx: ClientMessageContext): readonly HookProvider[] {
+  return ctx.hookProviders ?? hookProviders;
+}
+
+/** Resolve a wire-supplied hook provider id against the providers this office
+ *  runs, or undefined -- the caller then writes nothing (fail-closed). A
+ *  crafted message can't install Claude hooks into an office without Claude. */
+function hookProviderFor(ctx: ClientMessageContext, id: unknown): HookProvider | undefined {
+  return typeof id === 'string' ? activeHookProviders(ctx).find((p) => p.id === id) : undefined;
+}
+
+function claudeActive(ctx: ClientMessageContext): boolean {
+  return activeHookProviders(ctx).some((p) => p.id === claudeProvider.id);
+}
 
 /**
  * This host's own Directory contribution: the directory the server was started
@@ -142,7 +176,7 @@ export function handleClientMessage(
       // Standalone can launch: the agent runs in a server-side PTY streamed to
       // the browser drawer (a shell running as the operator -- privileged, like
       // every message past the read-only gate above).
-      if (!runtime || !ctx.ptyManager) break;
+      if (!runtime || !ctx.ptyManager || !claudeActive(ctx)) break;
       // Permission posture is a persisted per-host setting, never a per-launch
       // field: the client sends only where to launch. Every launch comes from a
       // drawer row and carries its Directory's path; no directoryPath falls
@@ -254,7 +288,7 @@ export function handleClientMessage(
       const enabled = msg.enabled as boolean;
       // The provider id is echoed by the client, never originated: an unknown
       // id names nothing to install into, so it is dropped like a junk choice.
-      const provider = hookProviderById(msg.providerId);
+      const provider = hookProviderFor(ctx, msg.providerId);
       if (!provider) break;
       void applyHooksPreference(ctx, send, provider, enabled);
       break;
@@ -263,7 +297,7 @@ export function handleClientMessage(
     case 'hooksConsentResponse': {
       // Fail-closed on the provider exactly like on the choice: an id naming
       // no registered provider writes nothing.
-      const provider = hookProviderById(msg.providerId);
+      const provider = hookProviderFor(ctx, msg.providerId);
       if (!provider) break;
       void applyConsentChoice(
         provider.id,
@@ -331,6 +365,17 @@ export function handleClientMessage(
       break;
     }
 
+    case 'setPokemonTheme': {
+      if (typeof msg.enabled !== 'boolean' || !adapter) break;
+      adapter.setSetting(KEY_POKEMON_THEME, msg.enabled);
+      // Every office follows the theme; published as read back.
+      store.broadcast({
+        type: 'pokemonThemeUpdated',
+        enabled: adapter.getSetting(KEY_POKEMON_THEME, true),
+      });
+      break;
+    }
+
     case 'setShowHostDirectories': {
       if (typeof msg.enabled !== 'boolean' || !adapter) break;
       adapter.setSetting(KEY_SHOW_HOST_DIRECTORIES, msg.enabled);
@@ -357,6 +402,19 @@ export function handleClientMessage(
         suggestions: () =>
           collectDirectorySuggestions(claudeProvider, shownHostDirectoriesFor(ctx)),
       });
+      break;
+
+    case 'requestSessionDetail':
+    case 'sendSessionMessage':
+    case 'stopSession':
+    case 'archiveSession':
+    case 'restoreSession':
+    case 'setSessionHidden':
+    case 'setSessionPinned':
+    case 'setConductorScope':
+    case 'requestConductorSessions':
+    case 'openExternal':
+      handleStreamSessionMessage(msg, send, ctx);
       break;
 
     default:
@@ -454,11 +512,16 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // them.
   send({ type: 'officeAccess', readOnly: ctx.privileged !== true });
 
-  // 1. Provider capabilities (must arrive before any agent messages)
+  // 1. Provider capabilities (must arrive before any agent messages): the
+  // union of every active provider's tool sets, and which providers feed this
+  // office (the UI hides Claude-only surfaces without 'claude').
+  const streamDrivers = runtime?.streamDrivers() ?? [];
+  const providers = [...activeHookProviders(ctx), ...streamDrivers.map((d) => d.provider)];
   send({
     type: 'providerCapabilities',
-    readingTools: [...claudeProvider.readingTools],
-    subagentToolNames: [...claudeProvider.subagentToolNames],
+    readingTools: [...new Set(providers.flatMap((p) => [...p.readingTools]))],
+    subagentToolNames: [...new Set(providers.flatMap((p) => [...p.subagentToolNames]))],
+    activeProviders: providers.map((p) => p.id),
   });
 
   // 1b. Terminal availability. Gates the whole terminal UI (the + Agent button
@@ -527,7 +590,7 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // provider checks are async, so these land as follow-ups right after the
   // synchronous handshake; the webview's default (not installed) is the safe
   // assumption until each arrives. One status + at most one ask PER PROVIDER.
-  for (const provider of hookProviders) {
+  for (const provider of activeHookProviders(ctx)) {
     // One provider's unreadable settings file must degrade to
     // installed=false (matching the executor's fail-closed read: no choice
     // ever uninstalls on a guess) rather than surface as an unhandled
@@ -585,8 +648,9 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
     runtime.hooksEnabled.current = hooksEnabled;
   }
 
-  // 5. Restore persisted external agents (standalone only; VS Code handles its own restore)
-  runtime?.restoreExternalAgents();
+  // 5. Restore persisted external agents (standalone only; VS Code handles its
+  // own restore). They are Claude sessions: none while Claude is off.
+  if (claudeActive(ctx)) runtime?.restoreExternalAgents();
 
   // 6. Existing agents (either just restored, or from VS Code adapter if present)
   const agentIds: number[] = [];
@@ -627,6 +691,10 @@ function handleWebviewReady(send: WsSend, ctx: ClientMessageContext): void {
   // client shows bare characters until each agent takes another turn.
   resendAgentActivity(send, store);
 
+  // 8b. Stream providers' cached state: connection status, the session list,
+  // the link snapshot, and what only they know about their agents.
+  for (const driver of streamDrivers) driver.replayTo(send);
+
   // 9. Re-announce live terminals AFTER existingAgents, so a browser that
   // reloaded (or a second tab) rebuilds its drawer tabs. The PTY outlives the
   // socket, so these sessions are still attachable and their scrollback replays
@@ -664,6 +732,7 @@ function settingsSnapshot(adapter: StateAdapter | undefined) {
     showAreas: adapter?.getSetting(KEY_SHOW_AREAS, false) ?? false,
     bypassPermissions: adapter?.getSetting(KEY_BYPASS_PERMISSIONS, false) ?? false,
     showHostDirectories: adapter?.getSetting(KEY_SHOW_HOST_DIRECTORIES, false) ?? false,
+    pokemonTheme: adapter?.getSetting(KEY_POKEMON_THEME, true) ?? true,
   } as const;
 }
 
@@ -689,9 +758,13 @@ function refuseReadOnly(
       `[Pixel Agents] Ignoring ${type} from a read-only client. Changes need the tokened URL the CLI printed (at localhost or an --allowed-host name).`,
     );
   }
+  if (STREAM_SESSION_MESSAGE_TYPES.has(type)) {
+    refuseStreamSessionMessage(msg, send, ctx);
+    return;
+  }
   switch (msg.type) {
     case 'setHooksEnabled': {
-      const provider = hookProviderById(msg.providerId);
+      const provider = hookProviderFor(ctx, msg.providerId);
       if (!provider) return;
       void provider
         .areHooksInstalled()
@@ -705,6 +778,7 @@ function refuseReadOnly(
     case 'setShowAreas':
     case 'setBypassPermissions':
     case 'setShowHostDirectories':
+    case 'setPokemonTheme':
       send(settingsSnapshot(ctx.store.getAdapter()));
       return;
     case 'addExternalAssetDirectory':

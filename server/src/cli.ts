@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 
 /**
- * Standalone CLI entry point: `npx pixel-agents`
+ * Standalone CLI entry point: `poke-agents`
  *
  * Starts the Fastify server in standalone mode with SPA serving and WebSocket.
  * Loads all assets (PNGs -> SpriteData) on startup and caches in memory.
  * Each connecting WebSocket client receives the full state on webviewReady.
+ *
+ * Providers: Conductor cloud sessions are tracked by default (--no-conductor
+ * turns it off); Claude Code tracking -- hooks, transcript scanners and the
+ * embedded terminal -- is opt-in with --claude.
  */
 
 import * as path from 'path';
 
+import type { StreamProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
 import {
@@ -26,22 +31,35 @@ import {
   readConfig,
 } from './configPersistence.js';
 import {
+  CONDUCTOR_BUDGET_MAX,
+  CONDUCTOR_BUDGET_MIN,
+  DEFAULT_STANDALONE_PORT,
   MAX_PORT,
   MIN_PORT,
   TERMINAL_DISABLED_BY_FLAG_REASON,
+  TERMINAL_DISABLED_NO_CLAUDE_REASON,
   WILDCARD_HOSTNAMES,
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import {
+  BROWSER_IDS,
+  type BrowserId,
+  isBrowserId,
+  openAppWindow,
+  openWithSystem,
+} from './openAppWindow.js';
+import { setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
-import { PixelAgentsServer } from './server.js';
+import { createConductorProvider } from './providers/stream/conductor/conductor.js';
+import { PixelAgentsServer, type ServerConfig } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { isLoopbackHost, normalizeHostname } from './wsAuth.js';
 
 // ── Argument parsing ──────────────────────────────────────────
 
 export interface CliArgs {
-  /** Unset -> ephemeral (OS-assigned) port, so multiple standalone instances
-   *  can run at once without a collision. --port picks a fixed one. */
+  /** Unset -> DEFAULT_STANDALONE_PORT, falling back to an OS-assigned port when
+   *  it is busy (see startOnPreferredPort). --port picks a fixed one, no fallback. */
   port?: number;
   host: string;
   /** False when --no-terminal was passed: the office only watches agents; the
@@ -53,6 +71,19 @@ export interface CliArgs {
   allowedHosts: string[];
   /** --rotate-token: replace the persisted server token before starting. */
   rotateToken: boolean;
+  /** Track Conductor cloud sessions. On by default; --no-conductor turns it off. */
+  conductor: boolean;
+  /** Track local Claude Code sessions (hooks, scanners, embedded terminal).
+   *  Off by default; --claude turns it on. */
+  claude: boolean;
+  /** --open / --app: open the office in an app window once it is running. */
+  open: boolean;
+  /** --browser <id>: which browser --open uses (default: the first installed). */
+  browser?: BrowserId;
+  /** --conductor-budget <n>: Conductor API requests per minute (provider default otherwise). */
+  conductorBudget?: number;
+  /** False with --no-sprites: never download Pokémon sprites. */
+  sprites: boolean;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -66,6 +97,10 @@ export function parseArgs(argv: string[]): CliArgs {
     terminal: true,
     allowedHosts: [],
     rotateToken: false,
+    conductor: true,
+    claude: false,
+    open: false,
+    sprites: true,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -102,19 +137,66 @@ export function parseArgs(argv: string[]): CliArgs {
       args.rotateToken = true;
     } else if (argv[i] === '--no-terminal') {
       args.terminal = false;
+    } else if (argv[i] === '--conductor') {
+      args.conductor = true;
+    } else if (argv[i] === '--no-conductor') {
+      args.conductor = false;
+    } else if (argv[i] === '--claude') {
+      args.claude = true;
+    } else if (argv[i] === '--no-claude') {
+      args.claude = false;
+    } else if (argv[i] === '--open' || argv[i] === '--app') {
+      args.open = true;
+    } else if (argv[i] === '--browser') {
+      const raw = argv[i + 1];
+      if (raw === undefined || !isBrowserId(raw)) {
+        throw new CliArgsError(
+          `${raw === undefined ? 'Missing value for --browser' : `Invalid --browser "${raw}"`}: expected one of ${BROWSER_IDS.join(', ')}.`,
+        );
+      }
+      args.browser = raw;
+      i++;
+    } else if (argv[i] === '--conductor-budget') {
+      const raw = argv[i + 1];
+      const parsed = Number(raw);
+      if (
+        raw === undefined ||
+        !Number.isInteger(parsed) ||
+        parsed < CONDUCTOR_BUDGET_MIN ||
+        parsed > CONDUCTOR_BUDGET_MAX
+      ) {
+        throw new CliArgsError(
+          `${raw === undefined ? 'Missing value for --conductor-budget' : `Invalid --conductor-budget "${raw}"`}: expected requests per minute, an integer between ${CONDUCTOR_BUDGET_MIN} and ${CONDUCTOR_BUDGET_MAX}.`,
+        );
+      }
+      args.conductorBudget = parsed;
+      i++;
+    } else if (argv[i] === '--no-sprites') {
+      args.sprites = false;
     } else if (argv[i] === '--help') {
-      console.log(`Usage: pixel-agents [options]
+      console.log(`Usage: poke-agents [options]
 
 Options:
-  --port, -p <number>   Port to listen on (default: OS-assigned ephemeral port)
+  --port, -p <number>   Port to listen on (default: ${DEFAULT_STANDALONE_PORT}, or an
+                        OS-assigned port when that one is busy)
   --host <string>       Host to bind to (default: 127.0.0.1)
   --allowed-host <name> Also accept the tokened URL at this host name, e.g. a
                         reverse proxy's (Tailscale Serve). Repeatable. Without
                         it, only localhost and a specific --host are privileged
   --rotate-token        Replace the server token. Every URL that carried the
                         old one (bookmarks, other devices) stops working
-  --no-terminal         Disable the embedded terminal (watch agents only; no
-                        launching or attaching from the browser)
+  --open, --app         Open the office in an app window (Chromium browsers;
+                        otherwise the default browser)
+  --browser <id>        Browser for --open: ${BROWSER_IDS.join(', ')}
+  --no-conductor        Don't track Conductor cloud sessions
+  --conductor-budget <n>
+                        Conductor API requests per minute (default: 120)
+  --claude              Also track local Claude Code sessions (hooks, terminal,
+                        + Agent)
+  --no-terminal         With --claude: disable the embedded terminal (watch
+                        agents only; no launching or attaching from the browser)
+  --no-sprites          Never download Pokémon sprites (also
+                        POKE_AGENTS_SPRITES=off)
   --help                Show this help message`);
       process.exit(0);
     }
@@ -193,6 +275,39 @@ function reportTerminalStatus(
   }
 }
 
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+// ── Port choice ───────────────────────────────────────────────
+
+/** Why a listen failed, when the OS said the port is taken. */
+function isAddressInUse(err: unknown): boolean {
+  return (err as { code?: unknown } | null)?.code === 'EADDRINUSE';
+}
+
+/**
+ * Start on the explicit --port, or on DEFAULT_STANDALONE_PORT with one retry
+ * on an OS-assigned port when that is busy. An explicit port never falls
+ * back: the operator asked for that one.
+ */
+export async function startOnPreferredPort<T>(
+  start: (port: number | undefined) => Promise<T>,
+  explicitPort: number | undefined,
+  log: (message: string) => void = console.log,
+): Promise<T> {
+  if (explicitPort !== undefined) return start(explicitPort);
+  try {
+    return await start(DEFAULT_STANDALONE_PORT);
+  } catch (err) {
+    if (!isAddressInUse(err)) throw err;
+    log(
+      `[Pixel Agents] Port ${DEFAULT_STANDALONE_PORT} is busy; using another one (pass --port to choose).`,
+    );
+    return start(undefined);
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -202,6 +317,15 @@ async function main(): Promise<void> {
   } catch (err) {
     console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
+  }
+
+  if (!args.sprites || process.env.POKE_AGENTS_SPRITES === 'off') {
+    setPokemonSpritesEnabled(false);
+  }
+  if (!args.claude && !args.conductor) {
+    console.warn(
+      '[Pixel Agents] Both Conductor and Claude Code tracking are off: the office will stay empty. Drop --no-conductor or add --claude.',
+    );
   }
 
   // dist/ contains both the CLI bundle and the assets/ + webview/ directories
@@ -238,25 +362,31 @@ async function main(): Promise<void> {
   // never opens a terminal never pays for it. With --no-terminal, a disabled
   // manager reports "unavailable" through the same plumbing (availability
   // broadcast, session route, launcher), so nothing downstream special-cases it.
-  const ptyManager = args.terminal
-    ? new PtySessionManager()
-    : PtySessionManager.disabled(TERMINAL_DISABLED_BY_FLAG_REASON);
+  // The terminal only ever runs Claude Code, so it is off without --claude.
+  const ptyManager = !args.claude
+    ? PtySessionManager.disabled(TERMINAL_DISABLED_NO_CLAUDE_REASON)
+    : args.terminal
+      ? new PtySessionManager()
+      : PtySessionManager.disabled(TERMINAL_DISABLED_BY_FLAG_REASON);
 
   try {
     // Create runtime first (before server.start, so we can pass it in)
     const runtime = new AgentRuntime(store, claudeProvider);
 
-    // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents
-    server.onHookEvent((providerId, event) => {
-      runtime.handleHookEvent(providerId, event);
-    });
+    // Wire hook events: HTTP POST -> runtime -> hookEventHandler -> agents.
+    // Without --claude, hooks a previous run installed are ignored.
+    if (args.claude) {
+      server.onHookEvent((providerId, event) => {
+        runtime.handleHookEvent(providerId, event);
+      });
+    }
 
     // onSetHooksEnabled side effect: install/uninstall the named provider's
     // hooks when the user toggles in the UI (or answers the consent ask).
     // Captures config from the outer scope after server.start().
     let currentConfig: { port: number; token: string } | null = null;
     const onSetHooksEnabled = async (providerId: string, enabled: boolean): Promise<void> => {
-      if (!currentConfig) return;
+      if (!currentConfig || !args.claude) return;
       const provider = hookProviderById(providerId);
       if (!provider) return; // unknown id: nothing to install into
       if (enabled) {
@@ -328,80 +458,115 @@ async function main(): Promise<void> {
       console.log('[Pixel Agents] Assets reloaded (external directory change)');
     };
 
-    const config = await server.start({
-      store,
-      runtime,
-      embedded: false,
-      host: args.host,
-      port: args.port,
-      staticDir,
-      assetCache,
-      onSetHooksEnabled,
-      onReloadAssets,
-      ptyManager,
-      allowedHosts: args.allowedHosts,
-      rotateToken: args.rotateToken,
-    });
+    const config: ServerConfig = await startOnPreferredPort(
+      (port) =>
+        server.start({
+          store,
+          runtime,
+          embedded: false,
+          host: args.host,
+          port,
+          staticDir,
+          assetCache,
+          onSetHooksEnabled,
+          onReloadAssets,
+          ptyManager,
+          allowedHosts: args.allowedHosts,
+          rotateToken: args.rotateToken,
+          claude: args.claude,
+          conductor: args.conductor,
+          openExternal: (url) => openWithSystem(url),
+        }),
+      args.port,
+    );
     currentConfig = { port: config.port, token: config.token };
     if (args.rotateToken) {
       console.log(
         '[Pixel Agents] Server token rotated: URLs carrying the old token no longer grant access. Open the new URL below on each device.',
       );
     }
+    const ownsServer = config.pid === process.pid;
 
-    reportTerminalStatus(ptyManager, args.host, args.terminal);
-
-    // Sync runtime refs with persisted settings BEFORE first scan tick. The
-    // runtime's single hooksEnabled ref follows the Claude provider until the
-    // scanners grow per-provider awareness alongside the Settings UI.
-    runtime.hooksEnabled.current = getHooksEnabled(claudeProvider.id);
-    runtime.watchAllSessions.current = adapter.getSetting('pixel-agents.watchAllSessions', false);
-
-    // Install hooks on startup if the persisted setting says so — gated on the
-    // one-time consent to modify ~/.claude/settings.json.
-    if (runtime.hooksEnabled.current) {
-      let consent = getHooksConsent(claudeProvider.id) === 'granted';
-      if (!consent && (await claudeProvider.areHooksInstalled())) {
-        // Our hooks are already installed and already firing — a pre-consent
-        // version put them there. Grant and continue with NO prompt: the
-        // install below is the 14 -> 12 migration, and it only ever REDUCES
-        // scope (it drops UserPromptSubmit and TaskCreated, the two events that
-        // forwarded prompt text and were consumed by nothing). Asking would buy
-        // this user no protection they do not already have, so they are not
-        // asked. A fresh install still is, in full — in the browser UI, when a
-        // tokened client connects (clientMessageHandler's webviewReady).
-        grantHooksConsent(claudeProvider.id);
-        consent = true;
+    // ── Conductor: poll only from the process that owns the server (a reused
+    // server already runs its own poller). Started without awaiting, so the
+    // office URL prints at once and sessions stream in as they are found.
+    // A Conductor failure never takes the office down with it.
+    let conductor: StreamProvider | null = null;
+    if (args.conductor && ownsServer) {
+      try {
+        conductor = createConductorProvider({
+          budgetPerMinute: args.conductorBudget,
+          log: (message) => console.log(`[Pixel Agents] Conductor: ${message}`),
+        });
+        const sink = runtime.attachStreamProvider(conductor, { memory: adapter });
+        void conductor.start(sink).catch((err: unknown) => {
+          console.error(`[Pixel Agents] Conductor failed to start: ${errorText(err)}`);
+        });
+      } catch (err) {
+        console.error(`[Pixel Agents] Conductor is unavailable: ${errorText(err)}`);
+        conductor = null;
       }
-      if (!consent) {
-        console.log(
-          '[Pixel Agents] Hooks not installed: modifying ~/.claude/settings.json needs one-time approval — open the URL below to review and approve it.',
-        );
-      } else if (copyHookScriptOrReport(packageRoot)) {
-        try {
-          await claudeProvider.installHooks(`http://127.0.0.1:${config.port}`, config.token);
-          console.log('[Pixel Agents] Hooks installed');
-        } catch (err) {
-          console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
-        }
-      }
-    } else {
-      // Without this line, a persisted hooks-off makes startup skip the entire
-      // consent/install flow with zero output — indistinguishable from a bug.
-      console.log(
-        '[Pixel Agents] Hooks disabled — enable "Instant Detection (Hooks)" in the UI settings to install them.',
-      );
     }
 
-    // Start scanning for external sessions (Claude running in user's terminal)
-    const cwd = process.cwd();
-    const dirs = claudeProvider.getSessionDirs?.(cwd);
-    if (dirs && dirs[0]) {
-      const projectDir = dirs[0];
-      console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
-      runtime.startProjectScan(projectDir);
-      runtime.startExternalScanning(projectDir);
-      runtime.startStaleCheck();
+    if (!args.claude) {
+      console.log(
+        '[Pixel Agents] Claude Code tracking is off (pass --claude for local sessions, hooks and the terminal).',
+      );
+    } else {
+      reportTerminalStatus(ptyManager, args.host, args.terminal);
+
+      // Sync runtime refs with persisted settings BEFORE first scan tick. The
+      // runtime's single hooksEnabled ref follows the Claude provider until the
+      // scanners grow per-provider awareness alongside the Settings UI.
+      runtime.hooksEnabled.current = getHooksEnabled(claudeProvider.id);
+      runtime.watchAllSessions.current = adapter.getSetting('pixel-agents.watchAllSessions', false);
+
+      // Install hooks on startup if the persisted setting says so — gated on the
+      // one-time consent to modify ~/.claude/settings.json.
+      if (runtime.hooksEnabled.current) {
+        let consent = getHooksConsent(claudeProvider.id) === 'granted';
+        if (!consent && (await claudeProvider.areHooksInstalled())) {
+          // Our hooks are already installed and already firing — a pre-consent
+          // version put them there. Grant and continue with NO prompt: the
+          // install below is the 14 -> 12 migration, and it only ever REDUCES
+          // scope (it drops UserPromptSubmit and TaskCreated, the two events that
+          // forwarded prompt text and were consumed by nothing). Asking would buy
+          // this user no protection they do not already have, so they are not
+          // asked. A fresh install still is, in full — in the browser UI, when a
+          // tokened client connects (clientMessageHandler's webviewReady).
+          grantHooksConsent(claudeProvider.id);
+          consent = true;
+        }
+        if (!consent) {
+          console.log(
+            '[Pixel Agents] Hooks not installed: modifying ~/.claude/settings.json needs one-time approval — open the URL below to review and approve it.',
+          );
+        } else if (copyHookScriptOrReport(packageRoot)) {
+          try {
+            await claudeProvider.installHooks(`http://127.0.0.1:${config.port}`, config.token);
+            console.log('[Pixel Agents] Hooks installed');
+          } catch (err) {
+            console.error(`[Pixel Agents] ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+      } else {
+        // Without this line, a persisted hooks-off makes startup skip the entire
+        // consent/install flow with zero output — indistinguishable from a bug.
+        console.log(
+          '[Pixel Agents] Hooks disabled — enable "Instant Detection (Hooks)" in the UI settings to install them.',
+        );
+      }
+
+      // Start scanning for external sessions (Claude running in user's terminal)
+      const cwd = process.cwd();
+      const dirs = claudeProvider.getSessionDirs?.(cwd);
+      if (dirs && dirs[0]) {
+        const projectDir = dirs[0];
+        console.log(`[Pixel Agents] Scanning project dir: ${projectDir}`);
+        runtime.startProjectScan(projectDir);
+        runtime.startExternalScanning(projectDir);
+        runtime.startStaleCheck();
+      }
     }
 
     // The URL the operator opens has to be REACHABLE (a wildcard bind address
@@ -413,9 +578,20 @@ async function main(): Promise<void> {
     // address; only the consent-bearing toggle needs the token.
     const displayHost =
       args.host === '0.0.0.0' || args.host === '::' || args.host === '' ? '127.0.0.1' : args.host;
-    console.log(
-      `\n  Pixel Agents server running at http://${displayHost}:${config.port}/?token=${config.token}\n`,
-    );
+    const officeUrl = `http://${displayHost}:${config.port}/?token=${config.token}`;
+    console.log(`\n  Poke Agents running at ${officeUrl}\n`);
+
+    // --open also runs against a reused server: it just opens another window
+    // onto the running office.
+    if (args.open) {
+      openAppWindow(officeUrl, { browser: args.browser })
+        .then((via) => console.log(`[Pixel Agents] Opened the office in ${via}`))
+        .catch((err: unknown) =>
+          console.warn(
+            `[Pixel Agents] Could not open a window (${errorText(err)}). Open the URL above.`,
+          ),
+        );
+    }
 
     // ── Graceful shutdown ──
     let shuttingDown = false;
@@ -423,6 +599,11 @@ async function main(): Promise<void> {
       if (shuttingDown) return;
       shuttingDown = true;
       console.log('\nShutting down...');
+      // Stop polling first: nothing should adopt agents into a runtime that is
+      // tearing them down.
+      await conductor?.stop().catch((err: unknown) => {
+        console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
+      });
       // Kill child terminals before the runtime tears their agents down, and
       // wait for them: exiting now would cancel the SIGKILL escalation and
       // leave a child that ignores SIGHUP orphaned on a dead server.

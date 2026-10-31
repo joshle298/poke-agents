@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { HookProvider } from '../../core/src/provider.js';
+import type { AgentEventSink, HookProvider, StreamProvider } from '../../core/src/provider.js';
 import { createAgentState } from './agentState.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { DismissalTracker } from './dismissalTracker.js';
@@ -39,6 +39,7 @@ import { HookEventHandler } from './hookEventHandler.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
 import { PathSet, pathsMatch } from './pathKey.js';
 import { SessionRouter } from './sessionRouter.js';
+import { StreamAgentDriver, type StreamAgentMemory } from './streamAgentDriver.js';
 import { SubagentWatch } from './subagentWatch.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
 import {
@@ -84,6 +85,8 @@ export class AgentRuntime {
   readonly subagentWatch: SubagentWatch;
   private hookEventHandler: HookEventHandler;
   private lifecycleCallbacks: RuntimeLifecycleCallbacks = {};
+  /** One driver per attached stream provider, keyed by provider id. */
+  private readonly streamDriverMap = new Map<string, StreamAgentDriver>();
 
   constructor(
     private readonly store: AgentStateStore,
@@ -285,6 +288,49 @@ export class AgentRuntime {
     this.lifecycleCallbacks = callbacks;
   }
 
+  // ── Stream providers (Conductor) ──
+
+  /**
+   * Attach a stream provider and return the sink to start it with
+   * (`provider.start(sink)`). Its sessions become hooks-only external agents
+   * driven entirely by what it pushes; it never enters the hook consent loop.
+   * `memory` keeps each session's agent id and Pokémon across restarts.
+   */
+  attachStreamProvider(
+    provider: StreamProvider,
+    options: { memory?: StreamAgentMemory } = {},
+  ): AgentEventSink {
+    if (this.streamDriverMap.has(provider.id)) {
+      throw new Error(`Stream provider "${provider.id}" is already attached`);
+    }
+    const driver = new StreamAgentDriver({
+      store: this.store,
+      runtime: this,
+      provider,
+      memory: options.memory,
+    });
+    this.streamDriverMap.set(provider.id, driver);
+    return driver;
+  }
+
+  /** The driver of an attached stream provider. */
+  streamDriver(providerId: string): StreamAgentDriver | undefined {
+    return this.streamDriverMap.get(providerId);
+  }
+
+  /** The driver whose provider feeds this agent, if a stream provider does. */
+  streamDriverForAgent(agentId: number): StreamAgentDriver | undefined {
+    for (const driver of this.streamDriverMap.values()) {
+      if (driver.owns(agentId)) return driver;
+    }
+    return undefined;
+  }
+
+  /** Every attached stream provider's driver, in attach order. */
+  streamDrivers(): StreamAgentDriver[] {
+    return [...this.streamDriverMap.values()];
+  }
+
   // ── Hook event routing ──
 
   /** Route an incoming hook event to the appropriate agent. */
@@ -385,6 +431,16 @@ export class AgentRuntime {
   closeAgent(id: number): void {
     const agent = this.store.get(id);
     if (!agent) return;
+    // A stream agent's session lives on in its service: dismissing hides it
+    // there (so the next poll doesn't re-adopt it) and leaves its children
+    // alone -- each child is a session of its own, hidden only by its own ×.
+    const streamDriver = this.streamDriverForAgent(id);
+    if (streamDriver) {
+      streamDriver.dismiss(id);
+      this.unregisterAgent(agent.sessionId);
+      this.removeAgent(id);
+      return;
+    }
     this.removeTeammates(id);
     this.subagentWatch.removeByLead(id);
     this.dismissalTracker.dismiss(agent.jsonlFile);
@@ -558,6 +614,9 @@ export class AgentRuntime {
   dispose(): void {
     this.hookEventHandler.dispose();
     this.subagentWatch.dispose();
+    // Drivers first: the removals below are shutdown, not sessions leaving.
+    for (const driver of this.streamDriverMap.values()) driver.dispose();
+    this.streamDriverMap.clear();
 
     if (this.projectScanTimer.current) {
       clearInterval(this.projectScanTimer.current);

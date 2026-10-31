@@ -21,7 +21,8 @@ import type { StateAdapter } from '../../core/src/adapter.js';
 import type { PersistedAgent } from '../../core/src/schemas.js';
 import type { AdapterSettingKey, AdapterSettings, ConfigNamespace } from './configPersistence.js';
 import { ADAPTER_SETTING_KEYS, readConfig, writeConfig } from './configPersistence.js';
-import { LAYOUT_FILE_DIR } from './constants.js';
+import { LAYOUT_FILE_DIR, STREAM_AGENT_MEMORY_MAX } from './constants.js';
+import type { StreamAgentMemory, StreamAgentRecord } from './streamAgentDriver.js';
 
 const ADAPTER_SETTING_KEY_SET: ReadonlySet<string> = new Set(ADAPTER_SETTING_KEYS);
 
@@ -34,15 +35,17 @@ function settingNameOf(key: string): AdapterSettingKey | null {
 interface AdapterState {
   agents: PersistedAgent[];
   seats: Record<string, { palette?: number; hueShift?: number; seatId?: string }>;
+  /** Stream sessions seen before (`conductor:<uuid>` -> agent id + Pokémon), so
+   *  a session returns as the same agent in the same seat. Survives the agent
+   *  list being rewritten to live agents only. */
+  streamAgents: Record<string, StreamAgentRecord>;
 }
-
-const EMPTY_STATE: AdapterState = { agents: [], seats: {} };
 
 export interface FileStateAdapterOptions {
   namespace: ConfigNamespace;
 }
 
-export class FileStateAdapter implements StateAdapter {
+export class FileStateAdapter implements StateAdapter, StreamAgentMemory {
   private readonly namespace: ConfigNamespace;
   private readonly stateFilePath: string;
 
@@ -95,12 +98,31 @@ export class FileStateAdapter implements StateAdapter {
     this.writeState(state);
   }
 
+  // ── Stream sessions (StreamAgentMemory) ─────────────────────
+
+  loadStreamAgents(): Map<string, StreamAgentRecord> {
+    return new Map(Object.entries(this.readState().streamAgents));
+  }
+
+  saveStreamAgent(key: string, record: StreamAgentRecord): void {
+    const state = this.readState();
+    // Re-inserted last, so the oldest entries are the first keys: those go
+    // when the map outgrows its cap.
+    delete state.streamAgents[key];
+    state.streamAgents[key] = record;
+    const keys = Object.keys(state.streamAgents);
+    for (const old of keys.slice(0, Math.max(0, keys.length - STREAM_AGENT_MEMORY_MAX))) {
+      delete state.streamAgents[old];
+    }
+    this.writeState(state);
+  }
+
   // ── Internal state-file I/O ─────────────────────────────────
 
   private readState(): AdapterState {
     try {
       if (!fs.existsSync(this.stateFilePath)) {
-        return { agents: [], seats: {} };
+        return { agents: [], seats: {}, streamAgents: {} };
       }
       const raw = fs.readFileSync(this.stateFilePath, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<AdapterState>;
@@ -110,10 +132,11 @@ export class FileStateAdapter implements StateAdapter {
           parsed.seats && typeof parsed.seats === 'object'
             ? (parsed.seats as AdapterState['seats'])
             : {},
+        streamAgents: parseStreamAgents(parsed.streamAgents),
       };
     } catch (err) {
       console.error('[Pixel Agents] Failed to read adapter state:', err);
-      return { ...EMPTY_STATE };
+      return { agents: [], seats: {}, streamAgents: {} };
     }
   }
 
@@ -131,6 +154,24 @@ export class FileStateAdapter implements StateAdapter {
       console.error('[Pixel Agents] Failed to write adapter state:', err);
     }
   }
+}
+
+/** Keep only well-formed entries: the file is hand-editable. */
+function parseStreamAgents(raw: unknown): Record<string, StreamAgentRecord> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, StreamAgentRecord> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue;
+    const v = value as Record<string, unknown>;
+    if (!Number.isSafeInteger(v.agentId) || (v.agentId as number) < 1) continue;
+    out[key] = {
+      agentId: v.agentId as number,
+      pokemonLine: typeof v.pokemonLine === 'string' ? v.pokemonLine : undefined,
+      species: Number.isSafeInteger(v.species) ? (v.species as number) : undefined,
+      shiny: typeof v.shiny === 'boolean' ? v.shiny : undefined,
+    };
+  }
+  return out;
 }
 
 // Re-export for callers that want to construct AdapterSettings defaults directly.

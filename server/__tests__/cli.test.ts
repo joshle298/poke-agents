@@ -3,9 +3,10 @@ import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { CliArgsError, parseArgs } from '../src/cli.js';
+import { CliArgsError, parseArgs, startOnPreferredPort } from '../src/cli.js';
+import { DEFAULT_STANDALONE_PORT } from '../src/constants.js';
 import { CLAUDE_HOOK_EVENTS } from '../src/providers/hook/claude/constants.js';
 
 const CLI_BUNDLE = path.join(__dirname, '../../dist/cli.js');
@@ -65,8 +66,9 @@ function runCli(args: string[]): Promise<{ code: number | null; stdout: string; 
 }
 
 describe('parseArgs', () => {
-  // 1. No --port -> ephemeral default (unset), never a hardcoded port
-  it('defaults port to undefined (ephemeral) when --port is omitted', () => {
+  // 1. No --port -> unset: main() tries DEFAULT_STANDALONE_PORT, then an
+  //    ephemeral one (startOnPreferredPort). parseArgs stays pure.
+  it('leaves port undefined when --port is omitted', () => {
     const args = parseArgs([]);
     expect(args.port).toBeUndefined();
     expect(args.host).toBe('127.0.0.1');
@@ -152,6 +154,85 @@ describe('parseArgs', () => {
     expect(parseArgs([]).rotateToken).toBe(false);
     expect(parseArgs(['--rotate-token']).rotateToken).toBe(true);
   });
+
+  // 13. Providers: Conductor on by default, Claude Code opt-in
+  it('tracks Conductor and not Claude Code by default', () => {
+    expect(parseArgs([])).toMatchObject({ conductor: true, claude: false });
+  });
+
+  it('parses --no-conductor and --claude independently', () => {
+    expect(parseArgs(['--no-conductor'])).toMatchObject({ conductor: false, claude: false });
+    expect(parseArgs(['--claude'])).toMatchObject({ conductor: true, claude: true });
+    expect(parseArgs(['--claude', '--no-conductor'])).toMatchObject({
+      conductor: false,
+      claude: true,
+    });
+  });
+
+  // 14. --open / --app and --browser
+  it('parses --open and its --app alias', () => {
+    expect(parseArgs([]).open).toBe(false);
+    expect(parseArgs(['--open']).open).toBe(true);
+    expect(parseArgs(['--app']).open).toBe(true);
+  });
+
+  it('accepts a known --browser and rejects an unknown or missing one', () => {
+    expect(parseArgs([]).browser).toBeUndefined();
+    expect(parseArgs(['--open', '--browser', 'chrome']).browser).toBe('chrome');
+    expect(parseArgs(['--browser', 'default']).browser).toBe('default');
+    expect(() => parseArgs(['--browser', 'netscape'])).toThrow(CliArgsError);
+    expect(() => parseArgs(['--browser'])).toThrow(/Missing value/);
+  });
+
+  // 15. --conductor-budget and --no-sprites
+  it('parses --conductor-budget as a bounded integer', () => {
+    expect(parseArgs([]).conductorBudget).toBeUndefined();
+    expect(parseArgs(['--conductor-budget', '60']).conductorBudget).toBe(60);
+    for (const bad of ['0', '-5', '2.5', 'lots', '100000']) {
+      expect(() => parseArgs(['--conductor-budget', bad])).toThrow(CliArgsError);
+    }
+    expect(() => parseArgs(['--conductor-budget'])).toThrow(/Missing value/);
+  });
+
+  it('parses --no-sprites', () => {
+    expect(parseArgs([]).sprites).toBe(true);
+    expect(parseArgs(['--no-sprites']).sprites).toBe(false);
+  });
+});
+
+describe('startOnPreferredPort', () => {
+  const inUse = Object.assign(new Error('listen EADDRINUSE'), { code: 'EADDRINUSE' });
+  const quiet = () => {};
+
+  it('tries the default port first', async () => {
+    const start = vi.fn(async (port: number | undefined) => port);
+    expect(await startOnPreferredPort(start, undefined, quiet)).toBe(DEFAULT_STANDALONE_PORT);
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to an OS-assigned port when the default one is busy', async () => {
+    const start = vi.fn(async (port: number | undefined) => {
+      if (port === DEFAULT_STANDALONE_PORT) throw inUse;
+      return port;
+    });
+    expect(await startOnPreferredPort(start, undefined, quiet)).toBeUndefined();
+    expect(start.mock.calls).toEqual([[DEFAULT_STANDALONE_PORT], [undefined]]);
+  });
+
+  it('never falls back from an explicit --port, nor on other errors', async () => {
+    const busy = vi.fn(async () => {
+      throw inUse;
+    });
+    await expect(startOnPreferredPort(busy, 3100, quiet)).rejects.toBe(inUse);
+    expect(busy.mock.calls).toEqual([[3100]]);
+
+    const denied = Object.assign(new Error('listen EACCES'), { code: 'EACCES' });
+    const broken = vi.fn(async () => {
+      throw denied;
+    });
+    await expect(startOnPreferredPort(broken, undefined, quiet)).rejects.toBe(denied);
+    expect(broken).toHaveBeenCalledTimes(1);
+  });
 });
 
 // The TTY consent prompt is gone: first-run consent is asked in the app, as
@@ -182,7 +263,7 @@ describe('dist/cli.js entry-point guard', () => {
   itBuilt('runs main() when executed directly: --help prints usage and exits 0', async () => {
     const { code, stdout } = await runCli(['--help']);
     expect(code).toBe(0);
-    expect(stdout).toContain('Usage: pixel-agents');
+    expect(stdout).toContain('Usage: poke-agents');
   });
 
   // 12. Direct execution still runs main()'s port validation (rejects before listen())
@@ -203,14 +284,21 @@ describe('dist/cli.js entry-point guard', () => {
     tmpHome: string,
     body: (ctx: { output: () => string; port: number }) => Promise<void>,
     host = '127.0.0.1',
+    providerFlags: string[] = ['--claude', '--no-conductor'],
   ): Promise<void> {
     const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-cli-workspace-'));
     const port = await getFreePort();
-    const child = spawn(process.execPath, [CLI_BUNDLE, '--port', port.toString(), '--host', host], {
-      cwd: workspaceDir,
-      env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    // These pin Claude Code behaviors (consent, hook install), which are
+    // opt-in; and a test never reaches the Conductor API or the sprite hosts.
+    const child = spawn(
+      process.execPath,
+      [CLI_BUNDLE, '--port', port.toString(), '--host', host, ...providerFlags],
+      {
+        cwd: workspaceDir,
+        env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, POKE_AGENTS_SPRITES: 'off' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
     let output = '';
     child.stdout.on('data', (chunk: Buffer) => (output += chunk.toString()));
     child.stderr.on('data', (chunk: Buffer) => (output += chunk.toString()));
@@ -238,7 +326,7 @@ describe('dist/cli.js entry-point guard', () => {
    *  would be testing the helper. The trailing `\s` makes it wait for a
    *  complete line: stdout arrives in chunks, and a half-delivered URL still
    *  parses as a URL (`http://127.0.0.1:501`). */
-  const URL_LINE = /Pixel Agents server running at (\S+)\s/;
+  const URL_LINE = /Poke Agents running at (\S+)\s/;
 
   function printedUrl(output: string): URL {
     const match = URL_LINE.exec(output);
@@ -382,6 +470,39 @@ describe('dist/cli.js entry-point guard', () => {
     });
   });
 
+  // Claude Code tracking is opt-in: without --claude, even a granted consent
+  // installs nothing, and the terminal (which only runs Claude) is off.
+  // --no-conductor keeps the run off the network.
+  itBuilt('leaves Claude Code alone unless --claude is passed', async () => {
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-cli-noclaude-'));
+    fs.mkdirSync(path.join(tmpHome, '.pixel-agents'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpHome, '.pixel-agents', 'config.json'),
+      JSON.stringify({ hooksConsent: { claude: 'granted' } }),
+    );
+    await runCliServer(
+      tmpHome,
+      async ({ output }) => {
+        await waitForCondition(() => URL_LINE.test(output()));
+        expect(output()).toContain('Claude Code tracking is off');
+        expect(output()).not.toContain('Hooks installed');
+        expect(fs.existsSync(path.join(tmpHome, '.claude', 'settings.json'))).toBe(false);
+        expect(fs.existsSync(path.join(tmpHome, '.pixel-agents', 'hooks'))).toBe(false);
+        const registry = path.join(tmpHome, '.pixel-agents', 'servers');
+        const entry = JSON.parse(
+          fs.readFileSync(path.join(registry, fs.readdirSync(registry)[0]), 'utf-8'),
+        ) as { standalone: Record<string, unknown> };
+        expect(entry.standalone).toMatchObject({
+          terminal: false,
+          claude: false,
+          conductor: false,
+        });
+      },
+      '127.0.0.1',
+      ['--no-conductor'],
+    );
+  });
+
   // W5: the hook script is copied BEFORE the settings entries, and a failed
   // copy aborts the install. An entry pointing at a script that does not exist
   // makes Claude Code spawn a dead `node` for every event — worse than nothing.
@@ -419,10 +540,10 @@ describe('dist/cli.js entry-point guard', () => {
     const port = await getFreePort();
     const child = spawn(
       process.execPath,
-      [CLI_BUNDLE, '--port', port.toString(), '--host', '127.0.0.1'],
+      [CLI_BUNDLE, '--port', port.toString(), '--host', '127.0.0.1', '--claude', '--no-conductor'],
       {
         cwd: workspaceDir,
-        env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome },
+        env: { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, POKE_AGENTS_SPRITES: 'off' },
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );

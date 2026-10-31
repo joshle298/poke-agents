@@ -1,0 +1,371 @@
+/**
+ * Client messages that act on stream-provider sessions (Conductor): the
+ * Pokédex panel's detail and actions, the Sessions modal's scope, hide and pin
+ * controls, the PC Box, and deep links. Dispatched from handleClientMessage
+ * after its read-only gate, so every one of them is privileged.
+ *
+ * Agent-addressed messages resolve their session through the driver that owns
+ * the agent; session-addressed ones go to the Conductor driver. Every action
+ * answers its sender with conductorActionResult, success or not.
+ */
+
+import type { ConductorAction, ConductorScope } from '../../core/src/messages.js';
+import type { ClientMessageContext } from './clientMessageHandler.js';
+import {
+  AGENT_ERROR_MESSAGE_MAX_LENGTH,
+  CONDUCTOR_SCOPE_MAX_HOURS,
+  CONDUCTOR_SCOPE_MAX_SESSIONS,
+  EXTERNAL_URL_HOST,
+  EXTERNAL_URL_MAX_LENGTH,
+  EXTERNAL_URL_SCHEME_PATTERN,
+  SESSION_MESSAGE_MAX_LENGTH,
+} from './constants.js';
+import type { StreamAgentDriver } from './streamAgentDriver.js';
+
+type WsSend = (message: Record<string, unknown>) => void;
+
+/** The stream provider that session-addressed messages (scope, hide, pin, PC Box) act on. */
+const CONDUCTOR_PROVIDER_ID = 'conductor';
+
+/** Provider session ids as they may arrive from a client. */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
+
+const NOT_ENABLED_MESSAGE = 'Conductor is not enabled on this server.';
+const NOT_A_SESSION_MESSAGE = 'This agent is not a Conductor session.';
+const INVALID_REQUEST_MESSAGE = 'Invalid request.';
+const EMPTY_MESSAGE_MESSAGE = 'Type a message first.';
+const MESSAGE_TOO_LONG_MESSAGE = 'Message is too long.';
+const INVALID_SCOPE_MESSAGE = 'Invalid scope.';
+const BLOCKED_LINK_MESSAGE = 'Only Conductor links can be opened.';
+const NO_LINK_OPENER_MESSAGE = 'Opening links is not available here.';
+const READ_ONLY_MESSAGE = 'Read-only office: open the tokened URL to make changes.';
+
+/** Every message type this module handles. */
+export const STREAM_SESSION_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  'requestSessionDetail',
+  'sendSessionMessage',
+  'stopSession',
+  'archiveSession',
+  'restoreSession',
+  'setSessionHidden',
+  'setSessionPinned',
+  'setConductorScope',
+  'requestConductorSessions',
+  'openExternal',
+]);
+
+/** Message types that answer with conductorActionResult. */
+const ACTION_TYPES: ReadonlySet<string> = new Set<ConductorAction>([
+  'sendSessionMessage',
+  'stopSession',
+  'openExternal',
+  'setSessionHidden',
+  'setSessionPinned',
+  'setConductorScope',
+  'archiveSession',
+  'restoreSession',
+]);
+
+export function handleStreamSessionMessage(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+): void {
+  switch (msg.type) {
+    case 'requestSessionDetail':
+      void requestSessionDetail(msg, send, ctx);
+      return;
+    case 'sendSessionMessage': {
+      const text = typeof msg.text === 'string' ? msg.text : '';
+      if (!text.trim())
+        return reply(send, 'sendSessionMessage', false, EMPTY_MESSAGE_MESSAGE, msg.id);
+      if (text.length > SESSION_MESSAGE_MAX_LENGTH) {
+        return reply(send, 'sendSessionMessage', false, MESSAGE_TOO_LONG_MESSAGE, msg.id);
+      }
+      return agentAction(msg, send, ctx, 'sendSessionMessage', (p, sessionId) =>
+        p.sendMessage ? p.sendMessage(sessionId, text) : UNSUPPORTED,
+      );
+    }
+    case 'stopSession':
+      return agentAction(msg, send, ctx, 'stopSession', (p, sessionId) =>
+        p.stopSession ? p.stopSession(sessionId) : UNSUPPORTED,
+      );
+    case 'archiveSession':
+      return sessionAction(msg, send, ctx, 'archiveSession', (p, sessionId) =>
+        p.archiveSession ? p.archiveSession(sessionId) : UNSUPPORTED,
+      );
+    case 'restoreSession':
+      return sessionAction(msg, send, ctx, 'restoreSession', (p, sessionId) =>
+        p.restoreSession ? p.restoreSession(sessionId) : UNSUPPORTED,
+      );
+    case 'setSessionHidden': {
+      if (typeof msg.hidden !== 'boolean') {
+        return reply(send, 'setSessionHidden', false, INVALID_REQUEST_MESSAGE);
+      }
+      const hidden = msg.hidden;
+      return sessionAction(msg, send, ctx, 'setSessionHidden', (p, sessionId) =>
+        p.setSessionHidden ? p.setSessionHidden(sessionId, hidden) : UNSUPPORTED,
+      );
+    }
+    case 'setSessionPinned': {
+      if (typeof msg.pinned !== 'boolean') {
+        return reply(send, 'setSessionPinned', false, INVALID_REQUEST_MESSAGE);
+      }
+      const pinned = msg.pinned;
+      return sessionAction(msg, send, ctx, 'setSessionPinned', (p, sessionId) =>
+        p.setSessionPinned ? p.setSessionPinned(sessionId, pinned) : UNSUPPORTED,
+      );
+    }
+    case 'setConductorScope': {
+      const scope = parseScope(msg.scope);
+      if (!scope) return reply(send, 'setConductorScope', false, INVALID_SCOPE_MESSAGE);
+      const driver = conductorDriver(ctx);
+      if (!driver) return reply(send, 'setConductorScope', false, NOT_ENABLED_MESSAGE);
+      return run(send, 'setConductorScope', undefined, driver, () =>
+        driver.provider.setScope ? driver.provider.setScope(scope) : UNSUPPORTED,
+      );
+    }
+    case 'requestConductorSessions':
+      send({ type: 'conductorSessions', sessions: conductorDriver(ctx)?.sessionsSnapshot() ?? [] });
+      return;
+    case 'openExternal':
+      void openExternal(msg.url, send, ctx);
+      return;
+  }
+}
+
+/**
+ * The read-only gate's answer for these messages: actions get a refusal (so a
+ * pending control settles), and the optimistic Sessions-modal toggles get the
+ * real state back.
+ */
+export function refuseStreamSessionMessage(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+): void {
+  const type = String(msg.type);
+  if (!ACTION_TYPES.has(type)) return;
+  const driver = conductorDriver(ctx);
+  if (type === 'setSessionHidden' || type === 'setSessionPinned') {
+    if (driver) send({ type: 'conductorSessions', sessions: driver.sessionsSnapshot() });
+  } else if (type === 'setConductorScope') {
+    const status = driver?.statusMessage();
+    if (status) send(status);
+  }
+  reply(send, type as ConductorAction, false, READ_ONLY_MESSAGE, agentIdOf(msg, driver));
+}
+
+/** Whether a deep link may be opened on the host: a Conductor scheme
+ *  (`conductor:` or `conductor-<channel>:`) naming the `workspace` host. */
+export function isAllowedExternalUrl(url: unknown): url is string {
+  if (typeof url !== 'string' || url.length === 0 || url.length > EXTERNAL_URL_MAX_LENGTH) {
+    return false;
+  }
+  // Control characters and whitespace never belong in a deep link, and some
+  // openers treat them as argument separators.
+  for (let i = 0; i < url.length; i++) {
+    const code = url.charCodeAt(i);
+    if (code <= 0x20 || code === 0x7f) return false;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  return (
+    EXTERNAL_URL_SCHEME_PATTERN.test(parsed.protocol) &&
+    parsed.hostname === EXTERNAL_URL_HOST &&
+    parsed.username === '' &&
+    parsed.password === '' &&
+    parsed.port === ''
+  );
+}
+
+// ── Handlers ────────────────────────────────────────────────────
+
+async function requestSessionDetail(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+): Promise<void> {
+  const id = msg.id;
+  if (!isAgentId(id)) return;
+  const driver = ctx.runtime?.streamDriverForAgent(id);
+  const sessionId = driver?.sessionIdFor(id);
+  if (!driver || sessionId === undefined) {
+    send({ type: 'sessionDetail', id, entries: [] });
+    return;
+  }
+  const provider = driver.provider;
+  try {
+    // An open Pokédex asks every few seconds: keep its session polled fast.
+    provider.setFocus?.([sessionId]);
+    const detail = (await provider.getSessionDetail?.(sessionId)) ?? null;
+    send({
+      type: 'sessionDetail',
+      id,
+      prompt: detail?.prompt,
+      entries: (detail?.entries ?? []).map(({ peerSessionId, ...entry }) => ({
+        ...entry,
+        peerId: peerSessionId !== undefined ? driver.agentIdFor(peerSessionId) : undefined,
+      })),
+      truncated: detail?.truncated,
+    });
+  } catch (err) {
+    // Keep whatever the panel already shows; a later request may succeed.
+    console.error(
+      `[Pixel Agents] Session detail for agent ${id} failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+async function openExternal(url: unknown, send: WsSend, ctx: ClientMessageContext): Promise<void> {
+  if (!isAllowedExternalUrl(url)) {
+    reply(send, 'openExternal', false, BLOCKED_LINK_MESSAGE);
+    return;
+  }
+  if (!ctx.openExternal) {
+    reply(send, 'openExternal', false, NO_LINK_OPENER_MESSAGE);
+    return;
+  }
+  try {
+    await ctx.openExternal(new URL(url).href);
+    reply(send, 'openExternal', true);
+  } catch (err) {
+    reply(send, 'openExternal', false, userMessage(err));
+  }
+}
+
+/** What a provider call returns when the provider lacks the method. */
+const UNSUPPORTED = Symbol('unsupported');
+
+type CallOutcome = Promise<void> | void | typeof UNSUPPORTED;
+
+type ProviderCall = (provider: StreamAgentDriver['provider'], sessionId: string) => CallOutcome;
+
+/** An action on the session behind an agent id. */
+function agentAction(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+  action: ConductorAction,
+  call: ProviderCall,
+): void {
+  const id = msg.id;
+  if (!isAgentId(id)) return reply(send, action, false, INVALID_REQUEST_MESSAGE);
+  const driver = ctx.runtime?.streamDriverForAgent(id);
+  const sessionId = driver?.sessionIdFor(id);
+  if (!driver || sessionId === undefined)
+    return reply(send, action, false, NOT_A_SESSION_MESSAGE, id);
+  run(send, action, id, driver, () => call(driver.provider, sessionId));
+}
+
+/** An action on a session named by its provider id (it may not be in the office). */
+function sessionAction(
+  msg: Record<string, unknown>,
+  send: WsSend,
+  ctx: ClientMessageContext,
+  action: ConductorAction,
+  call: ProviderCall,
+): void {
+  const sessionId = msg.sessionId;
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) {
+    return reply(send, action, false, INVALID_REQUEST_MESSAGE);
+  }
+  const driver = conductorDriver(ctx);
+  if (!driver) return reply(send, action, false, NOT_ENABLED_MESSAGE);
+  const id = driver.agentIdFor(sessionId);
+  run(send, action, id, driver, () => call(driver.provider, sessionId));
+}
+
+/** Run a provider call (sync or async) and answer with its outcome. */
+function run(
+  send: WsSend,
+  action: ConductorAction,
+  id: number | undefined,
+  driver: StreamAgentDriver,
+  call: () => CallOutcome,
+): void {
+  let outcome: CallOutcome;
+  try {
+    outcome = call();
+  } catch (err) {
+    reply(send, action, false, userMessage(err), id);
+    return;
+  }
+  if (outcome === UNSUPPORTED) {
+    reply(send, action, false, `${driver.provider.displayName} does not support this.`, id);
+    return;
+  }
+  Promise.resolve(outcome).then(
+    () => reply(send, action, true, undefined, id),
+    (err: unknown) => reply(send, action, false, userMessage(err), id),
+  );
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+function conductorDriver(ctx: ClientMessageContext): StreamAgentDriver | undefined {
+  return ctx.runtime?.streamDriver(CONDUCTOR_PROVIDER_ID);
+}
+
+function reply(
+  send: WsSend,
+  action: ConductorAction,
+  ok: boolean,
+  message?: string,
+  id?: unknown,
+): void {
+  send({
+    type: 'conductorActionResult',
+    action,
+    id: isAgentId(id) ? id : undefined,
+    ok,
+    message,
+  });
+}
+
+function agentIdOf(msg: Record<string, unknown>, driver: StreamAgentDriver | undefined): unknown {
+  if (msg.id !== undefined) return msg.id;
+  return typeof msg.sessionId === 'string' ? driver?.agentIdFor(msg.sessionId) : undefined;
+}
+
+function isAgentId(value: unknown): value is number {
+  return Number.isSafeInteger(value);
+}
+
+/** Providers reject with user-facing messages; anything else gets a generic one. */
+function userMessage(err: unknown): string {
+  const text = err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+  const trimmed = text.trim();
+  if (!trimmed) return 'Something went wrong.';
+  return trimmed.length > AGENT_ERROR_MESSAGE_MAX_LENGTH
+    ? `${trimmed.slice(0, AGENT_ERROR_MESSAGE_MAX_LENGTH - 1)}…`
+    : trimmed;
+}
+
+function parseScope(raw: unknown): ConductorScope | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const { creator, activeWithinHours, showIdle, maxSessions } = raw as Record<string, unknown>;
+  if (creator !== 'me' && creator !== 'all') return null;
+  if (
+    typeof activeWithinHours !== 'number' ||
+    !Number.isFinite(activeWithinHours) ||
+    activeWithinHours < 0 ||
+    activeWithinHours > CONDUCTOR_SCOPE_MAX_HOURS
+  ) {
+    return null;
+  }
+  if (typeof showIdle !== 'boolean') return null;
+  if (
+    typeof maxSessions !== 'number' ||
+    !Number.isSafeInteger(maxSessions) ||
+    maxSessions < 1 ||
+    maxSessions > CONDUCTOR_SCOPE_MAX_SESSIONS
+  ) {
+    return null;
+  }
+  return { creator, activeWithinHours, showIdle, maxSessions };
+}
