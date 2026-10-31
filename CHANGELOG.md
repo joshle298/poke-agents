@@ -4,7 +4,7 @@
 
 ### Changes
 
-- A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor, replacing Promptling in the Mac app, the favicon and the installed web app.
+- A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor in place of its collar, replacing Promptling in the Mac app, the favicon and the installed web app. At 16 and 48 px it shows a dark C on a gold collar.
 
 ## Poke Agents v0.3.0
 

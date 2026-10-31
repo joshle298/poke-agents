@@ -10,6 +10,7 @@ import {
   bodyCoverage,
   buildIco,
   buildOutputs,
+  cellLayout,
   designFor,
   encodePng,
   ICNS_ENTRIES,
@@ -105,29 +106,27 @@ test('buildIco writes 0 for a 256 px dimension, as the format requires', () => {
 test('the pixel art stays inside the rounded square at every size', () => {
   for (const size of [16, 32, 48, 64, 128, 256, 1024]) {
     const grid = designFor(size);
-    const cells = grid.length;
+    const { edge } = cellLayout(size, grid.length);
     const body = bodyCoverage(size);
-    for (let cy = 0; cy < cells; cy++) {
-      for (let cx = 0; cx < cells; cx++) {
-        if (!grid[cy][cx]) continue;
-        for (
-          let y = Math.round((cy * size) / cells);
-          y < Math.round(((cy + 1) * size) / cells);
-          y++
-        ) {
-          for (
-            let x = Math.round((cx * size) / cells);
-            x < Math.round(((cx + 1) * size) / cells);
-            x++
-          ) {
-            assert.ok(
-              body[y * size + x] >= 0.5,
-              `${size} px: cell (${cx}, ${cy}) leaves the square`,
-            );
-          }
+    for (const { x, y } of cellsOf(grid, () => true)) {
+      for (let py = edge(y); py < edge(y + 1); py++) {
+        for (let px = edge(x); px < edge(x + 1); px++) {
+          assert.ok(body[py * size + px] >= 0.5, `${size} px: cell (${x}, ${y}) leaves the square`);
         }
       }
     }
+  }
+});
+
+/** Every size buildOutputs writes, apart from the full-bleed touch icon. */
+const OUTPUT_SIZES = [
+  ...new Set([...ICNS_ENTRIES.map(([, size]) => size), 16, 32, 48, 192, 256, 512, 128]),
+];
+
+test('every output size draws its design on whole-pixel cells', () => {
+  for (const size of OUTPUT_SIZES) {
+    const cells = designFor(size).length;
+    assert.equal(size % cells, 0, `${size} px draws ${cells} cells of ${size / cells} px`);
   }
 });
 
@@ -163,15 +162,22 @@ test('the committed icon files are what the script draws (run it after changing 
 
 /** The sparkles, which sit apart from the capsule. */
 const SPARKLE_KEYS = new Set('yYW');
-/** The C's gold. */
+/** The C's gold (the collar's at 16 px). */
 const GOLD_KEYS = new Set('Ggo');
+/** The outline (at 16 px, the C printed on the collar). */
+const DARK_KEYS = new Set('k');
 const TEAL_KEYS = new Set('TtdD');
 const CREAM_KEYS = new Set('wcCb');
 const DESIGN_SIZES = [16, 32, 48, 64, 128, 1024];
+/** The hand-drawn 16 px design, which 48 px also draws. */
+const isSmallDesign = (size) => designFor(size).length === 16;
 
 /** Every drawn cell of a grid whose key passes `keep`. */
-const cellsOf = (grid, keep) =>
-  grid.flatMap((row, y) => row.flatMap((key, x) => (key && keep(key) ? [{ x, y, key }] : [])));
+function cellsOf(grid, keep) {
+  return grid.flatMap((row, y) =>
+    row.flatMap((key, x) => (key && keep(key) ? [{ x, y, key }] : [])),
+  );
+}
 
 const capsuleCells = (grid) => cellsOf(grid, (key) => !SPARKLE_KEYS.has(key));
 
@@ -185,53 +191,64 @@ function box(cells) {
 
 const mean = (values) => values.reduce((sum, v) => sum + v, 0) / values.length;
 
-test('the capsule is a pill 1.4 to 1.6 times as wide as tall at every size, not a ball', () => {
+test('the capsule is a pill 1.4 to 2 times as wide as tall at every size, not a ball', () => {
+  // The office sprite's closed capsule is 16 by 8, twice as wide as tall.
   for (const size of DESIGN_SIZES) {
     const { width, height } = box(capsuleCells(designFor(size)));
     const ratio = width / height;
-    assert.ok(ratio >= 1.4 && ratio <= 1.6, `${size} px: ${width} x ${height}`);
+    assert.ok(ratio >= 1.4 && ratio <= 2, `${size} px: ${width} x ${height}`);
   }
 });
 
 /**
- * The C drawn in gold, or null. Its box must hold a spine down the left
- * (each row starts in the box's first two columns, for the rounded
- * corners), top and bottom arms that reach the right edge, and between them
- * rows where the gold stops at the spine, at least two cells short of the
- * right edge: a counter open to the right. That rules out an O, an E, a
- * mirrored C and a solid block.
+ * The C drawn in `keys`, or null. Taken top to bottom, the rows of its box
+ * must each hold one run of those keys starting in the box's first two
+ * columns (for rounded corners): first an arm reaching the right edge, then
+ * at least two rows that stop at least two cells short of it (a counter open
+ * to the right), then an arm reaching the right edge again. That rules out
+ * an O, an E, a mirrored C and a solid block.
  */
-function findC(grid) {
-  const gold = cellsOf(grid, (key) => GOLD_KEYS.has(key));
-  if (gold.length === 0) return null;
-  const found = box(gold);
+function findC(grid, keys) {
+  const cells = cellsOf(grid, (key) => keys.has(key));
+  if (cells.length === 0) return null;
+  const found = box(cells);
   const { x0, x1, y0, y1 } = found;
   if (found.height < 5 || found.width < 3) return null;
-  const isGold = (x, y) => GOLD_KEYS.has(grid[y][x]);
-  /** The gold in row y, if it is one run: its first and last column. */
-  const run = (y) => {
-    const xs = [];
-    for (let x = x0; x <= x1; x++) if (isGold(x, y)) xs.push(x);
-    if (xs.length === 0 || xs.at(-1) - xs[0] + 1 !== xs.length) return null;
-    return { from: xs[0], to: xs.at(-1) };
-  };
+  let shape = '';
   for (let y = y0; y <= y1; y++) {
-    const r = run(y);
-    if (!r || r.from > x0 + 1) return null;
-    const arm = y === y0 || y === y1;
-    const counter = y >= y0 + 2 && y <= y1 - 2;
-    if (arm && r.to !== x1) return null;
-    if (counter && r.to > x1 - 2) return null;
+    const xs = [];
+    for (let x = x0; x <= x1; x++) if (keys.has(grid[y][x])) xs.push(x);
+    if (xs.length === 0 || xs.at(-1) - xs[0] + 1 !== xs.length || xs[0] > x0 + 1) return null;
+    shape += xs.at(-1) === x1 ? 'a' : xs.at(-1) <= x1 - 2 ? 'c' : '?';
   }
-  return found;
+  return /^a+c{2,}a+$/.test(shape) ? found : null;
 }
+
+/** At 16 px, the C printed dark on the gold collar, or null: the collar must
+ *  show left of its spine, above and below it, and in its counter. */
+function findPrintedC(grid) {
+  const c = findC(grid, DARK_KEYS);
+  if (!c) return null;
+  const { x0, x1, y0, y1 } = c;
+  for (let y = y0 - 1; y <= y1 + 1; y++) {
+    for (let x = x0 - 1; x <= x1; x++) {
+      const key = grid[y][x];
+      if (!DARK_KEYS.has(key) && !GOLD_KEYS.has(key)) return null;
+    }
+  }
+  return c;
+}
+
+/** The C at a size: gold on the capsule from 32 px, printed on the collar in
+ *  the 16 px design. */
+const cAt = (size) =>
+  isSmallDesign(size) ? findPrintedC(designFor(size)) : findC(designFor(size), GOLD_KEYS);
 
 test('every size shows a bold C in the middle of the capsule, at least 60% of its height', () => {
   for (const size of DESIGN_SIZES) {
-    const grid = designFor(size);
-    const c = findC(grid);
+    const c = cAt(size);
     assert.ok(c, `${size} px shows a C`);
-    const capsule = box(capsuleCells(grid));
+    const capsule = box(capsuleCells(designFor(size)));
     assert.ok(c.height >= 0.6 * capsule.height, `${size} px: C ${c.height} of ${capsule.height}`);
     const centre = (from, to) => (from + to + 1) / 2;
     assert.ok(
@@ -242,16 +259,81 @@ test('every size shows a bold C in the middle of the capsule, at least 60% of it
   }
 });
 
-test('the C check rejects a capsule with no C, a closed O or a mirrored C', () => {
+test('the C checks reject a capsule with no C, a closed O or a mirrored C', () => {
+  const big = designFor(1024);
+  const small = designFor(16);
+  const without = (grid, keys, fill) =>
+    grid.map((row) => row.map((key) => (keys.has(key) ? fill : key)));
+  /** The C's counter filled in on its right edge, closing it into an O. */
+  const closed = (grid, c, key) =>
+    grid.map((row, y) =>
+      row.map((k, x) => (y > c.y0 && y < c.y1 && (x === c.x1 || x === c.x1 - 1) ? key : k)),
+    );
+  const mirrored = (grid) => grid.map((row) => [...row].reverse());
+
+  assert.equal(findC(without(big, GOLD_KEYS, 'c'), GOLD_KEYS), null);
+  assert.equal(findC(closed(big, findC(big, GOLD_KEYS), 'g'), GOLD_KEYS), null);
+  assert.equal(findC(mirrored(big), GOLD_KEYS), null);
+
+  assert.equal(findPrintedC(without(small, DARK_KEYS, 'g')), null);
+  assert.equal(findPrintedC(closed(small, findPrintedC(small), 'k')), null);
+  assert.equal(findPrintedC(mirrored(small)), null);
+  // A dark C on teal or cream instead of the collar.
+  assert.equal(findPrintedC(without(small, GOLD_KEYS, 't')), null);
+});
+
+/** Groups of sparkle cells that touch, corners included. */
+function sparkleGroups(grid) {
+  const left = new Set(cellsOf(grid, (key) => SPARKLE_KEYS.has(key)).map((c) => `${c.x},${c.y}`));
+  const groups = [];
+  for (const start of left) {
+    left.delete(start);
+    const group = [start];
+    for (let i = 0; i < group.length; i++) {
+      const [x, y] = group[i].split(',').map(Number);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const next = `${x + dx},${y + dy}`;
+          if (left.delete(next)) group.push(next);
+        }
+      }
+    }
+    groups.push(group.map((key) => key.split(',').map(Number)));
+  }
+  return groups;
+}
+
+test('two sparkles that touch neither each other nor the capsule', () => {
   const grid = designFor(1024);
-  const noC = grid.map((row) => row.map((key) => (GOLD_KEYS.has(key) ? 'c' : key)));
-  assert.equal(findC(noC), null);
-  const { x1, y0, y1 } = findC(grid);
-  const closed = grid.map((row, y) =>
-    row.map((key, x) => (y > y0 && y < y1 && (x === x1 || x === x1 - 1) ? 'g' : key)),
-  );
-  assert.equal(findC(closed), null);
-  assert.equal(findC(grid.map((row) => [...row].reverse())), null);
+  assert.equal(sparkleGroups(grid).length, 2);
+  for (const { x, y } of cellsOf(grid, (key) => SPARKLE_KEYS.has(key))) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const key = grid[y + dy][x + dx];
+        assert.ok(!key || SPARKLE_KEYS.has(key), `sparkle (${x}, ${y}) touches the capsule`);
+      }
+    }
+  }
+  assert.equal(cellsOf(designFor(16), (key) => SPARKLE_KEYS.has(key)).length, 0, 'none at 16 px');
+});
+
+test('a whole cell of tile lies between every sparkle and the tile edge, iOS mask included', () => {
+  const sizes = [32, 64, 128, 256, 512, 1024].map((size) => ({ size, fullBleed: false }));
+  // The 180 px home-screen icon fills the canvas, and iOS cuts its corners.
+  for (const { size, fullBleed } of [...sizes, { size: 180, fullBleed: true }]) {
+    const grid = designFor(size);
+    const { edge } = cellLayout(size, grid.length, { fullBleed });
+    const tile = bodyCoverage(size, fullBleed ? { fraction: 1 } : {});
+    for (const { x, y } of cellsOf(grid, (key) => SPARKLE_KEYS.has(key))) {
+      // The sparkle cell and the ring of cells round it are all tile.
+      assert.ok(edge(x - 1) > 0 && edge(y - 1) > 0, `${size} px: sparkle (${x}, ${y}) off canvas`);
+      for (let py = edge(y - 1); py < edge(y + 2); py++) {
+        for (let px = edge(x - 1); px < edge(x + 2); px++) {
+          assert.equal(tile[py * size + px], 1, `${size} px: sparkle (${x}, ${y}) near the edge`);
+        }
+      }
+    }
+  }
 });
 
 /** Hue in degrees and saturation (HSV) of an RGB pixel. */

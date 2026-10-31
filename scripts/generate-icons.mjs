@@ -2,26 +2,30 @@
 //
 //   node scripts/generate-icons.mjs                 write every icon file
 //   node scripts/generate-icons.mjs --preview <dir> also write nearest-neighbor
-//                                                  previews (1024/128/32/16 px)
+//                                                  previews (1024/128/48/32/16 px)
 //
 // The art is original: Poke Agents' own capsule, the one thrown, recalled and
 // flown in the office (webview-ui/src/office/sprites/capsule.json), drawn
-// large with a bold gold C for Conductor where that capsule has its gold
-// collar. It is a horizontal pill 22 cells wide and 15 tall, with a dark
-// outline: a teal cap on the left and a cream body on the right, in the
-// sprite's colours. Light comes from the upper left: a rim of light and a
-// two-cell glint on the cap, a lit top edge on the body, and shade along the
-// bottom and the body's right end. The C is our own pixel letter, outlined so
-// it reads on teal and on cream, with a lit top and left edge and a darker
-// underside. Two gold sparkles sit at the upper right, and everything is on a
-// macOS-style rounded square in the app's night palette.
+// large with a bold gold C for Conductor in place of that capsule's gold
+// collar. It is a horizontal pill 22 cells wide and 13 tall with squared-off
+// round ends, like the sprite, and a dark outline: a teal cap on the left and
+// a cream body on the right, in the sprite's colours. The C spans the pill's
+// full height between them, as the collar does, and opens into the cream.
+// Light comes from the upper left: a rim of light and a two-cell glint on the
+// cap, a lit top edge on the body, and shade along the bottom and the body's
+// right end. The C is our own pixel letter, outlined where it meets teal and
+// cream, with a lit top and left edge and a darker underside. Two gold
+// sparkles sit at the upper right, each at least a cell inside the tile, and
+// everything is on a macOS-style rounded square in the app's night palette.
 //
 // It is not a ball: the colours meet side by side, not top over bottom, with
 // no band, no round button and no red, and the C is not Conductor's logo.
 //
-// Each size is drawn on an integer pixel grid, so edges stay crisp. 32 px and
-// up draw the 32-cell design. 16 px is drawn by hand: the pill with no outline
-// and the C alone on it, its inner edge dark so it stands out from the pill.
+// Each size is drawn on whole-pixel cells, so edges stay crisp. 32 px and up
+// draw the 32-cell design. 16 px is drawn by hand: the pill with no outline or
+// sparkles, and a solid gold collar with a dark 3 by 5 C printed on it,
+// because gold is too close to teal and cream in lightness to carry a letter
+// at that size. 48 px draws the 16 px design at 3 px a cell.
 //
 // Outputs (all committed; scripts/generate-icons.test.mjs fails when they
 // drift from this script):
@@ -65,7 +69,7 @@ const TOP_RIM_ALPHA = 0.2;
 
 /** Cell colors by key. */
 export const INK = {
-  k: hex('#0e1a26'), // outline
+  k: hex('#0e1a26'), // outline (at 16 px, the C printed on the collar)
   T: hex('#9af2dd'), // teal cap, lit
   t: hex('#45c9b4'), // teal cap
   d: hex('#2a9a9c'), // teal in shadow
@@ -75,7 +79,7 @@ export const INK = {
   c: hex('#fdf3d2'), // cream body
   C: hex('#e6cf9c'), // cream in shadow
   b: hex('#c4a46c'), // cream in deep shadow
-  G: hex('#ffe58a'), // the C, lit
+  G: hex('#ffe58a'), // the C (the collar at 16 px), lit
   g: hex('#f2c23a'), // the C
   o: hex('#b07a1e'), // the C in shadow
   y: hex('#f8d030'), // sparkle tips
@@ -91,38 +95,38 @@ export const INK = {
 const parseGrid = (rows) => rows.map((row) => [...row].map((c) => (c === '.' ? null : c)));
 
 /**
- * The capsule on a 32-cell grid (32 px and up): a pill 22 cells wide and 15
- * tall with round ends, centred left to right and low enough for the two
- * sparkles to fit above it, clear of the tile's corner. The teal cap and the
- * cream body meet behind the C; their seam shows above and below it. The C
- * is 8 cells wide and 9 tall: a 3-cell spine, 2-cell arms and a 3-row
- * counter open to the right.
+ * The capsule on a 32-cell grid (32 px and up): a pill 22 cells wide and 13
+ * tall (1.69 times as wide as tall), centred left to right and low enough for
+ * the sparkles to sit above it with a cell of tile between every tip and the
+ * tile's edge, and none touching the pill or each other. The C is 8 cells wide
+ * and 11 tall, the pill's full height inside its outline: a 3-cell spine,
+ * 3-row arms and an outlined counter, three rows of cream open into the body.
  */
 const GRID_32 = parseGrid([
   '................................',
   '................................',
   '................................',
   '................................',
-  '....................y....y......',
-  '...................yWy...Y......',
-  '....................y..yYWYy....',
-  '.........................Y......',
-  '.........................y......',
-  '..........kkkkkkkkkkkk..........',
-  '........kkPTttttwwwwwCkk........',
-  '.......kTPtttkkkkkkkccCbk.......',
-  '......kTttttkGGGGGGGkccCbk......',
-  '......kTtttkGGggggggkccCbk......',
+  '................................',
+  '...................y....y.......',
+  '..................yWy...Y.......',
+  '...................y..yYWYy.....',
+  '........................Y.......',
+  '........................y.......',
+  '................................',
+  '.........kkkkkkkkkkkkkk.........',
+  '.......kkTTkkGGGGGGGkwCkk.......',
+  '......kTTPtkGgggggggkccCbk......',
+  '.....kTtPttkGgggggggkcccCbk.....',
   '.....kTttttkGggkkkkkkcccCbk.....',
   '.....kTttttkGggkccccccccCbk.....',
-  '.....ktttttkGggkccccccccCbk.....',
-  '.....ktttttkGggkccccccccCbk.....',
-  '.....kdttttkgggkkkkkkcccCbk.....',
-  '......kdtttkggggggggkccCbk......',
-  '......kDddttkoooooookCCCbk......',
-  '.......kDDdddkkkkkkkCCbbk.......',
-  '........kkDDDDDDbbbbbbkk........',
-  '..........kkkkkkkkkkkk..........',
+  '.....kTttttkGggkccccccccCbk.....',
+  '.....kTttttkGggkccccccccCbk.....',
+  '.....kdttttkGggkkkkkkcccCbk.....',
+  '.....kddtttkGgggggggkcccCbk.....',
+  '......kddddkGgggggggkCCCbk......',
+  '.......kkDDkkoooooookbbkk.......',
+  '.........kkkkkkkkkkkkkk.........',
   '................................',
   '................................',
   '................................',
@@ -134,22 +138,22 @@ const GRID_32 = parseGrid([
 ]);
 
 /** Hand-drawn 16 px design: the pill, 10 px wide and 7 tall with a pixel of
- *  tile all round, and the C alone on it, 4 px wide and 5 tall. No outline
- *  round the pill (it would melt into the dark square) and no sparkles; the
- *  C's inner edge is dark, because gold barely differs from teal and cream
- *  in lightness at this size. */
+ *  tile all round, a teal cap, a cream body and between them a solid gold
+ *  collar the pill's height with a dark C printed on it, 3 px wide and 5
+ *  tall. No outline round the pill (it would melt into the dark square) and
+ *  no sparkles. */
 const GRID_16 = parseGrid([
   '................',
   '................',
   '................',
   '................',
-  '....TTttwwcC....',
-  '...TtttGGGccC...',
-  '...tttGkkkccC...',
-  '...tttgkccccC...',
-  '...dttgkkkcCb...',
-  '...ddttgggCCb...',
-  '....DDddbbbb....',
+  '....TtGGGGwC....',
+  '...TttGkkkccC...',
+  '...tttGkGGccC...',
+  '...tttgkggccC...',
+  '...dttgkggcCb...',
+  '...ddtgkkkCCb...',
+  '....DDoooobb....',
   '................',
   '................',
   '................',
@@ -157,9 +161,11 @@ const GRID_16 = parseGrid([
   '................',
 ]);
 
-/** The design drawn at a given output size. */
+/** The design drawn at a given output size: the 16-cell design below 32 px,
+ *  and wherever only it lands on whole pixels (48 px, at 3 px a cell, where
+ *  the 32-cell design would need 1.5); the 32-cell design otherwise. */
 export function designFor(size) {
-  return size <= 24 ? GRID_16 : GRID_32;
+  return size < 32 || (size % 32 !== 0 && size % 16 === 0) ? GRID_16 : GRID_32;
 }
 
 // ── Rendering ─────────────────────────────────────────────────
@@ -175,8 +181,13 @@ const SUPERSAMPLE = 4;
  *  as a grey frame on a light background. */
 const NO_SHADOW_MAX_SIZE = 48;
 
-export function bodyCoverage(size, offsetY = 0) {
-  const half = (size * BODY_FRACTION) / 2;
+/**
+ * How much of each pixel the rounded square covers (0 to 1). `fraction` is
+ * its width as a share of the canvas; 1 fills the canvas, roughly the mask
+ * iOS cuts a full-bleed home-screen icon to. `offsetY` moves it down.
+ */
+export function bodyCoverage(size, { offsetY = 0, fraction = BODY_FRACTION } = {}) {
+  const half = (size * fraction) / 2;
   const c = size / 2;
   const out = new Float32Array(size * size);
   for (let y = 0; y < size; y++) {
@@ -253,6 +264,20 @@ function edgeBand(body, size, p, width, fromAbove) {
 }
 
 /**
+ * Where the cells of a `cells`-wide grid land at `size` px: `edge(n)` is the
+ * pixel where cell n starts (and cell n - 1 ends), clamped to the canvas.
+ * Normally the grid spans the canvas; full-bleed scales it so the rounded
+ * square's area fills the canvas, keeping every cell the same whole number
+ * of pixels.
+ */
+export function cellLayout(size, cells, { fullBleed = false } = {}) {
+  const cellPx = fullBleed ? Math.round(size / (cells * BODY_FRACTION)) : size / cells;
+  const origin = fullBleed ? Math.round(size / 2 - (cells / 2) * cellPx) : 0;
+  const edge = (cell) => Math.min(size, Math.max(0, Math.round(origin + cell * cellPx)));
+  return { cellPx, origin, edge };
+}
+
+/**
  * Render the icon at `size` px as an RGBA buffer. Deterministic.
  *
  * `fullBleed` fills the whole square with the background and scales the art
@@ -264,19 +289,13 @@ export function renderIcon(size, { fullBleed = false } = {}) {
   const grid = designFor(size);
   const cells = grid.length;
   const body = fullBleed ? new Float32Array(size * size).fill(1) : bodyCoverage(size);
-
-  // Where cell (cx, cy) lands. Normally the grid spans the canvas; full-bleed
-  // scales it so the rounded square's area fills the canvas, keeping every
-  // cell the same whole number of pixels.
-  const cellPx = fullBleed ? Math.round(size / (cells * BODY_FRACTION)) : size / cells;
-  const origin = fullBleed ? Math.round(size / 2 - (cells / 2) * cellPx) : 0;
-  const edge = (cell) => Math.min(size, Math.max(0, Math.round(origin + cell * cellPx)));
+  const { cellPx, origin, edge } = cellLayout(size, cells, { fullBleed });
 
   if (!fullBleed && size > NO_SHADOW_MAX_SIZE) {
     // Drop shadow under the rounded square.
     const shadowOffset = Math.max(1, Math.round(size * 0.012));
     const shadowRadius = Math.max(1, Math.round(size * 0.01));
-    const shadow = blur(bodyCoverage(size, shadowOffset), size, shadowRadius);
+    const shadow = blur(bodyCoverage(size, { offsetY: shadowOffset }), size, shadowRadius);
     for (let p = 0; p < size * size; p++) over(data, p * 4, [0, 0, 0], shadow[p] * 0.32);
   }
 
@@ -443,7 +462,7 @@ export function buildOutputs() {
  *  on a light and a dark backdrop, plus the 1024 master as is. */
 function writePreviews(dir) {
   fs.mkdirSync(dir, { recursive: true });
-  for (const size of [1024, 128, 32, 16]) {
+  for (const size of [1024, 128, 48, 32, 16]) {
     const image = renderIcon(size);
     const big = size >= 512 ? image : upscale(image, Math.round(512 / size));
     fs.writeFileSync(path.join(dir, `icon-${size}.png`), encodePng(onBackdrops(big)));
