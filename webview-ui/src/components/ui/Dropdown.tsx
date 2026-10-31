@@ -3,36 +3,65 @@ import { useLayoutEffect, useRef, useState } from 'react';
 
 import { DROPDOWN_VIEWPORT_MARGIN_PX } from '../../constants.js';
 
+/** Which side of its anchor a Dropdown opens on. */
+export type DropdownPlacement = 'up' | 'down';
+
 interface DropdownProps {
   isOpen: boolean;
   children: ReactNode;
   className?: string;
+  /** 'up' (the default) opens above the anchor, 'down' below it. */
+  placement?: DropdownPlacement;
   /**
-   * Cap the panel's height at the room between its anchor and the top of the
-   * viewport. The panel opens upward and the app hides overflow, so content
-   * taller than that room would otherwise be cut off above the screen. The
-   * panel becomes a flex column: give the child that should scroll
+   * Cap the panel's height at the room between its anchor and the viewport's
+   * edge on the side it opens to (and, opening down, its width at the room
+   * to the right of it in the region that clips it). The app hides overflow,
+   * so content taller or wider than that room would otherwise be cut off.
+   * The panel becomes a flex column: give the child that should scroll
    * `min-h-0 overflow-y-auto` and pin the rest with `shrink-0`.
    */
   fitViewport?: boolean;
 }
 
-export function Dropdown({ isOpen, children, className = '', fitViewport = false }: DropdownProps) {
+/** Right edge (viewport px) of the nearest ancestor that clips overflow (the
+ *  office region, beside the party bar), else of the viewport. */
+function clipRight(element: HTMLElement): number {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    if (getComputedStyle(node).overflowX !== 'visible') return node.getBoundingClientRect().right;
+  }
+  return window.innerWidth;
+}
+
+export function Dropdown({
+  isOpen,
+  children,
+  className = '',
+  placement = 'up',
+  fitViewport = false,
+}: DropdownProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
+  const [maxSize, setMaxSize] = useState<{ height?: number; width?: number }>({});
 
   // Measured rather than expressed in CSS: the anchor sits at a different
-  // height on every shell (desktop toolbar, phone card bar above a software
-  // keyboard, a short VS Code panel), and only its live position says how
-  // much room is left. The panel's bottom edge is pinned to the anchor, so
-  // its own bottom is that room whatever height it currently has.
+  // place on every shell (desktop toolbar at the top, phone card bar above a
+  // software keyboard, a short VS Code panel), and only its live position
+  // says how much room is left. The panel's edge facing the anchor is pinned
+  // to it, so its far edge is that room whatever height it currently has.
   useLayoutEffect(() => {
     if (!isOpen || !fitViewport) return;
     const measure = () => {
       const panel = panelRef.current;
       if (!panel) return;
-      const room = panel.getBoundingClientRect().bottom - DROPDOWN_VIEWPORT_MARGIN_PX;
-      setMaxHeight(Math.max(0, Math.floor(room)));
+      const box = panel.getBoundingClientRect();
+      const margin = DROPDOWN_VIEWPORT_MARGIN_PX;
+      if (placement === 'up') {
+        setMaxSize({ height: Math.max(0, Math.floor(box.bottom - margin)) });
+        return;
+      }
+      setMaxSize({
+        height: Math.max(0, Math.floor(window.innerHeight - box.top - margin)),
+        width: Math.max(0, Math.floor(clipRight(panel) - box.left - margin)),
+      });
     };
     measure();
     window.addEventListener('resize', measure);
@@ -41,15 +70,20 @@ export function Dropdown({ isOpen, children, className = '', fitViewport = false
       window.removeEventListener('resize', measure);
       window.visualViewport?.removeEventListener('resize', measure);
     };
-  }, [isOpen, fitViewport]);
+  }, [isOpen, fitViewport, placement]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="absolute bottom-full left-0 pb-10 z-10">
+    // The padding bridges the gap to the anchor, so a pointer moving from the
+    // anchor onto the panel never leaves the pair (the launch drawer closes
+    // on mouse leave).
+    <div
+      className={`absolute left-0 z-10 ${placement === 'up' ? 'bottom-full pb-10' : 'top-full pt-10'}`}
+    >
       <div
         ref={panelRef}
-        style={fitViewport ? { maxHeight } : undefined}
+        style={fitViewport ? { maxHeight: maxSize.height, maxWidth: maxSize.width } : undefined}
         className={`bg-bg border-2 border-border rounded-none shadow-pixel p-4 ${
           fitViewport ? 'flex flex-col' : ''
         } ${className}`}

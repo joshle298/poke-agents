@@ -800,7 +800,7 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
         // contributing its start directory) — merged with the user-defined ones
         // from the machine-wide config. Sent unconditionally: user-defined
         // Directories exist even in a window with no folder open. What a plain
-        // "+ Agent" tap does depends on the Default directory — see BottomToolbar.
+        // "+ Agent" tap does depends on the Default directory — see OfficeToolbar.
         this.sendDirectories();
 
         // Ensure project scan runs even with no restored agents (to adopt external terminals)

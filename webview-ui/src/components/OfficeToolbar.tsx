@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type { Directory } from '../hooks/useExtensionMessages.js';
 import { JukeboxButton } from '../music/JukeboxButton.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { LaunchDrawer } from './LaunchDrawer.js';
+import { balancedRowWidth } from './topBarLayout.js';
 import { Button } from './ui/Button.js';
 
-interface BottomToolbarProps {
+interface OfficeToolbarProps {
   isEditMode: boolean;
   onToggleEditMode: () => void;
   isSettingsOpen: boolean;
@@ -30,9 +32,76 @@ interface BottomToolbarProps {
   onOpenSessions: () => void;
   isPcBoxOpen: boolean;
   onOpenPcBox: () => void;
+  /** The most the panel may be wide (CSS px): past it the buttons wrap onto
+   *  balanced rows. Undefined: as wide as one row. */
+  maxWidth?: number;
 }
 
-export function BottomToolbar({
+/** The panel's buttons and its frame, measured (CSS px). */
+interface RowMetrics {
+  items: number[];
+  gap: number;
+  /** Padding and border, both sides. */
+  frame: number;
+}
+
+/**
+ * The panel's button widths, gap and frame, kept current as buttons come and
+ * go (Sessions and PC follow Conductor) and change size (the pixel font
+ * loading). They don't depend on how the row wraps.
+ */
+function useRowMetrics(panelRef: RefObject<HTMLDivElement | null>): RowMetrics | null {
+  const [metrics, setMetrics] = useState<RowMetrics | null>(null);
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const measure = () => {
+      const style = getComputedStyle(panel);
+      const px = (value: string) => parseFloat(value) || 0;
+      const next: RowMetrics = {
+        items: Array.from(panel.children, (child) => child.getBoundingClientRect().width),
+        gap: px(style.columnGap),
+        frame:
+          px(style.paddingLeft) +
+          px(style.paddingRight) +
+          px(style.borderLeftWidth) +
+          px(style.borderRightWidth),
+      };
+      setMetrics((prev) =>
+        prev &&
+        prev.gap === next.gap &&
+        prev.frame === next.frame &&
+        prev.items.length === next.items.length &&
+        prev.items.every((width, i) => width === next.items[i])
+          ? prev
+          : next,
+      );
+    };
+    const sizes = new ResizeObserver(measure);
+    const observeItems = () => {
+      sizes.disconnect();
+      for (const child of panel.children) sizes.observe(child);
+      measure();
+    };
+    observeItems();
+    const items = new MutationObserver(observeItems);
+    items.observe(panel, { childList: true });
+    return () => {
+      sizes.disconnect();
+      items.disconnect();
+    };
+  }, [panelRef]);
+  return metrics;
+}
+
+/**
+ * The office's toolbar: + Agent (with its launch drawer) when Claude Code feeds
+ * the office, Sessions and PC when Conductor does, then Music, Layout and
+ * Settings. One row in the office's top-right corner, placed by OfficeTopBar
+ * (left of the party bar and the Pokédex); it wraps onto balanced rows only
+ * when the office is too narrow for one.
+ */
+export function OfficeToolbar({
   isEditMode,
   onToggleEditMode,
   isSettingsOpen,
@@ -48,9 +117,22 @@ export function BottomToolbar({
   onOpenSessions,
   isPcBoxOpen,
   onOpenPcBox,
-}: BottomToolbarProps) {
+  maxWidth,
+}: OfficeToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const launchRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const row = useRowMetrics(panelRef);
+
+  // Too narrow for one row: as wide as the widest of the fewest balanced
+  // rows, so the panel hugs them instead of stretching to maxWidth.
+  const oneRow = row
+    ? row.items.reduce((sum, w) => sum + w, 0) + row.gap * (row.items.length - 1)
+    : 0;
+  const wrapped = row !== null && maxWidth !== undefined && oneRow + row.frame > maxWidth;
+  const panelWidth = wrapped
+    ? Math.ceil(balancedRowWidth(row.items, row.gap, maxWidth - row.frame)) + row.frame
+    : undefined;
 
   // Close the launch drawer on outside press (the dropdown convention here).
   useEffect(() => {
@@ -84,9 +166,11 @@ export function BottomToolbar({
   const showUnavailable = claudeActive && isBrowserRuntime && !terminalAvailable;
 
   return (
-    // Bottom-left. The terminal panel docks on the right edge, so it never
-    // reaches these buttons and no lift is needed.
-    <div className="absolute left-10 bottom-10 z-20 flex items-center gap-4 pixel-panel p-4">
+    <div
+      ref={panelRef}
+      className="flex flex-wrap justify-end items-center gap-4 pixel-panel p-4 pointer-events-auto"
+      style={{ width: panelWidth }}
+    >
       {showUnavailable && (
         <Button
           variant="disabled"
@@ -114,6 +198,7 @@ export function BottomToolbar({
           </Button>
           <LaunchDrawer
             isOpen={isDrawerOpen}
+            placement="down"
             directories={directories}
             onSelect={handleDirectorySelect}
             onAddDirectory={() => {

@@ -244,7 +244,7 @@ A question a cloud session has put to the user and not yet had answered: an AskU
 _Avoid_: prompt (that's the task text), permission request (a plan approval is one, but most are tool approvals, not questions), popup, dialog
 
 **Battle log**:
-The optional one-line ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), shown at the bottom of the office. It lives in the office UI only and keeps the last 30 events.
+The optional one-line ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), shown in the lower part of the office. It lives in the office UI only and keeps the last 30 events.
 _Avoid_: activity feed, event log
 
 **Level**:
