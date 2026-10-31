@@ -102,7 +102,7 @@ The Jukebox (♪ in the toolbar, or Settings → Jukebox…) plays background mu
 
 The first time the Jukebox controls Music or Spotify, macOS asks whether your terminal (or the Poke Agents app) may control it. If you chose Don't Allow, turn it on in System Settings › Privacy & Security › Automation.
 
-While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you click, so folder music you were playing comes back on your first click after a reload.
+While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so folder music you were playing comes back on your first click, tap or key press after a reload.
 
 **About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
 
@@ -136,10 +136,10 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`) and, for sprites, to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback for sprites, and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
-- When you save a Spotify link in the Jukebox, Poke Agents asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
+- Saving a Spotify link asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
 - There is no telemetry or analytics.
 
 ## Troubleshooting
