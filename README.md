@@ -128,6 +128,7 @@ To use an API key instead, start the office from Terminal with the key set (`npm
 - Web links open in your default browser and **Open in Conductor** opens the Conductor app. The window never navigates anywhere else.
 - **Notifications:** when a session starts waiting for your answer or a permission, or faints, Poke Agents posts a notification such as "Pikachu needs your answer" with the session's name. Clicking it opens that session's Pokédex. The notification is removed when the session continues, and a newer one for the same session and reason replaces it. There are none while the office window is in front, none for sessions already waiting when the app starts, and at most one per session and reason every 2 minutes. After 3 in 30 seconds the rest wait and arrive as one, such as "2 more sessions need you".
 - **Dock badge:** the number of sessions waiting for your answer or a permission. macOS shows it only when Poke Agents may send notifications: allow them when asked, or in **System Settings → Notifications → Poke Agents**, with **Badge app icon** on.
+- **Jukebox:** the app has the same [Jukebox](#music) as the browser office. The first time it controls Music or Spotify, macOS asks whether Poke Agents may control that app.
 - **With the command line:** the app and `npm start` share one office on port 41510. If `npm start` is already running, the app opens that office and starts its own when the command exits. If the app is running, `npm start` opens a browser window onto the app's office. A command started with other flags, such as `--claude`, runs its own office on another port, and only the office that started first shows Conductor sessions (the other one says which office has them).
 
 ### Data and Uninstall
@@ -217,7 +218,7 @@ The Jukebox (♪ in the toolbar, or **Jukebox…** under Settings → Sound) pla
 
 The first time the Jukebox controls Music or Spotify, macOS asks whether your terminal (or the Poke Agents app) may control it. If you chose Don't Allow, turn it on in System Settings › Privacy & Security › Automation.
 
-While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so folder music you were playing comes back on your first click, tap or key press after a reload.
+While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Pokémon cries and alerts briefly lower folder music. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so folder music you were playing comes back on your first click, tap or key press after a reload.
 
 **About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
 

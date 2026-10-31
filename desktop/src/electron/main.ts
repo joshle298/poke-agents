@@ -27,6 +27,7 @@ import {
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { MusicService } from '../../../server/src/music/musicService.js';
 import { type StandaloneOffice, startStandalone } from '../../../server/src/standalone.js';
 import { parseDesktopArgs } from '../args.js';
 import { AttentionTracker } from '../attention.js';
@@ -175,6 +176,9 @@ async function startOffice(): Promise<StandaloneOffice> {
     // Conductor deep links (already validated by the server) open in the
     // Conductor app.
     openExternal: (url) => shell.openExternal(url),
+    // The Jukebox, as the CLI has it: ~/.pixel-agents/music, plus the Music
+    // and Spotify apps (macOS asks once: NSAppleEventsUsageDescription).
+    music: new MusicService(),
   });
   attachFeed(started);
   return started;

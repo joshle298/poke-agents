@@ -259,6 +259,10 @@ _Avoid_: voice, roar
 The user's own audio files in `~/.pixel-agents/sounds/`, one per effect name (`levelUp.ogg`), that replace the office's synthesized effects. Cries can't be replaced.
 _Avoid_: theme, skin
 
+**Jukebox**:
+Background music for the office, from music the user already has: audio files in `~/.pixel-agents/music/` (folder music, played in the page) or albums and links played in the Music or Spotify app on macOS. Cries and alerts briefly lower folder music. It never touches Conductor and never downloads music.
+_Avoid_: radio, player, soundtrack (that's what it plays)
+
 ## Integration Boundary
 
 **Provider**:

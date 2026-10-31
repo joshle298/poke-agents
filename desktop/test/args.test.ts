@@ -66,6 +66,22 @@ describe('desktop package', () => {
     assert.doesNotMatch(yml, /NSHumanReadableCopyright:/, 'no second copyright overriding it');
   });
 
+  it('says why it controls Music or Spotify, and needs no entitlement for it unhardened', () => {
+    const yml = fs.readFileSync(path.join(__dirname, '../electron-builder.yml'), 'utf-8');
+    const usage = /^ {4}NSAppleEventsUsageDescription: (.+)$/m.exec(yml)?.[1] ?? '';
+    assert.match(usage, /Music or Spotify/);
+    // The automation entitlement only matters under the hardened runtime.
+    assert.match(yml, /^ {2}hardenedRuntime: false$/m);
+    assert.doesNotMatch(yml, /entitlements/);
+  });
+
+  it('gives the in-process office the Jukebox, as the CLI does', () => {
+    const read = (file: string) => fs.readFileSync(path.join(__dirname, file), 'utf-8');
+    for (const file of ['../src/electron/main.ts', '../../server/src/cli.ts']) {
+      assert.match(read(file), /music: new MusicService\(\)/, file);
+    }
+  });
+
   it('shares its names with the office (webview-ui/src/constants.ts)', () => {
     const webview = fs.readFileSync(
       path.join(__dirname, '../../webview-ui/src/constants.ts'),

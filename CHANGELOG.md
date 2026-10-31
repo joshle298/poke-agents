@@ -6,6 +6,12 @@
 
 - **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
 - **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, Poké Balls, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
+- **The Pokémon Town.** A new office opens on a small town in a forest, drawn in code (`scripts/generate-world-assets.mjs`): working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back. An office with a saved layout keeps it.
+- **Jukebox.** Background music from music you already have: audio files in `~/.pixel-agents/music/`, or albums and links you play in the Music or Spotify app on macOS (the Mac app asks once for permission to control them). Open it from ♪ in the toolbar or **Jukebox…** under Settings → Sound. Pokémon cries and alerts briefly lower folder music. It never downloads, streams or bundles soundtracks.
+
+### Fixes
+
+- **A Lead's children stay put.** A Lead with more than 12 children no longer swaps them in and out of the office as their activity re-ranks: a shown child stays until it falls 4 places past the cap.
 
 ### Changes
 

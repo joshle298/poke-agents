@@ -771,7 +771,9 @@ function NoticeLine() {
 // ── Panel ───────────────────────────────────────────────────────
 
 /** The Jukebox, in the GBA menu style: source tabs, games and tracks, and the
- *  now-playing bar with the controls. */
+ *  now-playing bar with the controls. Escape closes it through the Modal's
+ *  layer on the one Escape stack (escapeStack.ts): the topmost surface closes
+ *  and nothing beneath it. Escape never resumes music (resumeOnGesture.ts). */
 export function JukeboxPanel({ onClose }: { onClose: () => void }) {
   const library = useMusic((s) => s.library);
   const storedTab = useMusic((s) => s.tab);
@@ -788,18 +790,6 @@ export function JukeboxPanel({ onClose }: { onClose: () => void }) {
         : null,
   );
   const footerSource: MusicSourceId = playingSource ?? tab;
-
-  // Escape closes the Jukebox and nothing under it (capture, before the
-  // Pokédex's own Escape handler).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.stopImmediatePropagation();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
 
   const folderAvailable = library?.sources.some((s) => s.id === 'folder' && s.available);
 

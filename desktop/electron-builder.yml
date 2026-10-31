@@ -41,9 +41,16 @@ mac:
   target:
     - dir
     - zip
-  # Ad hoc signature: no Apple Developer ID, no notarization.
+  # Ad hoc signature: no Apple Developer ID, no notarization. Without the
+  # hardened runtime the Jukebox needs no automation entitlement
+  # (com.apple.security.automation.apple-events) to control Music or Spotify:
+  # add one if hardenedRuntime is ever turned on.
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
   notarize: false
   darkModeSupport: true
+  extendInfo:
+    # The text of macOS's Automation prompt the first time the Jukebox
+    # controls Music or Spotify.
+    NSAppleEventsUsageDescription: Poke Agents controls Music or Spotify to play your Pokémon soundtracks.

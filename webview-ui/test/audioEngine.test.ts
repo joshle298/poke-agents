@@ -3,7 +3,8 @@
  * The sound engine on a fake AudioContext (fakeAudio.ts): nothing before a
  * gesture, same-origin cry URLs, one cry at a time through the queue, cut
  * cries fading out, delayed cries waiting for their URL, the faint slide
- * not waiting for a missing cry, and sound pack files replacing the synth.
+ * not waiting for a missing cry, sound pack files replacing the synth, and
+ * cries and alerts lowering the Jukebox's folder music.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,7 @@ import {
   SOUND_FAINT_CRY_SEMITONES,
   SOUND_FAINT_SFX_DELAY_MS,
 } from '../src/audio/constants.js';
+import { recipeDuration, SFX_RECIPES } from '../src/audio/sfxRecipes.js';
 import type { SfxName, SoundCue, SoundEvent } from '../src/audio/soundEvents.js';
 import { cry, sfx, sfxAfterCry } from '../src/audio/soundEvents.js';
 import type { SoundPackOverride } from '../src/audio/soundPack.js';
@@ -28,6 +30,8 @@ let ctx: FakeAudioContext | null;
 let synth: Array<{ name: SfxName; when: number }>;
 let files: Map<string, ArrayBuffer>;
 let fetched: string[];
+/** duckMusic calls: the length asked for and when (fake clock, ms). */
+let ducks: Array<{ ms: number; at: number }>;
 let engine: AudioEngine;
 
 const all = (): boolean => true;
@@ -65,6 +69,7 @@ beforeEach(() => {
   synth = [];
   files = new Map();
   fetched = [];
+  ducks = [];
   engine = new AudioEngine({
     context: () => ctx as unknown as AudioContext | null,
     unlock: () => {
@@ -83,6 +88,7 @@ beforeEach(() => {
     renderSfx: (_ctx, _destination, name, when) => {
       synth.push({ name, when });
     },
+    duckMusic: (ms) => ducks.push({ ms, at: Date.now() }),
   });
 });
 
@@ -286,5 +292,62 @@ describe('sound pack', () => {
     await settle();
     expect(ctx!.playing('pack').map((s) => s.buffer!.label)).toEqual(['pack-levelUp']);
     expect(synth.map((s) => s.name).sort()).toEqual(['heal', 'recall']);
+  });
+});
+
+describe('music ducking', () => {
+  const ms = (name: SfxName) => recipeDuration(SFX_RECIPES[name]) * 1000;
+
+  it('a cry lowers folder music for its length, pitch included', async () => {
+    running();
+    serveCry(25, 1.5);
+    engine.playEvent(event('faint', [cry(25, 0, SOUND_FAINT_CRY_SEMITONES)]), all);
+    expect(ducks).toEqual([]);
+    await settle();
+    expect(ducks).toHaveLength(1);
+    expect(ducks[0].ms).toBeCloseTo((1.5 / 2 ** (SOUND_FAINT_CRY_SEMITONES / 12)) * 1000);
+  });
+
+  it('alerts duck the music for their length; effects never do', async () => {
+    running();
+    engine.playEvent(event('needsYou', [sfx('alert')]), all);
+    engine.playEvent(event('levelUp', [sfx('levelUp')]), all);
+    engine.playEvent(event('arrived', [sfx('ballPop')]), all);
+    await settle();
+    expect(ducks.map((d) => d.ms)).toEqual([ms('alert')]);
+  });
+
+  it('a delayed alert ducks when it starts, not when its event fires', async () => {
+    running();
+    serveCry(25, 1);
+    const start = Date.now();
+    engine.playEvent(
+      event('faint', [cry(25, 0, SOUND_FAINT_CRY_SEMITONES), sfxAfterCry('faint', 700)]),
+      all,
+    );
+    await settle();
+    expect(ducks).toHaveLength(1); // the cry
+    await settle(700);
+    expect(ducks).toHaveLength(2);
+    expect(ducks[1]).toEqual({ ms: ms('faint'), at: start + 700 });
+  });
+
+  it("a sound pack alert ducks for the file's length", async () => {
+    running();
+    const alert: SoundPackOverride = { event: 'alert', format: 'ogg', size: 100, version: '1-1' };
+    files.set(soundPackFileUrl(alert), fakeAudioBytes('pack-alert', 0.8));
+    engine.setPackOverrides([alert]);
+    await settle();
+    engine.playEvent(event('needsYou', [sfx('alert')]), all);
+    await settle();
+    expect(ctx!.playing('pack')).toHaveLength(1);
+    expect(ducks.map((d) => d.ms)).toEqual([800]);
+  });
+
+  it('nothing ducks while the context is locked (nothing plays)', async () => {
+    serveCry(25);
+    engine.playEvent(event('needsYou', [sfx('alert'), cry(25)]), all);
+    await settle(1_000);
+    expect(ducks).toEqual([]);
   });
 });
