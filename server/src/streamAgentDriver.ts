@@ -364,6 +364,12 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
     }
   }
 
+  /** Take every session this driver put in the office out of it (its
+   *  provider is detaching). Stream memory keeps their ids and Pokémon. */
+  removeAllSessions(): void {
+    for (const sessionId of [...this.agentIdBySession.keys()]) this.removeSession(sessionId);
+  }
+
   /** Stop timers and listeners. Agents stay in the store (the runtime removes them). */
   dispose(): void {
     this.disposed = true;

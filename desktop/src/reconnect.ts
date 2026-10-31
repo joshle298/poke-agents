@@ -43,12 +43,12 @@ export function reconnectFeedback(outcome: ReconnectOutcome): DialogText | null 
       return {
         message: 'Still no Conductor sign-in',
         detail:
-          'Run conductor auth login in Terminal, then reconnect. If macOS asks to use the Keychain, choose Allow.',
+          'Connect with an API key on the office’s Connect to Conductor card. If you signed in with the Conductor CLI and macOS asks to use the Keychain, choose Allow.',
       };
     case 'rejected':
       return {
         message: 'Conductor rejected the sign-in',
-        detail: 'Run conductor auth login in Terminal again, then reconnect.',
+        detail: 'Connect with a new API key on the office’s Connect to Conductor card.',
       };
     default:
       return null;
@@ -60,5 +60,5 @@ export function reconnectFeedback(outcome: ReconnectOutcome): DialogText | null 
 export const ATTACHED_RECONNECT: DialogText = {
   message: 'This office runs in Terminal',
   detail:
-    'Poke Agents is showing the office that npm start runs. To reconnect to Conductor, stop it in Terminal with Control-C and start it again. Poke Agents then runs the office itself.',
+    'Poke Agents is showing the office that npm start runs. Connect with an API key on its Connect to Conductor card, or stop it in Terminal with Control-C and start it again. Poke Agents then runs the office itself.',
 };

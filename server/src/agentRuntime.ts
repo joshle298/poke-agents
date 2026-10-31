@@ -314,6 +314,22 @@ export class AgentRuntime {
     return driver;
   }
 
+  /**
+   * Detach a stream provider after `provider.stop()`: its sessions leave the
+   * office (the provider is going, not the sessions, so nothing is hidden or
+   * forgotten: stream memory keeps their agent ids and Pokémon), its driver
+   * stops, and clients get an empty session list. A provider with the same id
+   * may attach again (Conductor reconnecting with another sign-in).
+   */
+  detachStreamProvider(providerId: string): void {
+    const driver = this.streamDriverMap.get(providerId);
+    if (!driver) return;
+    driver.removeAllSessions();
+    driver.dispose();
+    this.streamDriverMap.delete(providerId);
+    this.store.broadcast({ type: 'conductorSessions', sessions: [] });
+  }
+
   /** The driver of an attached stream provider. */
   streamDriver(providerId: string): StreamAgentDriver | undefined {
     return this.streamDriverMap.get(providerId);

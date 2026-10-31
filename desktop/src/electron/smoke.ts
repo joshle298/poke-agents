@@ -29,9 +29,11 @@ const PROBE_SCRIPT = `(() => {
     canvas: !!canvas && canvas.width > 0 && canvas.height > 0,
     // Party slots (overlays only exist while a character is hovered or selected).
     sessions: document.querySelector('[aria-label="Party"]')?.children.length ?? 0,
-    signIn: text.includes('Sign in to Conductor'),
+    signIn: text.includes('Connect to Conductor'),
     empty: text.includes('No sessions in scope'),
-    bridge: typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.reconnectConductor === 'function',
+    bridge:
+      typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.reconnectConductor === 'function' &&
+      typeof window[${JSON.stringify(DESKTOP_BRIDGE_GLOBAL)}]?.readClipboardKey === 'function',
     viewOnly: text.includes('View only'),
   };
 })()`;

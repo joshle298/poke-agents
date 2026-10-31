@@ -2,9 +2,8 @@
 
 export const APP_NAME = 'Poke Agents';
 
-/** Product token the app adds to its window's user agent. The office matches
- *  it (DESKTOP_APP_USER_AGENT_PRODUCT in webview-ui/src/constants.ts) to word
- *  its sign-in steps for the app. */
+/** Product token the app adds to its window's user agent, so the office can
+ *  tell its window (DESKTOP_APP_USER_AGENT_PRODUCT in webview-ui/src/constants.ts). */
 export const USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
 
 /** Global the preload exposes to the office (DESKTOP_BRIDGE_GLOBAL in
@@ -12,6 +11,10 @@ export const USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
 export const DESKTOP_BRIDGE_GLOBAL = 'pokeAgentsDesktop';
 /** IPC: the office's Reconnect button (renderer → main). */
 export const IPC_RECONNECT_CONDUCTOR = 'poke-agents:reconnect-conductor';
+/** IPC: the Connect card asks for a Conductor API key on the clipboard, on a
+ *  Paste click or when the window regains focus after "Get an API key"
+ *  (renderer → main, answered with key-shaped text or null). */
+export const IPC_READ_CLIPBOARD_KEY = 'poke-agents:read-clipboard-key';
 /** IPC: app commands for the office (main → renderer): open a session's
  *  Pokédex, open Settings. */
 export const IPC_OFFICE_COMMAND = 'poke-agents:office-command';

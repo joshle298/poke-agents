@@ -36,3 +36,13 @@ export const TRANSPORT_STATE_CONNECTING = 'connecting';
 export const TRANSPORT_STATE_CONNECTED = 'connected';
 export const TRANSPORT_STATE_RECONNECTING = 'reconnecting';
 export const TRANSPORT_STATE_DISCONNECTED = 'disconnected';
+
+// ── Conductor sign-in (connectConductor) ─────────────────────
+// A Conductor API key's shape, shared by the server's check, the office's
+// Connect card and the Mac app's clipboard suggestion: after trimming, URL-safe
+// characters (keys are a short lowercase prefix, `_`, then ~40-50 characters;
+// no fixed prefix is assumed).
+
+export const CONDUCTOR_KEY_PATTERN = /^[A-Za-z0-9_-]{20,200}$/;
+/** connectConductor refuses a raw `apiKey` longer than this before trimming. */
+export const CONDUCTOR_KEY_WIRE_MAX_LENGTH = 1_000;

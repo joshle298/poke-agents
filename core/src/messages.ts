@@ -102,6 +102,8 @@ export type ClientMessage =
   | ArchiveSession
   | RestoreSession
   | RequestSessionHistory
+  | ConnectConductor
+  | DisconnectConductor
   | RequestMusicLibrary
   | MusicCommand;
 
@@ -348,6 +350,9 @@ export interface ConductorStatus {
   sessionCount?: number;
   visibleCount?: number;
   lastSyncAt?: number;
+  authSource?: ConductorAuthSource;
+  keyPageUrl?: string;
+  keyStorage?: ConductorKeyStorage;
   scope: ConductorScope;
 }
 
@@ -359,6 +364,10 @@ export type ConductorConnectionState =
   | 'unauthorized'
   | 'unreachable'
   | 'rateLimited';
+
+export type ConductorAuthSource = 'env' | 'app' | 'cli' | 'session';
+
+export type ConductorKeyStorage = 'keychain' | 'session';
 
 export interface ConductorScope {
   creator: ConductorCreatorScope;
@@ -415,7 +424,9 @@ export type ConductorAction =
   | 'setSessionPinned'
   | 'setConductorScope'
   | 'archiveSession'
-  | 'restoreSession';
+  | 'restoreSession'
+  | 'connect'
+  | 'disconnect';
 
 export interface LayoutLoaded {
   type: 'layoutLoaded';
@@ -925,6 +936,15 @@ export interface RequestSessionHistory {
   type: 'requestSessionHistory';
   id: number;
   before?: string;
+}
+
+export interface ConnectConductor {
+  type: 'connectConductor';
+  apiKey: string;
+}
+
+export interface DisconnectConductor {
+  type: 'disconnectConductor';
 }
 
 export interface RequestMusicLibrary {

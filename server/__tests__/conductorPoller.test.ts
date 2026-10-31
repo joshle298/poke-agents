@@ -139,10 +139,13 @@ describe('Conductor provider startup', () => {
     expect(sink.lastStatus()).toMatchObject({
       state: 'connected',
       account: 'user@example.com',
+      authSource: 'env',
       workspaceCount: 2,
       visibleCount: 2,
       scope: { creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 24 },
     });
+    // The keys page is only offered while signed out.
+    expect(sink.lastStatus()).not.toHaveProperty('keyPageUrl');
     // Never-started sessions are never polled; archived ones never adopted.
     expect(api.callsTo(`/sessions/${uuid(0xa1)}`)).toEqual([]);
     expect(sink.adopted.has(uuid(0xa2))).toBe(false);
@@ -312,11 +315,21 @@ describe('Conductor provider startup', () => {
     await provider.start(sink);
     expect(sink.lastStatus()).toMatchObject({
       state: 'authRequired',
-      message: 'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
+      message: 'Open the office and connect with a Conductor API key, or set CONDUCTOR_API_KEY.',
+      keyPageUrl: 'https://app.conductor.build/home/api-keys',
+      keyStorage: 'session',
     });
+    expect(sink.lastStatus()).not.toHaveProperty('authSource');
     expect(logs).toEqual([
-      'no sign-in found. Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
+      'no sign-in found. Open the office and connect with a Conductor API key, or set CONDUCTOR_API_KEY.',
     ]);
+    // A scope change while signed out keeps saying so (the Connect card stays).
+    provider.setScope({ creator: 'all', activeWithinHours: 24, showIdle: true, maxSessions: 24 });
+    expect(sink.lastStatus()).toMatchObject({
+      state: 'authRequired',
+      keyPageUrl: 'https://app.conductor.build/home/api-keys',
+      scope: { creator: 'all', activeWithinHours: 24 },
+    });
     expect(api.calls).toEqual([]);
   });
 
@@ -328,8 +341,17 @@ describe('Conductor provider startup', () => {
       () => new Response('{"userMessage":"bad key"}', { status: 401 }),
     );
     const { sink, logs } = await boot({ clock, api, prepare: () => {} });
-    expect(sink.lastStatus()?.state).toBe('unauthorized');
+    // The key came from CONDUCTOR_API_KEY: the office can't replace it, so
+    // the status says to update the variable (and offers the keys page).
+    expect(sink.lastStatus()).toMatchObject({
+      state: 'unauthorized',
+      authSource: 'env',
+      message:
+        'Conductor rejected the key in CONDUCTOR_API_KEY. Update it, then restart Poke Agents.',
+      keyPageUrl: 'https://app.conductor.build/home/api-keys',
+    });
     expect(logs.join('\n')).not.toContain(KEY);
+    expect(logs).toContain('using the key from CONDUCTOR_API_KEY; budget 60000/min');
     expect(api.calls.map((c) => c.path)).toEqual(['/me']);
   });
 });

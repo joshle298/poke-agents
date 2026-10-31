@@ -28,8 +28,7 @@ import {
   CONDUCTOR_SCOPE_WINDOW_HOURS,
   CONDUCTOR_UI_TICK_MS,
 } from '../constants.js';
-import { isDesktopApp } from '../desktopApp.js';
-import { ConductorReconnectButton, ConductorSignInSteps } from './ConductorSignInSteps.js';
+import { ConductorConnectCard } from './ConductorConnectCard.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
@@ -187,19 +186,18 @@ function EmptyState({
   status,
   hasSessions,
   query,
+  readOnly,
 }: {
   status: ConductorStatus | null;
   hasSessions: boolean;
   query: string;
+  readOnly: boolean;
 }) {
   if (needsSignIn(status)) {
     return (
       <div className="px-10 py-8 text-sm flex flex-col gap-6">
-        <span>Poke Agents needs your Conductor sign-in.</span>
-        <ConductorSignInSteps className="m-0 pl-24 flex flex-col gap-4 text-xs" />
-        <div>
-          <ConductorReconnectButton />
-        </div>
+        <span>Connect to Conductor</span>
+        <ConductorConnectCard readOnly={readOnly} />
       </div>
     );
   }
@@ -265,9 +263,7 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Sessions" className="w-[min(640px,100%)]">
       <div className="flex flex-col gap-8 px-10 pb-8">
-        <div className="text-xs text-text-muted">
-          {conductorStatusLine(status, now, isDesktopApp)}
-        </div>
+        <div className="text-xs text-text-muted">{conductorStatusLine(status, now)}</div>
 
         {scope && (
           <div className="flex flex-col gap-6">
@@ -316,7 +312,7 @@ export function SessionsModal({ isOpen, onClose, readOnly }: SessionsModalProps)
         />
 
         {groups.length === 0 ? (
-          <EmptyState status={status} hasSessions={hasSessions} query={query} />
+          <EmptyState status={status} hasSessions={hasSessions} query={query} readOnly={readOnly} />
         ) : (
           <div className="flex flex-col gap-8">
             {groups.map((group) => (

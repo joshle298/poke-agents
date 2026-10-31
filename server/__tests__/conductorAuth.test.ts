@@ -23,14 +23,15 @@ describe('Conductor auth resolution', () => {
     expect(both).toEqual({
       baseUrl: 'https://api.conductor.build',
       token: 'key-1',
-      source: 'CONDUCTOR_API_KEY',
+      source: 'env',
+      envName: 'CONDUCTOR_API_KEY',
     });
     const tokenOnly = await resolveConductorAuth({
       env: { CONDUCTOR_API_KEY: '', CONDUCTOR_API_TOKEN: 'token-1' },
       platform: 'darwin',
       execFile,
     });
-    expect(tokenOnly.source).toBe('CONDUCTOR_API_TOKEN');
+    expect(tokenOnly).toMatchObject({ source: 'env', envName: 'CONDUCTOR_API_TOKEN' });
     expect(execFile).not.toHaveBeenCalled();
   });
 
@@ -44,7 +45,7 @@ describe('Conductor auth resolution', () => {
     expect(auth).toEqual({
       baseUrl: 'https://api.example.test/v1',
       token: 'kc-token',
-      source: 'keychain',
+      source: 'cli',
     });
     expect(execFile).toHaveBeenCalledTimes(1);
     const [file, args, opts] = execFile.mock.calls[0] as [string, string[], { timeout: number }];

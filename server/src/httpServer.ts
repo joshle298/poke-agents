@@ -30,6 +30,7 @@ import type { MusicService } from './music/musicService.js';
 import { registerMusicRoutes } from './music/routes.js';
 import { registerPokemonRoutes } from './pokemon/routes.js';
 import { createSpeciesDelivery } from './pokemon/speciesDelivery.js';
+import type { ConductorSignInControl } from './providers/stream/conductor/signIn.js';
 import type { PtySessionManager } from './terminal/ptySessionManager.js';
 import { registerTerminalRoutes } from './terminal/terminalRoutes.js';
 import type { AgentState } from './types.js';
@@ -81,6 +82,8 @@ export interface HttpServerOptions {
   openExternal?: OpenExternalSideEffect;
   /** The Jukebox: its client messages and /api/music/track (standalone). */
   music?: MusicService;
+  /** The Connect to Conductor card's messages (standalone). */
+  conductorSignIn?: ConductorSignInControl;
 }
 
 /** Result of createHttpServer(). */
@@ -350,6 +353,7 @@ function registerWebSocketRoute(
           hookProviders: options.hookProviders,
           openExternal: options.openExternal,
           music: options.embedded ? undefined : options.music,
+          conductorSignIn: options.embedded ? undefined : options.conductorSignIn,
         });
       } catch {
         // Malformed JSON, ignore

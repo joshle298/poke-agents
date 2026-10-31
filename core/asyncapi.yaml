@@ -186,6 +186,8 @@ components:
         - $ref: '#/components/schemas/ArchiveSession'
         - $ref: '#/components/schemas/RestoreSession'
         - $ref: '#/components/schemas/RequestSessionHistory'
+        - $ref: '#/components/schemas/ConnectConductor'
+        - $ref: '#/components/schemas/DisconnectConductor'
         # Jukebox (local music; never touches Conductor)
         - $ref: '#/components/schemas/RequestMusicLibrary'
         - $ref: '#/components/schemas/MusicCommand'
@@ -1228,6 +1230,13 @@ components:
           type: integer
         lastSyncAt:
           type: number
+        authSource:
+          $ref: '#/components/schemas/ConductorAuthSource'
+        keyPageUrl:
+          type: string
+          description: Conductor's API keys page, where the user creates a key to connect with.
+        keyStorage:
+          $ref: '#/components/schemas/ConductorKeyStorage'
         scope:
           $ref: '#/components/schemas/ConductorScope'
 
@@ -1245,7 +1254,7 @@ components:
             $ref: '#/components/schemas/ConductorSessionSummary'
 
     ConductorActionResult:
-      description: Outcome of a user action against Conductor (send a message, stop a session, open a link).
+      description: Outcome of a user action against Conductor (send a message, stop a session, open a link, connect or disconnect).
       type: object
       additionalProperties: false
       required: [type, action, ok]
@@ -1908,6 +1917,35 @@ components:
           type: string
           description: Cursor from a previous sessionHistory; absent means the newest page.
 
+    ConnectConductor:
+      description: |
+        Sign this office in to Conductor with an API key the user pasted. The server
+        checks it with GET /me, keeps it in Poke Agents' own store (its macOS Keychain
+        item, or memory for this run elsewhere; never the Conductor CLI's item) and
+        restarts Conductor polling. Answered with conductorActionResult (action
+        `connect`), which never carries the key. Privileged.
+      type: object
+      additionalProperties: false
+      required: [type, apiKey]
+      properties:
+        type:
+          const: connectConductor
+        apiKey:
+          type: string
+          maxLength: 1000
+
+    DisconnectConductor:
+      description: |
+        Forget the key Poke Agents saved (never the Conductor CLI's sign-in) and
+        restart Conductor polling, which then uses whatever sign-in is left.
+        Answered with conductorActionResult (action `disconnect`). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: disconnectConductor
+
     RequestMusicLibrary:
       description: Ask for the Jukebox library (rescans the music folder). Privileged.
       type: object
@@ -2163,6 +2201,19 @@ components:
       type: string
       enum: [disabled, connecting, connected, authRequired, unauthorized, unreachable, rateLimited]
 
+    ConductorAuthSource:
+      description: |
+        Where the key in use came from: `env` (CONDUCTOR_API_KEY or CONDUCTOR_API_TOKEN),
+        `app` (Poke Agents' own macOS Keychain item), `cli` (the Conductor CLI's Keychain
+        item, read only) or `session` (pasted in this run, kept in memory). Never the key.
+      type: string
+      enum: [env, app, cli, session]
+
+    ConductorKeyStorage:
+      description: Where a key pasted into the office is kept, `keychain` (macOS) or `session` (memory, this run only).
+      type: string
+      enum: [keychain, session]
+
     ConductorScope:
       description: Which Conductor sessions appear in the office.
       type: object
@@ -2252,6 +2303,8 @@ components:
           setConductorScope,
           archiveSession,
           restoreSession,
+          connect,
+          disconnect,
         ]
 
     PokemonAnim:

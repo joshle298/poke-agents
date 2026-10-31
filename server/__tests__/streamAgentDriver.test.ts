@@ -166,6 +166,36 @@ describe('StreamAgentDriver', () => {
     vi.useRealTimers();
   });
 
+  // ── Detaching (a Conductor reconnect) ─────────────────────────
+
+  describe('detachStreamProvider', () => {
+    it('takes the sessions out without hiding them, and a new provider can attach', () => {
+      sink.upsertSession(session('s1'));
+      sink.upsertSession(session('s2'));
+      const ids = [agentIdOf('s1'), agentIdOf('s2')];
+      sent = [];
+
+      runtime.detachStreamProvider('conductor');
+      expect(
+        ofType('agentClosed')
+          .map((m) => m.id)
+          .sort(),
+      ).toEqual([...ids].sort());
+      expect(ofType('conductorSessions')).toEqual([{ type: 'conductorSessions', sessions: [] }]);
+      expect(provider.onDismiss).not.toHaveBeenCalled();
+      expect(runtime.streamDriver('conductor')).toBeUndefined();
+
+      // The old sink is inert: a late poll from the stopped provider adopts nothing.
+      sink.upsertSession(session('late'));
+      expect(ofType('agentCreated')).toEqual([]);
+
+      // The same id attaches again, and a returning session keeps its agent id.
+      const again = runtime.attachStreamProvider(fakeProvider(), { memory });
+      again.upsertSession(session('s1'));
+      expect(agentIdOf('s1')).toBe(ids[0]);
+    });
+  });
+
   // ── Adoption ──────────────────────────────────────────────────
 
   describe('upsertSession: adoption', () => {

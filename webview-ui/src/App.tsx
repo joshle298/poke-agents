@@ -905,10 +905,11 @@ function App() {
         </div>
       )}
 
-      {/* Conductor on and nobody here: sign-in steps or "No sessions in scope". */}
+      {/* Conductor on and nobody here: the Connect card or "No sessions in scope". */}
       {conductorActive && agents.length === 0 && !isDebugMode && (
         <ConductorEmptyOffice
           onOpenSessions={officeReadOnly ? null : () => setIsSessionsOpen(true)}
+          readOnly={officeReadOnly}
         />
       )}
       {/* Started with every provider off: nothing can arrive. */}

@@ -659,12 +659,56 @@ function dispatchMockConductor(dispatch: (data: unknown) => void): void {
   });
 
   if (mode === 'auth') {
-    send({
+    // The Connect card: a key starting "bad" is rejected, any other is
+    // accepted and the office then says it has nobody in scope.
+    const signedOut: ServerMessage = {
       type: 'conductorStatus',
       state: 'authRequired',
-      message: 'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
+      message: 'Open the office and connect with a Conductor API key, or set CONDUCTOR_API_KEY.',
+      keyPageUrl: 'https://app.conductor.build/home/api-keys',
+      keyStorage: 'keychain',
       scope: MOCK_SCOPE,
-    });
+    };
+    send(signedOut);
+    const realSend = transport.send.bind(transport);
+    transport.send = (msg: ClientMessage) => {
+      realSend(msg);
+      if (msg.type === 'connectConductor') {
+        const rejected = msg.apiKey.trim().startsWith('bad');
+        setTimeout(() => {
+          if (!rejected) {
+            send({
+              type: 'conductorStatus',
+              state: 'connected',
+              account: 'dev@example.com',
+              authSource: 'app',
+              sessionCount: 0,
+              visibleCount: 0,
+              lastSyncAt: Date.now(),
+              scope: MOCK_SCOPE,
+            });
+          }
+          send({
+            type: 'conductorActionResult',
+            action: 'connect',
+            ok: !rejected,
+            message: rejected
+              ? 'That key was rejected by Conductor.'
+              : 'Connected as dev@example.com',
+          });
+        }, 600);
+      } else if (msg.type === 'disconnectConductor') {
+        setTimeout(() => {
+          send(signedOut);
+          send({
+            type: 'conductorActionResult',
+            action: 'disconnect',
+            ok: true,
+            message: 'Signed out.',
+          });
+        }, 300);
+      }
+    };
     return;
   }
 

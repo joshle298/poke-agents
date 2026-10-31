@@ -33,6 +33,7 @@ import type {
 import type {
   AgentEvent,
   AgentEventSink,
+  StreamProviderStatus,
   StreamSessionDetail,
   StreamSessionInfo,
 } from '../../../../../core/src/provider.js';
@@ -88,6 +89,7 @@ import {
   TAIL_PROBE_START,
   TAIL_WINDOW,
   TICK_MS,
+  UNAUTHORIZED_MESSAGE,
   UNIT_CLASS_LIMITS,
   WARM_POLL_MAX_MS,
   WARM_POLL_MS,
@@ -156,6 +158,11 @@ export interface PollerOptions {
   log?: (message: string) => void;
   /** Run the scheduling loop on a timer (off in tests, which call tick()). */
   autoTick?: boolean;
+  /** Fields every status carries for a connection state (where the key came
+   *  from, the API keys page while signed out). Never the token. */
+  statusFields?: (state: ConnectionState) => Partial<StreamProviderStatus>;
+  /** The status message once Conductor rejects the key. */
+  unauthorizedMessage?: string;
 }
 
 interface WorkspaceRecord {
@@ -334,6 +341,8 @@ export class ConductorPoller {
   private readonly clock: PollerClock;
   private readonly log: (message: string) => void;
   private readonly autoTick: boolean;
+  private readonly statusFields: (state: ConnectionState) => Partial<StreamProviderStatus>;
+  private readonly unauthorizedMessage: string;
 
   private readonly workspaces = new Map<string, WorkspaceRecord>();
   private readonly records = new Map<string, SessionRecord>();
@@ -377,6 +386,8 @@ export class ConductorPoller {
     this.clock = opts.clock ?? { now: () => Date.now() };
     this.log = opts.log ?? (() => {});
     this.autoTick = opts.autoTick ?? true;
+    this.statusFields = opts.statusFields ?? (() => ({}));
+    this.unauthorizedMessage = opts.unauthorizedMessage ?? UNAUTHORIZED_MESSAGE;
   }
 
   // ── Lifecycle ──
@@ -1147,10 +1158,7 @@ export class ConductorPoller {
   /** 401/403 on account-level calls: stop polling until the user fixes the key. */
   private halt(err: ConductorApiError): void {
     this.halted = true;
-    this.setConnection(
-      'unauthorized',
-      'Conductor rejected the API key. Sign in again with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
-    );
+    this.setConnection('unauthorized', this.unauthorizedMessage);
     this.log(`halted after ${err.message}`);
     for (const rec of this.records.values()) {
       if (rec.adopted) this.unadopt(rec, 'unauthorized');
@@ -2099,6 +2107,7 @@ export class ConductorPoller {
       sessionCount,
       visibleCount,
       lastSyncAt: this.lastSyncAt,
+      ...this.statusFields(this.connection),
       scope: this.state.scope,
     };
     const sig = JSON.stringify(status);

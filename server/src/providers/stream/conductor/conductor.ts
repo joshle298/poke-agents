@@ -12,7 +12,12 @@ import { randomUUID } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 
-import type { ConductorScope, ConductorSessionSummary } from '../../../../../core/src/messages.js';
+import type {
+  ConductorAuthSource,
+  ConductorConnectionState,
+  ConductorScope,
+  ConductorSessionSummary,
+} from '../../../../../core/src/messages.js';
 import type {
   AgentEventSink,
   StreamProvider,
@@ -21,7 +26,12 @@ import type {
 } from '../../../../../core/src/provider.js';
 import { SERVER_JSON_DIR } from '../../../constants.js';
 import { contextWindowForModel as claudeContextWindow } from '../../hook/claude/claude.js';
-import { defaultExecFile, type ExecFileFn, resolveConductorAuth } from './auth.js';
+import {
+  type ConductorAuth,
+  defaultExecFile,
+  type ExecFileFn,
+  resolveConductorAuth,
+} from './auth.js';
 import {
   type ClientClock,
   ConductorApiError,
@@ -30,6 +40,7 @@ import {
   userFacingMessage,
 } from './client.js';
 import {
+  API_KEYS_PAGE_URL,
   AUTH_REQUIRED_MESSAGE,
   BACKOFF_MAX_MS,
   CLAUDE_MODEL_PREFIX,
@@ -38,11 +49,14 @@ import {
   DEFAULT_BUDGET_PER_MINUTE,
   DISCOVERY_INTERVAL_MS,
   ENV_BUDGET,
+  ENV_UNAUTHORIZED_MESSAGE,
   GPT_CONTEXT_WINDOW,
   GPT_MODEL_PREFIX,
   LOG_PREFIX,
   STATE_FILE_NAME,
+  UNAUTHORIZED_MESSAGE,
 } from './constants.js';
+import { type ConductorKeyStore, createConductorKeyStore } from './keyStore.js';
 import { LinkTracker } from './links.js';
 import { ConductorPoller } from './poller.js';
 import { SessionLogStore } from './sessionLog.js';
@@ -68,6 +82,12 @@ export interface ConductorProviderOptions {
   platform?: NodeJS.Platform;
   /** Injected for tests: runs /usr/bin/security (never a shell). */
   execFile?: ExecFileFn;
+  /** Poke Agents' own store for a key connected in the office (keyStore.ts).
+   *  The office passes the one it shares with its sign-in controller. */
+  keyStore?: ConductorKeyStore;
+  /** Called once per start, when the sign-in is settled: the source found
+   *  (undefined: none, a failed start, or stopped first). Never the token. */
+  onSignInSettled?: (source: ConductorAuthSource | undefined) => void;
   /** Injected for tests: time source for the client and the poller. */
   clock?: ClientClock;
   /** Tests drive the poller with tick(); production runs it on a timer. */
@@ -112,6 +132,22 @@ export function conductorContextWindow(model: string | undefined): number | unde
   return undefined;
 }
 
+/** What the office's log says about where the key came from (never the key). */
+function describeSource(auth: ConductorAuth): string {
+  switch (auth.source) {
+    case 'env':
+      return `the key from ${auth.envName ?? 'the environment'}`;
+    case 'app':
+      return 'the key Poke Agents saved in the Keychain';
+    case 'session':
+      return 'the key connected in the office (this session only)';
+    case 'cli':
+      return "the Conductor CLI's Keychain sign-in";
+    default:
+      return 'no key';
+  }
+}
+
 function resolveBudget(opts: ConductorProviderOptions, env: NodeJS.ProcessEnv): number {
   if (typeof opts.budgetPerMinute === 'number' && opts.budgetPerMinute > 0) {
     return opts.budgetPerMinute;
@@ -131,17 +167,38 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
   const logs = new SessionLogStore();
   const links = new LinkTracker();
   const budget = resolveBudget(opts, env);
+  const platform = opts.platform ?? process.platform;
+  const execFile = opts.execFile ?? defaultExecFile;
+  const keyStore = opts.keyStore ?? createConductorKeyStore({ platform, execFile });
 
   let sink: AgentEventSink | undefined;
+  let authSource: ConductorAuthSource | undefined;
+  let settle: ((source: ConductorAuthSource | undefined) => void) | undefined;
   let client: ConductorClient | undefined;
   let poller: ConductorPoller | undefined;
   let stopped = false;
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let connectFailures = 0;
 
+  /** Where the key came from, and in the sign-in states where to get one and
+   *  where a pasted one would be kept: the office's Connect card reads them. */
+  const signInFields = (connection: ConductorConnectionState): Partial<StreamProviderStatus> => ({
+    ...(authSource ? { authSource } : {}),
+    ...(connection === 'authRequired' || connection === 'unauthorized'
+      ? { keyPageUrl: API_KEYS_PAGE_URL, keyStorage: keyStore.storage }
+      : {}),
+  });
+
+  /** The provider's own last status (before a poller takes over), so a scope
+   *  change while signed out keeps saying so. */
+  let ownStatus: Omit<StreamProviderStatus, 'scope'> | undefined;
   const setStatus = (status: Omit<StreamProviderStatus, 'scope'>) => {
-    sink?.setStatus({ ...status, scope: state.scope });
+    ownStatus = status;
+    sink?.setStatus({ ...status, ...signInFields(status.state), scope: state.scope });
   };
+
+  const unauthorizedMessage = (): string =>
+    authSource === 'env' ? ENV_UNAUTHORIZED_MESSAGE : UNAUTHORIZED_MESSAGE;
 
   /** /me, then the poller's first discovery. Network failures retry with backoff. */
   const connect = async (): Promise<void> => {
@@ -151,11 +208,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       me = await client.me();
     } catch (err) {
       if (err instanceof ConductorApiError && err.kind === 'unauthorized') {
-        setStatus({
-          state: 'unauthorized',
-          message:
-            'Conductor rejected the API key. Sign in again with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.',
-        });
+        setStatus({ state: 'unauthorized', message: unauthorizedMessage() });
         return;
       }
       const limited = err instanceof ConductorApiError && err.kind === 'rateLimited';
@@ -189,6 +242,8 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       clock,
       log,
       autoTick: opts.autoTick ?? true,
+      statusFields: signInFields,
+      unauthorizedMessage: unauthorizedMessage(),
     });
     await poller.start();
   };
@@ -224,22 +279,30 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
     async start(s: AgentEventSink): Promise<void> {
       sink = s;
       stopped = false;
+      authSource = undefined;
+      settle = opts.onSignInSettled;
+      const settled = (source: ConductorAuthSource | undefined): void => {
+        const notify = settle;
+        settle = undefined;
+        notify?.(source);
+      };
       try {
         setStatus({ state: 'connecting' });
-        const auth = await resolveConductorAuth({
-          env,
-          platform: opts.platform ?? process.platform,
-          execFile: opts.execFile ?? defaultExecFile,
-        });
-        if (stopped) return;
+        const auth = await resolveConductorAuth({ env, platform, execFile, keyStore });
+        if (stopped) {
+          settled(undefined);
+          return;
+        }
+        authSource = auth.source;
+        settled(auth.source);
         if (!auth.token) {
-          // The office shows the sign-in steps; say it in the terminal too,
+          // The office shows the Connect card; say it in the terminal too,
           // where a first run is usually watched.
           log(`no sign-in found. ${AUTH_REQUIRED_MESSAGE}`);
           setStatus({ state: 'authRequired', message: AUTH_REQUIRED_MESSAGE });
           return;
         }
-        log(`using token from ${auth.source}; budget ${budget}/min`);
+        log(`using ${describeSource(auth)}; budget ${budget}/min`);
         client = new ConductorClient({
           baseUrl: auth.baseUrl,
           token: auth.token,
@@ -249,6 +312,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
         });
         await connect();
       } catch (err) {
+        settled(undefined);
         log(`start failed: ${(err as Error).message}`);
         setStatus({ state: 'unreachable', message: "Can't reach Conductor." });
       }
@@ -256,6 +320,9 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
 
     async stop(): Promise<void> {
       stopped = true;
+      const notify = settle;
+      settle = undefined;
+      notify?.(undefined);
       if (retryTimer) clearTimeout(retryTimer);
       poller?.stop();
       client?.close();
@@ -286,7 +353,7 @@ export function createConductorProvider(opts: ConductorProviderOptions = {}): Co
       if (poller) poller.setScope(clean);
       else {
         state.setScope(clean);
-        sink?.setStatus({ state: 'connecting', scope: state.scope });
+        setStatus(ownStatus ?? { state: 'connecting' });
       }
     },
 

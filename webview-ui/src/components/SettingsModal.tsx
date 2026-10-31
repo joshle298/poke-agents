@@ -1,14 +1,15 @@
 import { useRef, useState } from 'react';
 
 import { SoundSettings } from '../audio/SoundSettings.js';
+import { disconnectConductor } from '../conductor/actions.js';
 import { useConductor } from '../conductor/conductorStore.js';
-import { conductorStatusLine } from '../conductor/format.js';
+import { authSourceText, canSignOut, conductorStatusLine } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
-import { isDesktopApp } from '../desktopApp.js';
 import { JukeboxMenuItem } from '../music/JukeboxButton.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
+import { ConfirmDialog } from './ConfirmDialog.js';
 import { Button } from './ui/Button.js';
 import { Checkbox } from './ui/Checkbox.js';
 import { MenuItem } from './ui/MenuItem.js';
@@ -63,14 +64,32 @@ interface SettingsModalProps {
   onOpenCredits: () => void;
 }
 
-/** The Conductor connection line, ticking so "synced Xs ago" stays true. */
-function ConductorStatusText({ active }: { active: boolean }) {
+/** The Conductor connection line (ticking so "synced Xs ago" stays true),
+ *  where the key came from, and Sign Out for a key Poke Agents itself keeps
+ *  (never the environment's or the Conductor CLI's). */
+function ConductorAccount({ active }: { active: boolean }) {
   const status = useConductor((s) => s.status);
   const now = useNow(CONDUCTOR_UI_TICK_MS, active);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const source = authSourceText(status?.authSource);
   return (
-    <div className="py-4 px-10 text-xs text-text-muted break-words">
-      {conductorStatusLine(status, now, isDesktopApp)}
-    </div>
+    <>
+      <div className="py-4 px-10 text-xs text-text-muted break-words">
+        {conductorStatusLine(status, now)}
+      </div>
+      {source && <div className="pb-4 px-10 text-2xs text-text-muted break-words">{source}</div>}
+      {canSignOut(status) && (
+        <MenuItem onClick={() => setConfirmSignOut(true)}>Sign Out of Conductor…</MenuItem>
+      )}
+      <ConfirmDialog
+        isOpen={confirmSignOut}
+        title="Sign out of Conductor?"
+        body="Poke Agents forgets the API key it saved, and its sessions leave the office. To connect again you need an API key. Conductor's own sign-in is not touched."
+        confirmLabel="Sign Out"
+        onConfirm={disconnectConductor}
+        onCancel={() => setConfirmSignOut(false)}
+      />
+    </>
   );
 }
 
@@ -117,7 +136,7 @@ export function SettingsModal({
       {conductorActive && (
         <>
           <div className="pt-2 px-10 text-xs text-accent">Conductor</div>
-          <ConductorStatusText active={isOpen} />
+          <ConductorAccount active={isOpen} />
           <MenuItem
             onClick={() => {
               onClose();

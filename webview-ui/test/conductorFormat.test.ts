@@ -3,13 +3,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConductorSessionSummary, ConductorStatus } from '../../core/src/messages.js';
 import {
   agoText,
+  apiKeyFromText,
+  authSourceText,
+  canSignOut,
+  CONDUCTOR_CLI_LOGIN_COMMAND,
   conductorStatusLine,
+  envKeyRejected,
   isConductorDeepLink,
+  keyStorageNote,
   modelLabel,
   needsSignIn,
   safeHttpsUrl,
   shortAge,
-  signInSteps,
   splitNameTail,
   windowLabel,
   windowOptions,
@@ -60,13 +65,12 @@ describe('conductorStatusLine', () => {
 
   it('explains each failure state without exposing a token', () => {
     expect(conductorStatusLine(null, now)).toBe('Connecting to Conductor…');
-    expect(conductorStatusLine(status({ state: 'authRequired' }), now)).toContain(
-      'conductor auth login',
+    expect(conductorStatusLine(status({ state: 'authRequired' }), now)).toBe(
+      'Not connected to Conductor. Connect with an API key.',
     );
-    expect(
-      conductorStatusLine(status({ state: 'authRequired', message: 'Custom sign-in' }), now),
-    ).toBe('Custom sign-in');
-    expect(conductorStatusLine(status({ state: 'unauthorized' }), now)).toContain('rejected');
+    expect(conductorStatusLine(status({ state: 'unauthorized' }), now)).toBe(
+      'Conductor rejected the API key. Connect with a new one.',
+    );
     expect(conductorStatusLine(status({ state: 'unreachable' }), now)).toContain("Can't reach");
     expect(conductorStatusLine(status({ state: 'rateLimited' }), now)).toContain('rate limiting');
   });
@@ -215,79 +219,66 @@ describe('per-device preferences', () => {
   });
 });
 
-describe('signInSteps', () => {
-  const text = (desktopApp: boolean, canReconnect = false) =>
-    signInSteps(desktopApp, canReconnect).map(
-      (step) => `${step.lead}${step.accent ?? ''}${step.tail ?? ''}`,
-    );
-
-  it('tells a terminal-started office to log in or set the key, then restart', () => {
-    expect(text(false)).toEqual([
-      'Run conductor auth login, or set CONDUCTOR_API_KEY.',
-      'Restart Poke Agents.',
-    ]);
-  });
-
-  it('tells the desktop app to log in from Terminal, reconnect, and allow the Keychain', () => {
-    expect(text(true, true)).toEqual([
-      'Run conductor auth login in Terminal.',
-      'Click Reconnect. If macOS asks to use the Keychain, choose Allow.',
-    ]);
-    // Without the app's button (no preload), the menu item does the same.
-    expect(text(true, false)[1]).toBe(
-      'Choose Poke Agents > Reconnect to Conductor. If macOS asks to use the Keychain, choose Allow.',
-    );
-    // An app opened from Finder never sees the shell's environment.
-    expect([...text(true, true), ...text(true, false)].join(' ')).not.toContain(
-      'CONDUCTOR_API_KEY',
-    );
-  });
-
-  it('marks the login command as copyable and nothing else', () => {
-    for (const desktopApp of [false, true]) {
-      const copyable = signInSteps(desktopApp, true).filter((step) => step.copy);
-      expect(copyable.map((step) => step.accent)).toEqual(['conductor auth login']);
-    }
-  });
-});
-
-describe('conductorStatusLine in the desktop app', () => {
+describe('the Connect to Conductor card', () => {
+  const KEY = `pa_${'fake'.repeat(11)}`;
   const now = 1_000_000;
-  const serverMessage =
-    'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.';
 
-  it('words both sign-in states for the app, whatever the server says', () => {
-    const missing = conductorStatusLine(
-      status({ state: 'authRequired', message: serverMessage }),
-      now,
-      true,
-    );
-    const rejected = conductorStatusLine(
-      status({ state: 'unauthorized', message: 'Conductor rejected the API key. Restart.' }),
-      now,
-      true,
-    );
-    expect(missing).toBe(
-      'No Conductor sign-in found. Run `conductor auth login` in Terminal, then choose Poke Agents > Reconnect to Conductor.',
-    );
-    expect(rejected).toBe(
-      'Conductor rejected the sign-in. Run `conductor auth login` in Terminal, then choose Poke Agents > Reconnect to Conductor.',
-    );
-    for (const line of [missing, rejected]) {
-      expect(line).not.toContain('CONDUCTOR_API_KEY');
-      expect(line).not.toMatch(/restart/i);
+  it('takes a pasted key trimmed, and only when it has a key’s shape', () => {
+    expect(apiKeyFromText(`  ${KEY}\n`)).toBe(KEY);
+    expect(apiKeyFromText('x'.repeat(20))).toBe('x'.repeat(20));
+    for (const bad of ['', 'short', `${KEY} ${KEY}`, `${KEY}"`, 'x'.repeat(201)]) {
+      expect(apiKeyFromText(bad)).toBeNull();
     }
   });
 
-  it('leaves the browser wording and the other states alone', () => {
-    expect(
-      conductorStatusLine(status({ state: 'authRequired', message: serverMessage }), now, false),
-    ).toBe(serverMessage);
-    expect(conductorStatusLine(status({ state: 'unreachable' }), now, true)).toContain(
-      "Can't reach",
+  it('never tells the office to restart for a sign-in it can fix itself', () => {
+    // The server's message mentions CONDUCTOR_API_KEY for the terminal; the
+    // office points at its own Connect card instead.
+    for (const state of ['authRequired', 'unauthorized'] as const) {
+      const line = conductorStatusLine(
+        status({ state, message: 'Server text about CONDUCTOR_API_KEY, then restart.' }),
+        now,
+      );
+      expect(line).toContain('Connect');
+      expect(line).not.toMatch(/restart|CONDUCTOR_API_KEY|conductor auth login/i);
+    }
+  });
+
+  it('says to update the variable when Conductor rejects a key from the environment', () => {
+    const rejected = status({ state: 'unauthorized', authSource: 'env' });
+    expect(envKeyRejected(rejected)).toBe(true);
+    expect(conductorStatusLine(rejected, now)).toBe(
+      'Conductor rejected the key in CONDUCTOR_API_KEY. Update it, then restart Poke Agents.',
     );
-    expect(conductorStatusLine(status({ lastSyncAt: now - 42_000 }), now, true)).toBe(
-      'Conductor · synced 42s ago',
+    for (const authSource of ['app', 'cli', 'session'] as const) {
+      expect(envKeyRejected(status({ state: 'unauthorized', authSource }))).toBe(false);
+    }
+    expect(envKeyRejected(status({ state: 'connected', authSource: 'env' }))).toBe(false);
+  });
+
+  it('says where the key in use came from, and where a pasted one is kept', () => {
+    expect(authSourceText('env')).toContain('environment variable');
+    expect(authSourceText('app')).toContain('macOS Keychain');
+    expect(authSourceText('cli')).toBe('Signed in through the Conductor CLI.');
+    expect(authSourceText('session')).toContain('this session only');
+    expect(authSourceText(undefined)).toBeNull();
+    expect(keyStorageNote('keychain')).toContain('macOS Keychain');
+    expect(keyStorageNote('session')).toContain('this session only');
+    expect(keyStorageNote('session')).toContain('CONDUCTOR_API_KEY');
+  });
+
+  it('offers Sign out only for a key Poke Agents keeps', () => {
+    expect(canSignOut(status({ authSource: 'app' }))).toBe(true);
+    expect(canSignOut(status({ authSource: 'session' }))).toBe(true);
+    expect(canSignOut(status({ authSource: 'cli' }))).toBe(false);
+    expect(canSignOut(status({ authSource: 'env' }))).toBe(false);
+    expect(canSignOut(status({}))).toBe(false);
+    expect(canSignOut(null)).toBe(false);
+  });
+
+  it('gives the CLI path inside Conductor.app, quoted for its space', () => {
+    expect(CONDUCTOR_CLI_LOGIN_COMMAND).toBe(
+      '"$HOME/Library/Application Support/com.conductor.app/bin/conductor" auth login',
     );
   });
 });

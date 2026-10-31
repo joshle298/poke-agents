@@ -12,6 +12,7 @@
 import * as os from 'os';
 import * as path from 'path';
 
+import type { ConductorAuthSource } from '../../core/src/messages.js';
 import type { StreamProvider } from '../../core/src/provider.js';
 import { AgentRuntime } from './agentRuntime.js';
 import { AgentStateStore } from './agentStateStore.js';
@@ -47,7 +48,13 @@ import { setEvolutionPreloader } from './pokemon/agentLevel.js';
 import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
+import { SIGN_IN_SETTLE_TIMEOUT_MS } from './providers/stream/conductor/constants.js';
+import {
+  type ConductorKeyStore,
+  createConductorKeyStore,
+} from './providers/stream/conductor/keyStore.js';
 import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
+import { ConductorSignIn, SignInError } from './providers/stream/conductor/signIn.js';
 import {
   DEMO_OPEN_EXTERNAL_REFUSAL,
   DEMO_STATE_FILE_STEM,
@@ -101,6 +108,14 @@ export interface StandaloneOptions {
    *  Conductor: `poke-agents --demo`. Implies no Conductor; its seats and
    *  agents persist apart from the real office's (`demo-state.json`). */
   demo?: { seed?: number; speed?: number };
+  /** Injected for tests: Conductor's fetch, environment, platform (whether
+   *  the Keychain is consulted) and key store. */
+  conductorDeps?: {
+    fetchImpl?: typeof fetch;
+    env?: NodeJS.ProcessEnv;
+    platform?: NodeJS.Platform;
+    keyStore?: ConductorKeyStore;
+  };
 }
 
 /** A running office, owned by this process or reused from another one. */
@@ -126,6 +141,12 @@ export interface StandaloneOffice {
    *  office holds the Conductor lock). For a listener that subscribes to
    *  `store` after the start. */
   conductorStatus(): Record<string, unknown> | null;
+  /** Restart Conductor polling in this process so it reads the sign-in again
+   *  (the Mac app's Reconnect; connecting from the office does the same). The
+   *  office and its windows stay up. Resolves with the source the new poller
+   *  found (undefined: none). Rejects with a message for the user when this
+   *  office can't poll Conductor (off, reused, or another office polls it). */
+  reconnectConductor(): Promise<ConductorAuthSource | undefined>;
   /** Stop polling, terminals, the runtime and the server (when owned). Idempotent. */
   stop(): Promise<void>;
 }
@@ -408,6 +429,102 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
     console.log('[Pixel Agents] Assets reloaded (external directory change)');
   };
 
+  // ── Conductor sign-in: the key store and the Connect card's controller.
+  // Polling itself starts below, once this process knows it owns the server
+  // and holds the Conductor lock; a connect or sign-out restarts it here, in
+  // this process, so the office and its open windows stay up.
+  const conductorEnv = opts.conductorDeps?.env ?? process.env;
+  const conductorPlatform = opts.conductorDeps?.platform ?? process.platform;
+  const keyStore =
+    opts.conductorDeps?.keyStore ?? createConductorKeyStore({ platform: conductorPlatform });
+  let conductor: StreamProvider | null = null;
+  let conductorLock: PollerLock | null = null;
+  let ownsServer = false;
+  let officePort = 0;
+  let stopping: Promise<void> | null = null;
+  let restartChain: Promise<unknown> = Promise.resolve();
+
+  const startConductorProvider = (
+    onSignInSettled?: (source: ConductorAuthSource | undefined) => void,
+  ): void => {
+    try {
+      const provider = createConductorProvider({
+        budgetPerMinute: opts.conductorBudget,
+        env: conductorEnv,
+        platform: conductorPlatform,
+        fetchImpl: opts.conductorDeps?.fetchImpl,
+        keyStore,
+        onSignInSettled,
+        log: (message) => console.log(`[Pixel Agents] Conductor: ${message}`),
+      });
+      const sink = runtime.attachStreamProvider(provider, { memory: adapter });
+      conductor = provider;
+      void provider.start(sink).catch((err: unknown) => {
+        console.error(`[Pixel Agents] Conductor failed to start: ${errorText(err)}`);
+      });
+    } catch (err) {
+      console.error(`[Pixel Agents] Conductor is unavailable: ${errorText(err)}`);
+      conductor = null;
+      onSignInSettled?.(undefined);
+    }
+  };
+
+  /** Why this office can't (re)start Conductor polling now, or undefined. A
+   *  lock another office held may have been released since: try again. */
+  const conductorRefusal = (): string | undefined => {
+    if (!conductorOn || !ownsServer) return 'Conductor is not enabled in this office.';
+    if (stopping) return 'This office is stopping.';
+    if (conductorLock && !conductorLock.acquired) {
+      const again = acquireConductorLock(officePort);
+      conductorLock = again;
+      if (!again.acquired) {
+        const { port } = again.holder;
+        return `Another Poke Agents office${port ? ` (port ${port})` : ''} tracks Conductor. Connect there.`;
+      }
+    }
+    return undefined;
+  };
+
+  /** Stop the Conductor provider, take its sessions out of the office, and
+   *  start a new one that resolves the sign-in again. One at a time. */
+  const restartConductor = (): Promise<ConductorAuthSource | undefined> => {
+    const run = async (): Promise<ConductorAuthSource | undefined> => {
+      const refusal = conductorRefusal();
+      if (refusal) throw new SignInError(refusal);
+      const previous = conductor;
+      conductor = null;
+      if (previous) {
+        await previous.stop().catch((err: unknown) => {
+          console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
+        });
+        runtime.detachStreamProvider(previous.id);
+      }
+      if (stopping) return undefined;
+      return await new Promise<ConductorAuthSource | undefined>((resolve) => {
+        const timer = setTimeout(() => resolve(undefined), SIGN_IN_SETTLE_TIMEOUT_MS);
+        timer.unref?.();
+        startConductorProvider((source) => {
+          clearTimeout(timer);
+          resolve(source);
+        });
+      });
+    };
+    const next = restartChain.then(run, run);
+    restartChain = next.catch(() => undefined);
+    return next;
+  };
+
+  const conductorSignIn = conductorOn
+    ? new ConductorSignIn({
+        env: conductorEnv,
+        keyStore,
+        fetchImpl: opts.conductorDeps?.fetchImpl,
+        refusal: conductorRefusal,
+        restart: restartConductor,
+        log: (message) => console.log(`[Pixel Agents] Conductor: ${message}`),
+      })
+    : undefined;
+
   let config: ServerConfig;
   try {
     config = await startOnPreferredPort(
@@ -433,6 +550,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
             ? () => Promise.reject(new Error(DEMO_OPEN_EXTERNAL_REFUSAL))
             : (opts.openExternal ?? ((url) => openWithSystem(url))),
           music: opts.music,
+          conductorSignIn,
         }),
       opts.port,
     );
@@ -441,14 +559,13 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
     throw err;
   }
   currentConfig = { port: config.port, token: config.token };
-  const ownsServer = server.isOwner();
+  ownsServer = server.isOwner();
+  officePort = config.port;
 
   // ── Conductor: poll only from the process that owns the server (a reused
   // server already runs its own poller). Started without awaiting, so the
   // office URL is ready at once and sessions stream in as they are found.
   // A Conductor failure never takes the office down with it.
-  let conductor: StreamProvider | null = null;
-  let conductorLock: PollerLock | null = null;
   if (demo && ownsServer) {
     // No lock: the demo never polls Conductor, so a real office may run beside it.
     try {
@@ -478,19 +595,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
       `[Pixel Agents] Conductor sessions are already tracked by the Poke Agents office${port ? ` on port ${port}` : ''} (PID ${pid}). This office shows no Conductor sessions: open that one, or stop it and restart this one.`,
     );
   } else if (conductorLock) {
-    try {
-      conductor = createConductorProvider({
-        budgetPerMinute: opts.conductorBudget,
-        log: (message) => console.log(`[Pixel Agents] Conductor: ${message}`),
-      });
-      const sink = runtime.attachStreamProvider(conductor, { memory: adapter });
-      void conductor.start(sink).catch((err: unknown) => {
-        console.error(`[Pixel Agents] Conductor failed to start: ${errorText(err)}`);
-      });
-    } catch (err) {
-      console.error(`[Pixel Agents] Conductor is unavailable: ${errorText(err)}`);
-      conductor = null;
-    }
+    startConductorProvider();
   }
 
   if (!opts.claude) {
@@ -558,14 +663,19 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   // standaloneTokenValid in wsAuth.ts).
   const displayHost = displayHostFor(host);
 
-  let stopping: Promise<void> | null = null;
+  const stopConductor = async (): Promise<void> => {
+    await conductor?.stop().catch((err: unknown) => {
+      console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
+    });
+  };
   const stop = (): Promise<void> => {
     stopping ??= (async () => {
       // Stop polling first: nothing should adopt agents into a runtime that is
-      // tearing them down.
-      await conductor?.stop().catch((err: unknown) => {
-        console.error(`[Pixel Agents] Conductor stop failed: ${errorText(err)}`);
-      });
+      // tearing them down. That also settles a restart waiting on the current
+      // provider's sign-in; the restart then starts nothing, since stopping.
+      await stopConductor();
+      await restartChain;
+      await stopConductor();
       if (conductorLock?.acquired) conductorLock.release();
       // Kill child terminals before the runtime tears their agents down, and
       // wait for them: exiting now would cancel the SIGKILL escalation and
@@ -592,6 +702,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
         .streamDrivers()
         .find((driver) => driver.provider.id === conductor?.id)
         ?.statusMessage() ?? null,
+    reconnectConductor: restartConductor,
     stop,
   };
 }
