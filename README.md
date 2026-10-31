@@ -1,6 +1,8 @@
 # Poke Agents
 
-Poke Agents shows your [Conductor](https://conductor.build) cloud sessions as Pokémon in a pixel-art office, live. Each session walks to a desk while it works, falls asleep when it goes idle, faints when it errors, and calls for you when it needs an answer. When one session delegates to others, the office draws the links between them and shows the messages they send. It runs in a small window next to Conductor.
+<img src="webview-ui/public/icons/icon-256.png" alt="Poke Agents icon" width="128" height="128">
+
+Poke Agents shows your [Conductor](https://conductor.build) cloud sessions as Pokémon in a pixel-art office, live. Each session walks to a desk while it works, falls asleep when it goes idle, faints when it errors, and calls for you when it needs an answer. When one session delegates to others, the office draws the links between them and shows the messages they send. It runs as a Mac app or in a small browser window next to Conductor.
 
 Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, under the [MIT License](LICENSE).
 
@@ -16,7 +18,8 @@ Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel
 - **Sessions modal.** Choose which sessions are visible: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search across every session in scope.
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
-- **Desktop window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
+- **Mac app.** `npm run app:mac` builds Poke Agents as a macOS app with notifications when a session needs you and a Dock badge counting them. See [Mac App](#mac-app).
+- **Browser window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
 
@@ -24,8 +27,8 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. Th
 
 - A [Conductor](https://conductor.build) Pro account with **cloud** workspaces. Conductor's public API needs Pro and only covers cloud workspaces.
 - A Conductor API key in `CONDUCTOR_API_KEY`, or a Conductor CLI login (`conductor auth login`) on macOS.
-- Node.js 20 or later, and git.
-- macOS for the app window (Chrome, Edge, Brave, Chromium or Vivaldi). On Linux, the office works in any browser.
+- Node.js 20 or later, and git. Building the Mac app needs Node.js 22.12 or later.
+- For the Mac app, macOS 13 or later. For the browser window, macOS with Chrome, Edge, Brave, Chromium or Vivaldi. On Linux, the office works in any browser.
 
 ## Quick Start
 
@@ -53,6 +56,48 @@ npx --allow-git=all github:joshle298/poke-agents --open
 The first run downloads about 150 MB of build tools and builds the app, which takes 20 seconds or more. Later runs of the same commit start in about a second. Don't run `npx poke-agents`: that npm name belongs to an unrelated package.
 
 The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
+
+## Mac App
+
+The Mac app is the same office in its own window, and it only shows Conductor: it never runs coding agents, edits repositories or changes your Conductor settings, and it has no Claude Code tracking, terminal or hooks. Session actions in the Pokédex ask Conductor's API to act, as in the browser.
+
+### Build It
+
+On your Mac, from a clone:
+
+```bash
+npm ci
+npm run app:mac
+```
+
+The first build downloads Electron for both Mac architectures (about 120 MB each) and takes a few minutes. The app lands in `desktop/release/`:
+
+| File                                         | For                                |
+| -------------------------------------------- | ---------------------------------- |
+| `desktop/release/mac-arm64/Poke Agents.app`  | Apple silicon                      |
+| `desktop/release/mac/Poke Agents.app`        | Intel                              |
+| `desktop/release/Poke Agents-0.1.0-*mac.zip` | The same apps, zipped, for copying |
+
+Drag the app to `/Applications` and open it. A build made on your Mac is signed ad hoc, so macOS opens it normally there. The app has no Apple Developer ID signature and isn't notarized, so a copy downloaded from elsewhere needs Control-click → **Open** (on macOS 15 and later: open it once, then **System Settings → Privacy & Security → Open Anyway**). Build on a Mac: Apple silicon refuses to run an app with no signature, and only a Mac can sign it.
+
+`npm run app:dev` runs the app unpackaged, with **View → Toggle Developer Tools**.
+
+### Sign In
+
+An app opened from Finder doesn't get your shell's environment variables, so it doesn't see `CONDUCTOR_API_KEY`. It reads the sign-in that `conductor auth login` saves in the Keychain instead. macOS may ask whether `security` may use the item `com.conductor.cli`; choose **Always Allow**. If the office asks you to sign in, run `conductor auth login` in Terminal, then choose **Poke Agents → Reconnect to Conductor**. To use an API key instead, start the office from Terminal with the key set (`npm start`); the app shows that office.
+
+### Using the App
+
+- Closing the window keeps Poke Agents in the Dock; click its icon to reopen the office. **Cmd-Q** quits and stops the office's server. Opening the app again brings the running copy forward.
+- The window remembers its size and position.
+- Web links open in your default browser and **Open in Conductor** opens the Conductor app. The window never navigates anywhere else.
+- **Notifications:** when a session starts waiting for your answer or a permission, or faints, Poke Agents posts a notification such as "Pikachu needs your answer" with the session's name. Click it to bring the office forward. There are none while the office window is in front, none for sessions already waiting when the app starts, at most one per session and reason every 2 minutes, and at most 3 every 30 seconds. Allow notifications when macOS asks, or later in **System Settings → Notifications → Poke Agents**.
+- **Dock badge:** the number of sessions waiting for your answer or a permission.
+- **With the command line:** the app and `npm start` share one office on port 41510. If `npm start` is already running, the app opens that office and starts its own when the command exits. If the app is running, `npm start` opens a browser window onto the app's office. A command started with other flags, such as `--claude`, runs its own office on another port.
+
+### Data and Uninstall
+
+The app keeps the office's data in `~/.pixel-agents/`, shared with the command line, and its window position in `~/Library/Application Support/Poke Agents/`. To uninstall, quit the app, move it to the Trash, and delete `~/Library/Application Support/Poke Agents/`. Delete `~/.pixel-agents/` too if you don't use the command line. The Keychain item belongs to the Conductor CLI; leave it.
 
 ## Using the Office
 
@@ -133,6 +178,8 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 - **Sessions update slowly, or the status line reports rate limiting.** Conductor limits API requests, and the limit may be shared with your sessions' own `conductor` CLI calls. Poke Agents halves its request rate after a rate-limit reply and recovers slowly. Lower the rate with `--conductor-budget`, or narrow the scope and cap in Sessions.
 - **macOS asks to allow access to a Keychain item.** That is the token `conductor auth login` saved. Choose Allow, or set `CONDUCTOR_API_KEY` to skip the Keychain.
 - **The office opens in a normal browser tab.** No supported Chromium browser was found. Install Chrome, or pick one with `--browser`.
+- **macOS says Poke Agents "is damaged and can't be opened".** The app has no valid signature, usually because it was built on another computer. Build it on your Mac with `npm run app:mac`, or sign the copy ad hoc: `codesign --force --deep --sign - "/Applications/Poke Agents.app"`.
+- **The Mac app shows no notifications.** Check **System Settings → Notifications → Poke Agents**. Notifications are skipped while the office window is in front.
 - **An installed web app can't connect after a restart.** Port 41510 was busy, so the office started on another port. Stop whatever holds 41510, or always pass the same `--port`.
 - **Pokémon show as office workers.** Sprites download in the background, and the upstream character shows until a sprite is ready. If it never changes, check that `raw.githubusercontent.com` or `cdn.jsdelivr.net` is reachable.
 
@@ -146,6 +193,11 @@ These need a Mac and can't be checked in CI:
 4. Cloud sessions appear within about 10 seconds. A session spawned by a Lead appears thrown out of the Lead, with a link.
 5. Install the office as an app from Chrome. After stopping and restarting `npm start`, the installed app still connects (fixed port 41510).
 6. Optional: with `--claude`, check whether local Conductor workspaces appear through their Claude Code transcripts.
+7. `npm run app:mac` builds both apps, and the Apple silicon one opens from Finder with the Pokémon icon in the Dock and no Gatekeeper warning.
+8. Opened from Finder with only `conductor auth login` done, the app connects. Without a sign-in it shows the app's steps, and **Reconnect to Conductor** connects after `conductor auth login`.
+9. A session that starts waiting for an answer posts a notification while another app is in front; clicking it brings the office forward. The Dock badge counts waiting sessions and clears when they continue.
+10. Closing the window keeps the app in the Dock, clicking the Dock icon reopens it, and Cmd-Q quits. Reopened, the window keeps its size and position.
+11. With `npm start` running, the app opens the same office; after stopping `npm start`, the app keeps working on its own server.
 
 ## Development
 
@@ -163,6 +215,8 @@ npm run lint
 npm test
 POKE_AGENTS_SPRITES=off npm run e2e -- e2e/tests/standalone --workers=1
 ```
+
+`npm test` includes the Mac app's helper tests (`npm run test:desktop`, no Electron needed) and the icon check (`npm run test:icons`). The app icon is drawn by `scripts/generate-icons.mjs`; after changing it, run `npm run icons:generate` to rewrite every icon file.
 
 Standalone end-to-end tests run without Conductor and without sprites. The VS Code tests in `e2e/tests/claude` open VS Code windows on your screen. Commits run [gitleaks](https://github.com/gitleaks/gitleaks) through a husky hook, so install it first (`brew install gitleaks`). See [CONTRIBUTING.md](CONTRIBUTING.md), and use [Issues](https://github.com/joshle298/poke-agents/issues) for bugs and ideas.
 

@@ -14,6 +14,7 @@ First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](http
 - **Sessions modal** for scope (your workspaces or the organization), activity window, idle sessions, cap, search, hide and pin.
 - **Party bar**, an optional **battle log**, and **Settings → Credits** for the sprite artists.
 - **Desktop window:** `npm start` (`poke-agents --open`) opens the office in a Chromium app window, on fixed port 41510 so an installed web app keeps working.
+- **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
 
 ### Changes
 
@@ -21,6 +22,7 @@ First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](http
 - Conductor is on by default (`--no-conductor` turns it off). Claude Code tracking is opt-in with `--claude`.
 - New flags: `--open`/`--app`, `--browser`, `--claude`, `--no-conductor`, `--conductor-budget`, `--no-sprites`.
 - Turning the Pokémon theme off in Settings restores the Pixel Agents look and stops sprite downloads.
+- A new app icon, a pixel capsule with a terminal prompt on its button, drawn in code by `scripts/generate-icons.mjs`.
 - No Pokémon artwork is in the repository: sprites are downloaded at runtime from the PMD Sprite Repository to `~/.pixel-agents/cache/pmd/`.
 
 ## Pixel Agents (upstream)
