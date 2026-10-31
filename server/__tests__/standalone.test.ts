@@ -112,6 +112,36 @@ describe('startStandalone', () => {
     started.push(again);
     expect(again.port).toBe(port);
   });
+
+  it('reports its Conductor status to a listener that subscribes after the start', async () => {
+    // No token anywhere: no env key, and a base URL with no Keychain item, so
+    // nothing is fetched and macOS shows no Keychain prompt.
+    vi.stubEnv('CONDUCTOR_API_KEY', '');
+    vi.stubEnv('CONDUCTOR_API_TOKEN', '');
+    vi.stubEnv('CONDUCTOR_API_URL', 'http://127.0.0.1:9');
+    try {
+      const office = await startStandalone({
+        distRoot: DIST_ROOT,
+        port: await freePort(),
+        conductor: true,
+        claude: false,
+        sprites: false,
+      });
+      started.push(office);
+      await vi.waitFor(() =>
+        expect(office.conductorStatus()).toMatchObject({
+          type: 'conductorStatus',
+          state: 'authRequired',
+        }),
+      );
+
+      const off = await startOffice(await freePort());
+      started.push(off);
+      expect(off.conductorStatus()).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe('displayHostFor', () => {

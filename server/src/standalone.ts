@@ -92,6 +92,10 @@ export interface StandaloneOffice {
   pid: number;
   /** This process's store. Its events are the office's only when ownsServer. */
   store: AgentStateStore;
+  /** The last conductorStatus message this process's Conductor poller sent,
+   *  or null (none yet, Conductor off, or the server is reused). For a
+   *  listener that subscribes to `store` after the start. */
+  conductorStatus(): Record<string, unknown> | null;
   /** Stop polling, terminals, the runtime and the server (when owned). Idempotent. */
   stop(): Promise<void>;
 }
@@ -489,6 +493,11 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
     ownsServer,
     pid: config.pid,
     store,
+    conductorStatus: () =>
+      runtime
+        .streamDrivers()
+        .find((driver) => driver.provider.id === conductor?.id)
+        ?.statusMessage() ?? null,
     stop,
   };
 }
