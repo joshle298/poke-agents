@@ -78,6 +78,9 @@ export class AudioEngine {
   /** Loudness-matching gain per decoded file. */
   private readonly levels = new WeakMap<AudioBuffer, number>();
   private readonly failedAt = new Map<string, number>();
+  /** Files this browser can't decode (an Ogg cry in some Safari versions):
+   *  never fetched again this session. */
+  private readonly undecodable = new Set<string>();
   private readonly cryQueue = new CryQueue();
   private cryToken = 0;
   private currentCry: AudioBufferSourceNode | null = null;
@@ -339,6 +342,7 @@ export class AudioEngine {
   }
 
   private recentlyFailed(url: string): boolean {
+    if (this.undecodable.has(url)) return true;
     const at = this.failedAt.get(url);
     return at !== undefined && Date.now() - at < SOUND_LOAD_RETRY_MS;
   }
@@ -375,7 +379,7 @@ export class AudioEngine {
       return buffer;
     } catch {
       // Not decodable here (an Ogg cry in a browser without Vorbis): give up on it.
-      this.failedAt.set(url, Date.now());
+      this.undecodable.add(url);
       this.bytes.delete(url);
       return null;
     }
