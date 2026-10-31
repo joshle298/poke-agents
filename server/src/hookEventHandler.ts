@@ -2,11 +2,11 @@ import * as path from 'path';
 
 import type { AgentEvent, HookProvider } from '../../core/src/provider.js';
 import type { AgentStateStore } from './agentStateStore.js';
+import { markAgentWaiting } from './agentTransitions.js';
 import { SESSION_END_GRACE_MS } from './constants.js';
 import type { SessionRouter } from './sessionRouter.js';
-import { getInlineTeammates, hasInlineTeammates, hasPromotedBackgroundAgent } from './teamUtils.js';
+import { getInlineTeammates, hasInlineTeammates } from './teamUtils.js';
 import { cancelPermissionTimer, cancelWaitingTimer } from './timerManager.js';
-import { notifyBackgroundAgentCompleted } from './transcriptParser.js';
 import type { AgentState } from './types.js';
 
 const debug = process.env.PIXEL_AGENTS_DEBUG !== '0';
@@ -713,66 +713,19 @@ export class HookEventHandler {
     }
   }
 
-  /**
-   * Transition agent to waiting state. Clears foreground tools (preserves background
-   * agents), cancels timers, and notifies the webview. Same logic as the turn_duration
-   * handler in transcriptParser.ts.
-   */
+  /** Transition agent to waiting state (see agentTransitions.markAgentWaiting). */
   private markAgentWaiting(agent: AgentState, agentId: number, awaitingInput = false): void {
-    cancelWaitingTimer(agentId, this.waitingTimers);
-    cancelPermissionTimer(agentId, this.permissionTimers);
-
-    // Clear foreground tools, preserve background agents (same logic as turn_duration handler).
-    // ALWAYS send agentToolsClear at turn end -- even when activeToolIds is empty by now
-    // (because tool_results already processed and removed them). Without this, stale
-    // sub-agent characters and permission bubbles from the turn would never clear.
-    const parentTools = this.getSubagentToolSet();
-    for (const toolId of [...agent.activeToolIds]) {
-      if (agent.backgroundAgentToolIds.has(toolId)) continue;
-      agent.activeToolIds.delete(toolId);
-      agent.activeToolStatuses.delete(toolId);
-      const toolName = agent.activeToolNames.get(toolId);
-      agent.activeToolNames.delete(toolId);
-      if (toolName && parentTools.has(toolName)) {
-        agent.activeSubagentToolIds.delete(toolId);
-        agent.activeSubagentToolNames.delete(toolId);
-        // A foreground spawn dropped at Stop without a tool_result: stop its
-        // shadow watch too, or it lingers until sessionEnd.
-        notifyBackgroundAgentCompleted(agentId, toolId);
-      }
-    }
-    this.agents.broadcast({ type: 'agentToolsClear', id: agentId });
-    // Re-send background agent tools to restore them after the clear.
-    // toolName + runInBackground are REQUIRED: without them the webview can't
-    // recognize the re-sent tool as a subagent spawn and never recreates the
-    // Subtask sub-character (extractToolName("Subtask: ...") is not a tool).
-    // Skip tools whose background agent was promoted to its own character.
-    for (const toolId of agent.backgroundAgentToolIds) {
-      if (hasPromotedBackgroundAgent(agentId, toolId, this.agents)) continue;
-      const status = agent.activeToolStatuses.get(toolId);
-      if (status) {
-        this.agents.broadcast({
-          type: 'agentToolStart',
-          id: agentId,
-          toolId,
-          status,
-          toolName: agent.activeToolNames.get(toolId),
-          runInBackground: true,
-          isTeammateSpawn: agent.teammateSpawnToolIds?.has(toolId) || undefined,
-        });
-      }
-    }
-
-    agent.isWaiting = true;
-    agent.permissionSent = false;
-    agent.hadToolsInTurn = false;
-    agent.currentHookToolId = undefined;
-    this.agents.broadcast({
-      type: 'agentStatus',
-      id: agentId,
-      status: 'waiting',
+    markAgentWaiting(
+      agent,
+      agentId,
+      {
+        store: this.agents,
+        waitingTimers: this.waitingTimers,
+        permissionTimers: this.permissionTimers,
+        subagentToolNames: this.getSubagentToolSet(),
+      },
       awaitingInput,
-    });
+    );
   }
 
   /** Clean up timers and maps. Called when the extension disposes. */
