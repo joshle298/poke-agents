@@ -13,9 +13,12 @@ import { expect } from '@playwright/test';
  * advanced.
  */
 
+/** The opening step's title (IntroBubble.tsx `titles[WELCOME_STEP]`). */
+export const INTRO_WELCOME_TITLE = 'Welcome to Poke Agents!';
+
 /** Walk the Intro from its opening step to the consent step. */
 export async function advanceIntroToConsentStep(dialog: Locator): Promise<void> {
-  await expect(dialog).toContainText('Welcome to Pixel Agents!');
+  await expect(dialog).toContainText(INTRO_WELCOME_TITLE);
   await dialog.getByRole('button', { name: 'Continue' }).click();
   await expect(dialog).toContainText('Claude Code');
   await dialog.getByRole('button', { name: 'Continue' }).click();

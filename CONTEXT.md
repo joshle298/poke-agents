@@ -1,6 +1,6 @@
-# Pixel Agents
+# Poke Agents
 
-Pixel Agents turns AI coding sessions into animated characters in a pixel-art office. This glossary is the canonical language for contributors and integrators; end-user docs may simplify it but must never contradict it.
+Poke Agents, a fork of Pixel Agents, turns AI coding sessions into animated characters in a pixel-art office: Conductor cloud sessions by default, drawn as Pokémon, and Claude Code sessions with `--claude`. Where the entries below say Pixel Agents, they hold for Poke Agents too. This glossary is the canonical language for contributors and integrators; end-user docs may simplify it but must never contradict it.
 
 ## Hosts & Adapters
 
@@ -45,7 +45,7 @@ _Avoid_: subtask (UI label prefix only)
 A Lead plus the Teammates it spawned. A team exists because a teammate was spawned — whether or not the CLI recorded one. A CLI's team registry is evidence of a team, never its definition.
 
 **Lead**:
-The agent that spawned a Team's teammates. An agent becomes a lead the moment it spawns its first teammate.
+The agent that spawned a Team's teammates. An agent becomes a lead the moment it spawns its first teammate. A cloud session becomes a lead once it has created another session with a first message: the created sessions are its teammates, linked to it in the office. With the Pokémon theme, a lead is a legendary.
 _Avoid_: parent (that's the sub-agent relationship), orchestrator
 
 **Teammate**:
@@ -200,6 +200,36 @@ The preferred detection mode, in which agent status is driven by hooks.
 **Heuristic mode**:
 The fallback detection mode, in which agent status is inferred from transcript activity, timers, and silence.
 _Avoid_: file fallback, transcript mode, polling mode
+
+## Conductor & Pokémon
+
+**Cloud session**:
+A Conductor session running in one of Conductor's cloud workspaces. The only kind of Conductor session the office can see, because Conductor's public API covers cloud workspaces and not local ones. Each visible cloud session is an agent.
+_Avoid_: remote session, Conductor agent
+
+**Hidden**:
+A cloud session the user chose not to show. It stays in scope and in the Sessions modal's search, but has no character until it is shown again. Dismissing a cloud session's character hides it.
+_Avoid_: dismissed (for cloud sessions, dismissing is how a session becomes hidden), filtered, muted
+
+**Pinned**:
+A cloud session that is always shown, ranked ahead of every other session when more are in scope than the cap allows.
+_Avoid_: favorite, starred
+
+**PC Box**:
+The list of archived cloud sessions. Depositing a session in the PC archives it in Conductor and removes its character; withdrawing it unarchives it, and its character walks back in.
+_Avoid_: archive view, trash
+
+**Battle log**:
+The optional one-line ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), shown at the bottom of the office. It lives in the office UI only and keeps the last 30 events.
+_Avoid_: activity feed, event log
+
+**Level**:
+The `Lv` number on a Pokémon character, derived from its session's activity: the message count of a cloud session, otherwise its tool calls. A species evolves at Lv 16 and Lv 36 when its line has later stages. It measures activity, not quality or progress.
+_Avoid_: XP, score
+
+**Status condition**:
+The badge on a Pokémon character that names its state in Pokémon terms: `SLP` asleep (not active for a while), `FNT` fainted (its session errored), `!` needs you (waiting for input or a permission request).
+_Avoid_: status (that's the agent's status), badge
 
 ## Integration Boundary
 

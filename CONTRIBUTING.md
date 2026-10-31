@@ -1,6 +1,6 @@
-# Contributing to Pixel Agents
+# Contributing to Poke Agents
 
-Thanks for your interest in contributing to Pixel Agents! All contributions are welcome — features, bug fixes, documentation improvements, refactors, and more.
+Thanks for your interest in contributing to Poke Agents! All contributions are welcome — features, bug fixes, documentation improvements, refactors, and more. Poke Agents is a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents); changes that aren't specific to Conductor or the Pokémon theme may belong upstream.
 
 This project is licensed under the [MIT License](LICENSE), so your contributions will be too. No CLA or DCO is required.
 
@@ -9,18 +9,22 @@ This project is licensed under the [MIT License](LICENSE), so your contributions
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) (use the version in [`.nvmrc`](.nvmrc), currently v22)
-- [VS Code](https://code.visualstudio.com/) (v1.105.0 or later)
+- [gitleaks](https://github.com/gitleaks/gitleaks) (`brew install gitleaks`): the husky pre-commit hook refuses commits without it
+- [VS Code](https://code.visualstudio.com/) (v1.105.0 or later), only for the VS Code extension
 
 ### Setup
 
 ```bash
-git clone https://github.com/pixel-agents-hq/pixel-agents.git
-cd pixel-agents
-npm install
-npm run build
+git clone https://github.com/joshle298/poke-agents.git
+cd poke-agents
+npm ci          # also builds dist/ (scripts/prepare.mjs)
+npm run build   # full compile: protocol generation, type check, lint, esbuild, Vite
+node dist/cli.js --no-conductor
 ```
 
-Then press **F5** in VS Code to launch the Extension Development Host.
+`npm ci` and `npm install` run `scripts/prepare.mjs`, which installs the git hooks and builds `dist/` when it is missing or was built from another commit. Set `POKE_AGENTS_SKIP_BUILD=1` to skip that build. Run without `--no-conductor` to poll your Conductor account (see the README for sign-in), and add `--claude` to work on the Claude Code provider.
+
+For the VS Code extension, press **F5** in VS Code to launch the Extension Development Host.
 
 ### Build and install the packaged extension locally
 
@@ -46,22 +50,15 @@ npm run test:package-contract
 npm run verify:npm-package
 ```
 
-The verifier runs the production `prepack` build, creates a tarball outside the repository, installs that exact tarball into a temporary project, and exercises CLI help, the health endpoint, the standalone SPA, bundled assets, and default Hook ON setup. Temporary files and the child server are removed automatically; it never publishes to npm.
+The verifier runs the production `prepack` build, creates a tarball outside the repository, installs that exact tarball into a temporary project, and checks the package identity (`@joshle298/poke-agents`, one `poke-agents` bin), CLI help, the `Poke Agents running at` URL line, the health endpoint, the standalone SPA, bundled assets, and Claude hook setup. It starts the CLI with `--no-conductor --claude`, sprites off and Conductor credentials removed from its environment. Temporary files and the child server are removed automatically; it never publishes to npm.
 
-### Maintainer release checklist
+`npm pack --dry-run` lists what would ship. `npx github:joshle298/poke-agents` installs from git, which runs `prepare` to build `dist/` first.
 
-A published GitHub Release coordinates publishing to the VS Code Marketplace, Open VSX, and npm through [`.github/workflows/publish-extension.yml`](.github/workflows/publish-extension.yml). Publishing is release-driven, not triggered by a push to `main` alone.
+### Releases
 
-One-time npm setup: configure the `pixel-agents` package's GitHub Actions [trusted publisher](https://docs.npmjs.com/trusted-publishers/) for `pixel-agents-hq/pixel-agents`, workflow `publish-extension.yml`, no environment, and allow `npm publish`.
-The GitHub-hosted workflow enforces Node >=22.14.0 and npm >=11.5.1 and uses OIDC (`id-token: write`); do not configure a long-lived publish token, and revoke any unused one.
+Poke Agents has no release workflow and is not published to npm. Users install it from GitHub: a clone with `npm ci && npm start`, or `npx github:joshle298/poke-agents --open`. To ship a change, update `CHANGELOG.md` (and the `version` in `package.json` and both root-version fields in `package-lock.json` for a new version) and push to `main`.
 
-For each release:
-
-1. Update `CHANGELOG.md`, then set the same new version in the root `package.json` and both root-version fields in `package-lock.json`. The private workspace manifests are not released and do not receive the extension version.
-2. Run `npm ci`, `npm test`, and `npm run verify:npm-package`. Inspect the generated package if needed by manually dispatching **Publish Extension** in dry-run mode and downloading its `npm-package-*` artifact; manual dispatch never publishes to npm.
-3. Merge the release changes into `main` and wait for CI to pass.
-4. Create and publish a GitHub Release whose tag is exactly `v<package.json version>` and points to that commit on `main` (for example, `v1.4.0`). The npm job rejects a mismatched tag, ref, package identity, non-incrementing version, or changed tarball integrity.
-5. Confirm the Marketplace, Open VSX, and npm jobs succeeded, and verify the new npm version with `npm view pixel-agents version`.
+`scripts/publish-npm-package.mjs` and the release identity in `scripts/npm-package-contract.mjs` remain for a deliberate npm release job later. That job would need npm trusted publishing configured for `@joshle298/poke-agents`. Never publish or document the unscoped `poke-agents` name, which belongs to an unrelated package.
 
 ## Development Workflow
 
@@ -99,16 +96,16 @@ Vite will print a local URL (typically `http://localhost:5173`) where the mocked
 
 Pixel Agents uses a layered codebase. `core/` depends on nothing; `server/` and `webview-ui/` depend only on `core/`; `adapters/vscode/` depends on `core/` and `server/`.
 
-| Directory                   | Description                                                                                                                                                                                                                                           |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `core/`                     | Protocol + interface definitions (AsyncAPI 3.0 contract, HookProvider, MessageTransport, StateAdapter). Zero runtime side effects.                                                                                                                    |
-| `server/`                   | Lifecycle runtime: `AgentRuntime`, `AgentStateStore`, `SessionRouter`, `DismissalTracker`, Fastify HTTP/WS server, file watching, transcript parsing, hook installer, providers, Vitest test suite. Also ships the `npx pixel-agents` standalone CLI. |
-| `adapters/vscode/`          | VS Code surface — `extension.ts`, `WebviewViewProvider`, terminal lifecycle, one-time state migration. Composes `core/` and `server/`.                                                                                                                |
-| `webview-ui/`               | React 19 + Canvas UI. Transport abstraction (`PostMessageTransport` + `WebSocketTransport`). Depends only on `core/`.                                                                                                                                 |
-| `webview-ui/public/assets/` | Bundled sprites, furniture catalog, default layout, fonts.                                                                                                                                                                                            |
-| `scripts/`                  | Build/CI tooling: `generate-messages.ts` (AsyncAPI → TS), `run-e2e.mjs`, `build-allure-report.mjs`, `assemble-vercel-output.mjs`, and the asset extraction pipeline.                                                                                  |
-| `e2e/`                      | Playwright suite — fixtures, helpers, specs for `claude/hooks-on/`, `claude/hooks-off/`, and `standalone/`.                                                                                                                                           |
-| `eslint-rules/`             | Custom rules (`no-inline-colors`, `pixel-shadow`, `pixel-font`) enforced project-wide.                                                                                                                                                                |
+| Directory                   | Description                                                                                                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `core/`                     | Protocol + interface definitions (AsyncAPI 3.0 contract, HookProvider, MessageTransport, StateAdapter). Zero runtime side effects.                                                                                                               |
+| `server/`                   | Lifecycle runtime: `AgentRuntime`, `AgentStateStore`, `SessionRouter`, `DismissalTracker`, Fastify HTTP/WS server, file watching, transcript parsing, hook installer, providers, Vitest test suite. Also ships the `poke-agents` standalone CLI. |
+| `adapters/vscode/`          | VS Code surface — `extension.ts`, `WebviewViewProvider`, terminal lifecycle, one-time state migration. Composes `core/` and `server/`.                                                                                                           |
+| `webview-ui/`               | React 19 + Canvas UI. Transport abstraction (`PostMessageTransport` + `WebSocketTransport`). Depends only on `core/`.                                                                                                                            |
+| `webview-ui/public/assets/` | Bundled sprites, furniture catalog, default layout, fonts.                                                                                                                                                                                       |
+| `scripts/`                  | Build/CI tooling: `generate-messages.ts` (AsyncAPI → TS), `run-e2e.mjs`, `build-allure-report.mjs`, `assemble-vercel-output.mjs`, and the asset extraction pipeline.                                                                             |
+| `e2e/`                      | Playwright suite — fixtures, helpers, specs for `claude/hooks-on/`, `claude/hooks-off/`, and `standalone/`.                                                                                                                                      |
+| `eslint-rules/`             | Custom rules (`no-inline-colors`, `pixel-shadow`, `pixel-font`) enforced project-wide.                                                                                                                                                           |
 
 The repo uses **npm workspaces** (`server`, `webview-ui` declared in the root `package.json`). A single `npm install` at the root installs dependencies for all workspaces; no nested `cd ... && npm install` is needed.
 
@@ -254,10 +251,10 @@ The auto-generated test inventory in `e2e/README.md` groups tests by `@area:` ta
    npm run asyncapi:generate            # Regen core/src/messages.ts (must produce no git diff)
    npm run e2e:inventory                # Regen e2e/README.md (must produce no git diff)
    npm run build                        # esbuild (extension + CLI + hooks) + Vite (webview)
-   npm test                             # Server vitest + webview vitest
-   npm run e2e                          # Full Playwright suite; inventory lives in e2e/README.md
+   npm test                             # Server vitest + webview vitest + package contract
+   POKE_AGENTS_SPRITES=off npm run e2e -- e2e/tests/standalone --workers=1   # standalone Playwright specs
    ```
-   CI runs these same checks automatically on every PR. The AsyncAPI and e2e inventory drift checks fail the build on any diff — always regen + commit the result.
+   CI runs these checks on every PR and push to `main`, plus the npm package smoke on Node 20. It runs only the standalone end-to-end specs; run the VS Code specs (`e2e/tests/claude`) yourself when you change the VS Code surface, because they open VS Code windows. The AsyncAPI and e2e inventory drift checks fail the build on any diff — always regen + commit the result.
 4. Open a pull request against `main` with:
    - A **conventional commit PR title** (e.g. `feat: add zoom controls`, `fix: character freezing on terminal close`, `refactor: extract pathfinding module`). CI enforces this format — see [Conventional Commits](https://www.conventionalcommits.org/).
    - A clear description of what changed and why
@@ -268,11 +265,11 @@ The auto-generated test inventory in `e2e/README.md` groups tests by `@area:` ta
 
 ## Reporting Bugs
 
-[Open a bug report](https://github.com/pixel-agents-hq/pixel-agents/issues/new?template=bug_report.yml) — the form will guide you through providing the details we need.
+[Open a bug report](https://github.com/joshle298/poke-agents/issues/new?template=bug_report.yml) — the form will guide you through providing the details we need.
 
 ## Feature Requests
 
-Have an idea? [Open a feature request](https://github.com/pixel-agents-hq/pixel-agents/issues/new?template=feature_request.yml) — the form will guide you through describing the problem and your proposed solution. You can also browse and join ongoing conversations in [Discussions](https://github.com/pixel-agents-hq/pixel-agents/discussions).
+Have an idea? [Open a feature request](https://github.com/joshle298/poke-agents/issues/new?template=feature_request.yml) — the form will guide you through describing the problem and your proposed solution.
 
 ## Security Issues
 

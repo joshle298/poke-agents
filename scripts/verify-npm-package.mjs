@@ -7,9 +7,14 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 import {
+  EXPECTED_BIN_NAME,
+  EXPECTED_HELP_USAGE,
+  EXPECTED_PACKAGE_NAME,
   normalizePackMetadata,
   parsePackJsonOutput,
+  parseStartupUrl,
   validatePackageFiles,
+  validatePackageManifest,
 } from './npm-package-contract.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -42,7 +47,9 @@ function parseArgs(argv) {
 async function execNpm(args, options = {}) {
   return await execFileAsync(npmCommand(), args, {
     cwd: REPO_ROOT,
-    env: { ...process.env, HUSKY: '0' },
+    // `npm pack` runs prepack (the full production build) and then prepare;
+    // POKE_AGENTS_SKIP_BUILD keeps prepare from building a second time.
+    env: { ...process.env, HUSKY: '0', POKE_AGENTS_SKIP_BUILD: '1' },
     maxBuffer: 20 * 1024 * 1024,
     ...options,
   });
@@ -94,15 +101,32 @@ async function stopChild(child) {
   if (child.exitCode === null) child.kill('SIGKILL');
 }
 
+/** Environment for the installed CLI: a throwaway HOME, no Conductor credentials
+ *  and no sprite downloads, so the smoke never touches the network or a real
+ *  Conductor account whatever the developer's shell exports. */
+function smokeEnv(smokeHome) {
+  const env = {
+    ...process.env,
+    HOME: smokeHome,
+    USERPROFILE: smokeHome,
+    POKE_AGENTS_SPRITES: 'off',
+  };
+  delete env.CONDUCTOR_API_KEY;
+  delete env.CONDUCTOR_API_TOKEN;
+  delete env.CONDUCTOR_API_URL;
+  return env;
+}
+
 async function verifyInstalledTarball(tarballPath) {
-  const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pixel-agents-npm-smoke-'));
+  const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'poke-agents-npm-smoke-'));
   const smokeHome = path.join(smokeRoot, 'home');
   const smokeProject = path.join(smokeRoot, 'project');
   fs.mkdirSync(smokeHome, { recursive: true });
   fs.mkdirSync(smokeProject, { recursive: true });
-  // Without recorded consent the CLI (rightly) starts with no hooks installed
-  // — the first-run ask happens in the browser UI, which this smoke never
-  // opens — so the Hook ON assertion below would time out forever. Seeding
+  // Claude Code tracking is opt-in (--claude), and even then the CLI (rightly)
+  // starts with no hooks installed until consent is recorded — the first-run
+  // ask happens in the browser UI, which this smoke never opens — so the Hook
+  // ON assertion below would time out forever. The smoke passes --claude, and seeding
   // consent in the throwaway smoke HOME intentionally bypasses the gate: this
   // test verifies the install MACHINERY ships and works, not the gate (the
   // gate's own behavior is pinned by server/__tests__/cli.test.ts,
@@ -115,7 +139,7 @@ async function verifyInstalledTarball(tarballPath) {
   );
   fs.writeFileSync(
     path.join(smokeProject, 'package.json'),
-    JSON.stringify({ name: 'pixel-agents-package-smoke', private: true }, null, 2),
+    JSON.stringify({ name: 'poke-agents-package-smoke', private: true }, null, 2),
   );
 
   let child = null;
@@ -125,13 +149,15 @@ async function verifyInstalledTarball(tarballPath) {
       cwd: smokeProject,
     });
 
-    const installedRoot = path.join(smokeProject, 'node_modules', 'pixel-agents');
+    const installedRoot = path.join(
+      smokeProject,
+      'node_modules',
+      ...EXPECTED_PACKAGE_NAME.split('/'),
+    );
     const installedManifest = JSON.parse(
       fs.readFileSync(path.join(installedRoot, 'package.json'), 'utf-8'),
     );
-    if (installedManifest.bin?.['pixel-agents'] !== './dist/cli.js') {
-      throw new Error('Installed package has an unexpected pixel-agents bin entry');
-    }
+    validatePackageManifest(installedManifest);
 
     const installedCli = path.join(installedRoot, 'dist', 'cli.js');
     const firstLine = fs.readFileSync(installedCli, 'utf-8').split('\n', 1)[0];
@@ -139,28 +165,40 @@ async function verifyInstalledTarball(tarballPath) {
       throw new Error(`Installed CLI is missing its Node shebang: ${firstLine}`);
     }
 
-    const installedBin = path.join(
-      smokeProject,
-      'node_modules',
-      '.bin',
-      process.platform === 'win32' ? 'pixel-agents.cmd' : 'pixel-agents',
-    );
+    const binDir = path.join(smokeProject, 'node_modules', '.bin');
+    const binFile = (name) => (process.platform === 'win32' ? `${name}.cmd` : name);
+    if (fs.existsSync(path.join(binDir, binFile('pixel-agents')))) {
+      throw new Error('Installed package still links the upstream pixel-agents bin');
+    }
+    const installedBin = path.join(binDir, binFile(EXPECTED_BIN_NAME));
     const help = await execFileAsync(installedBin, ['--help'], {
       cwd: smokeProject,
-      env: { ...process.env, HOME: smokeHome, USERPROFILE: smokeHome },
+      env: smokeEnv(smokeHome),
       shell: process.platform === 'win32',
     });
-    if (!help.stdout.includes('Usage: pixel-agents')) {
-      throw new Error('Installed pixel-agents bin did not print CLI help');
+    if (!help.stdout.includes(EXPECTED_HELP_USAGE)) {
+      throw new Error(
+        `Installed ${EXPECTED_BIN_NAME} bin did not print "${EXPECTED_HELP_USAGE}":\n${help.stdout}`,
+      );
     }
 
+    // --no-conductor: never poll Conductor from a smoke test. --claude: Claude
+    // Code tracking is opt-in, and the hook install below needs it.
     const port = await getFreePort();
     child = spawn(
       process.execPath,
-      [installedCli, '--port', port.toString(), '--host', '127.0.0.1'],
+      [
+        installedCli,
+        '--port',
+        port.toString(),
+        '--host',
+        '127.0.0.1',
+        '--no-conductor',
+        '--claude',
+      ],
       {
         cwd: smokeProject,
-        env: { ...process.env, HOME: smokeHome, USERPROFILE: smokeHome },
+        env: smokeEnv(smokeHome),
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
@@ -176,6 +214,12 @@ async function verifyInstalledTarball(tarballPath) {
         return false;
       }
     }, 'installed CLI health endpoint');
+
+    const printedUrl = await waitFor(() => parseStartupUrl(output), 'startup URL line');
+    const printed = new URL(printedUrl);
+    if (printed.port !== port.toString() || !printed.searchParams.get('token')) {
+      throw new Error(`Startup line did not print this server's tokened URL: ${printedUrl}`);
+    }
 
     const htmlResponse = await fetch(`${baseUrl}/`);
     const html = await htmlResponse.text();
@@ -229,7 +273,7 @@ async function main() {
   const ownsOutputDir = args.outputDir === null;
   const outputDir = args.outputDir
     ? path.resolve(args.outputDir)
-    : fs.mkdtempSync(path.join(os.tmpdir(), 'pixel-agents-npm-pack-'));
+    : fs.mkdtempSync(path.join(os.tmpdir(), 'poke-agents-npm-pack-'));
 
   if (!ownsOutputDir) {
     fs.mkdirSync(outputDir, { recursive: true });
@@ -265,7 +309,7 @@ async function main() {
           '| --- | --- | ---: | ---: | ---: | --- |',
           `| ${packed.id} | ${packed.filename} | ${packed.entryCount} | ${packed.size} bytes | ${packed.unpackedSize} bytes | \`${packed.integrity}\` |`,
           '',
-          `Smoke: ${smoke.assetCounts.join('/')} character/pet/furniture assets; HTTP/SPA/Hook ON passed.`,
+          `Smoke: ${smoke.assetCounts.join('/')} character/pet/furniture assets; banner/HTTP/SPA/Hook ON passed.`,
           '',
         ].join('\n'),
       );

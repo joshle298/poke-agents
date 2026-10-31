@@ -1,5 +1,32 @@
 # Changelog
 
+## Poke Agents v0.1.0
+
+First release of Poke Agents, a fork of Pixel Agents that shows [Conductor](https://conductor.build) cloud sessions as Pokémon.
+
+### Features
+
+- **Conductor sessions in the office.** Cloud sessions are polled from Conductor's public API and appear live, each as a Pokémon that keeps its species. They work while a session runs tools, sleep after a while idle, faint on an error and show `!` when they need you.
+- **Levels and evolution.** `Lv` grows with session activity, with evolution at Lv 16 and Lv 36 when a line has later stages.
+- **Leads and links.** A session that created other sessions is a Lead and appears as a legendary. Lines connect sessions that created, messaged or read each other, and messages fly between them as Poké Balls with a short preview.
+- **Pokédex panel** with the session's task, recent replies and messages, and the actions Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
+- **PC Box** for archived sessions, with Withdraw to bring one back.
+- **Sessions modal** for scope (your workspaces or the organization), activity window, idle sessions, cap, search, hide and pin.
+- **Party bar**, an optional **battle log**, and **Settings → Credits** for the sprite artists.
+- **Desktop window:** `npm start` (`poke-agents --open`) opens the office in a Chromium app window, on fixed port 41510 so an installed web app keeps working.
+
+### Changes
+
+- The package is `@joshle298/poke-agents` and the command is `poke-agents`. Install it from GitHub (clone and `npm start`, or `npx github:joshle298/poke-agents --open`); it is not published to npm.
+- Conductor is on by default (`--no-conductor` turns it off). Claude Code tracking is opt-in with `--claude`.
+- New flags: `--open`/`--app`, `--browser`, `--claude`, `--no-conductor`, `--conductor-budget`, `--no-sprites`.
+- Turning the Pokémon theme off in Settings restores the Pixel Agents look and stops sprite downloads.
+- No Pokémon artwork is in the repository: sprites are downloaded at runtime from the PMD Sprite Repository to `~/.pixel-agents/cache/pmd/`.
+
+## Pixel Agents (upstream)
+
+The entries below are the upstream [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) releases by Pablo De Lucca and its contributors, which Poke Agents builds on.
+
 ## v1.5.0
 
 ### Features

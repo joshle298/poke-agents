@@ -1,6 +1,6 @@
-# Pixel Agents — Compressed Reference
+# Poke Agents — Compressed Reference
 
-Pixel art office where AI agents (Claude Code terminals today, any tool tomorrow) become animated characters. Ships as a **VS Code extension** and an **`npx pixel-agents` standalone CLI** from the same source tree.
+Pixel art office where AI coding sessions become animated characters. **Poke Agents** is a fork of Pixel Agents: by default it shows **Conductor cloud sessions as Pokémon** (a `StreamProvider` polls Conductor's public API), and `--claude` adds upstream's Claude Code tracking. It ships as the **`poke-agents` standalone CLI**, installed from GitHub; the same tree still builds upstream's **VS Code extension** (Claude Code only, upstream characters). The fork's own architecture is in "Conductor provider" and "Pokémon theme" below; everything else is upstream's and still applies.
 
 `CONTEXT.md` is the canonical glossary — read it for what terms like Agent, Sub-agent, Teammate, Lead, Adopt, or Headless agent mean here, and use its vocabulary in code, comments, and docs.
 
@@ -14,7 +14,7 @@ core/                                Protocol + interface definitions (zero runt
   src/
     messages.ts                      AUTO-GENERATED discriminated unions (do not edit)
     schemas.ts                       AgentMeta, SpriteData, FurnitureCatalogEntry
-    provider.ts                      HookProvider, AgentEvent (the integration boundary)
+    provider.ts                      HookProvider, StreamProvider, AgentEventSink, AgentEvent (the integration boundary)
     teamProvider.ts                  Optional TeamProvider (semantic queries for Lead + Teammates)
     transport.ts                     MessageTransport interface, TransportState
     adapter.ts                       StateAdapter, AssetCache, PersistedAgent, AgentSeat
@@ -34,6 +34,11 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     providers/hook/consentGate.ts    Provider-agnostic consent POLICY: when to ask (hooksConsentRequest per provider) and what an answer means (consentActionFor(choice, {installed, consent}) — see docs/adr/0001)
     providers/hook/consentExecutor.ts Provider-agnostic consent EXECUTION: applyConsentChoice(providerId, choice, ConsentEffects) runs the six actions in one order for both surfaces, and SERIALIZES answers per process across ALL providers
     providers/index.ts               Provider registry (claudeProvider + the hookProviders list the consent gate loops over)
+    providers/stream/conductor/      StreamProvider for Conductor cloud sessions (see "Conductor provider")
+    pokemon/                         Sprite cache + route, species catalog, species assigner (see "Pokémon theme")
+    streamAgentDriver.ts             AgentEventSink for stream providers: drives the store with the hook path's broadcast shapes
+    agentTransitions.ts              markAgentWaiting, shared by HookEventHandler and the stream driver
+    openAppWindow.ts                 --open: tokened URL in a Chromium app window (injectable exec)
     agentRuntime.ts                  Lifecycle core: timers, scanners, HookEventHandler, SessionRouter, DismissalTracker
     agentStateStore.ts               EventEmitter-backed single source of truth (typed mutations + events)
     sessionRouter.ts                 session_id → agent_id mapping, event buffering, pending external sessions
@@ -42,7 +47,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     httpServer.ts                    Fastify: POST /api/hooks/:providerId, GET /api/health, GET /ws, SPA (standalone)
     clientMessageHandler.ts          Single dispatch point for ClientMessage from webview
     server.ts                        Top-level composition
-    cli.ts                           npx pixel-agents entry (npm bin)
+    cli.ts                           poke-agents entry (npm bin)
     fileStateAdapter.ts              Namespaced ~/.pixel-agents/ persistence
     configPersistence.ts             { vscode, standalone, externalAssetDirectories, hooksConsent: {providerId: granted|declined}, hooksEnabled: {providerId: boolean} }
     layoutPersistence.ts             ~/.pixel-agents/layout.json with atomic tmp+rename
@@ -81,7 +86,7 @@ webview-ui/                          React 19 + Canvas UI (depends only on core/
     notificationSound.ts             Web Audio API chime
     changelogData.ts                 Changelog modal content
     components/                      React UI (toolbars, modals, settings)
-      BottomToolbar.tsx, ZoomControls.tsx, SettingsModal.tsx, InfoModal.tsx,
+      BottomToolbar.tsx, ZoomControls.tsx, SettingsModal.tsx, ChangelogModal.tsx,
       Tooltip.tsx, DebugView.tsx, ui/Button.tsx, ...
       AgentCard.tsx, AgentCardBar.tsx  Agent cards (mug shot + status dot); the right-edge bar on desktop/VS Code
       cardBar.ts                     Pure card-bar rules: cardVariant, mergeOrder, reorderByPointer (Node-tested)
@@ -178,6 +183,10 @@ e2e/                                 Playwright suite (real VS Code + mock-claud
 
 scripts/
   generate-messages.ts               AsyncAPI → core/src/messages.ts via Modelina (with CI drift check)
+  prepare.mjs                        npm prepare: husky in a git checkout; builds dist/ when missing or built from another commit
+  npm-package-contract.mjs           Package identity (@joshle298/poke-agents, bin poke-agents) + tarball file allowlist
+  verify-npm-package.mjs             Packs, installs and smoke-runs the tarball (--no-conductor --claude, sprites off)
+  generate-pokemon-catalog.mjs       Regenerates server/src/pokemon/speciesCatalog.ts from a species.json
   run-e2e.mjs                        Playwright wrapper (run-id namespacing, video attach flags)
   generate-e2e-inventory.mjs         Splices test list into e2e/README.md (CI drift check)
   build-allure-report.mjs            Combine e2e+server+webview Allure results
@@ -193,12 +202,10 @@ webview-ui/                          npm workspace
 
 ## Distribution
 
-Two artifacts from one source tree:
+- **npm package `@joshle298/poke-agents`** (bin `poke-agents`), **not published**. Users install from GitHub: `git clone … && npm ci && npm start` (`start` = `node dist/cli.js --open`), or `npx github:joshle298/poke-agents --open` (npm ≥ 12 refuses git specs unless given `--allow-git=all`). `dist/` is gitignored, so `prepare` (`scripts/prepare.mjs`) builds it (`npm run build:app`, about 4 s) when it is missing — always the case for a git-dependency install — or was built from another commit (stamp `dist/.build-commit`); `POKE_AGENTS_SKIP_BUILD=1` skips it (CI builds explicitly). Never document `npx poke-agents`: that unscoped npm name is an unrelated package.
+- **VS Code extension** — still builds from this tree (`vscode:prepublish`), with upstream's IDs (`pablodelucca.pixel-agents`, `pixel-agents.*`) and upstream characters. This fork does not publish it.
 
-- **VS Code extension** (`.vsix`) — `pablodelucca.pixel-agents` on VS Code Marketplace and Open VSX. Bundles VS Code adapter + webview SPA + assets + hook scripts.
-- **npm package** (`pixel-agents`) — `npx pixel-agents [--port 3100]` runs the Fastify server and serves the SPA on the same port. Bundles CLI + webview SPA + assets + hook scripts + `core/asyncapi.yaml` (so third-party clients can regenerate from it).
-
-`package.json:files` allowlist controls the npm tarball: `dist/cli.js{,.map}`, `dist/webview/`, `dist/assets/`, `dist/hooks/`, `core/asyncapi.yaml`, `icon.png`. `dist/extension.js` is intentionally excluded since the VS Code entry ships through the `.vsix`.
+`package.json:files` allowlist controls the npm tarball: `dist/cli.js`, `dist/extension.js`, `dist/hooks/claude-hook.js`, `dist/uninstall.js`, `dist/assets/`, `dist/webview/`, `CHANGELOG.md`, `LICENSE`, `icon.png`. `scripts/npm-package-contract.mjs` pins the required and forbidden paths (no source maps, no `server/`/`webview-ui/` sources) and the package identity; `npm run verify:npm-package` installs the packed tarball and smoke-runs it. Nothing Pokémon may ever live under `webview-ui/public/assets/` (copied into `dist/assets/`).
 
 ## Communication Flow
 
@@ -213,9 +220,9 @@ JSONL transcripts ─FileWatcher─→ TranscriptParser ┤
                                                    ↓
                                               AgentRuntime (dispatch on .kind)
                                                    ↓
-                                           AgentStateStore (mutate)
-                                                   ↓
-                                              StoreEvents → broadcast
+                                           AgentStateStore (mutate) ←── StreamAgentDriver (AgentEventSink)
+                                                   ↓                                 ↑ emit / upsert / link
+                                              StoreEvents → broadcast          StreamProvider ←─poll─ Conductor API
                                                    ↓
                           PostMessageTransport ──┤├── WebSocketTransport
                                  (VS Code)      (standalone browser)
@@ -223,14 +230,14 @@ JSONL transcripts ─FileWatcher─→ TranscriptParser ┤
 
 The VS Code adapter wires `PostMessageTransport` against `acquireVsCodeApi()`. The standalone CLI exposes the same protocol over WebSocket at `/ws` with the webview SPA served from the same Fastify instance. **The protocol shape is identical; only the wire differs.**
 
-Adding a new CLI integration is one subdirectory under `server/src/providers/hook/<id>/`: provider, optional `TeamProvider`, installer, hook scripts. Zero changes to the runtime, the UI, or any existing provider.
+Adding a new CLI integration is one subdirectory under `server/src/providers/hook/<id>/`: provider, optional `TeamProvider`, installer, hook scripts. Zero changes to the runtime, the UI, or any existing provider. A source with no hooks to push (a remote API) is a `StreamProvider` under `server/src/providers/stream/<id>/` that polls and pushes into an `AgentEventSink`.
 
 ## AsyncAPI Protocol Contract
 
 `core/asyncapi.yaml` is the contract. Pinned to **3.0.0** because `@asyncapi/modelina@5.10.1` declares `supportedVersions: ['3.0.0']` only; bumping to 3.1.0 produces `export type Root = any`. Revisit when Modelina ships 3.1.0 support.
 
-- **39 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, assets, access (`officeAccess` — sent first on `webviewReady`; `readOnly` hides every control a read-only office would only have refused), settings (`bypassPermissionsUpdated` — the skip-permissions posture, broadcast to every office on change because every launch reads it) + directories (`directoriesLoaded`, `directorySaved` — a save's ack to its sender, carrying the entry as stored, whose name keys the Area mapping; `directoryRejected`, `directorySuggestions`), terminal, diagnostics.
-- **27 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`, `setBypassPermissions`, `setShowHostDirectories` — whether the host's own Directories are listed, off by default; only the list is gated, launches still name agents after them), directories (`saveDirectory`, `removeDirectory`, `requestDirectorySuggestions`), terminal, discovery + assets, diagnostics.
+- **49 ServerMessage variants** (server → client): agent lifecycle, agent activity, sub-agent activity, team + context usage, assets, access (`officeAccess` — sent first on `webviewReady`; `readOnly` hides every control a read-only office would only have refused), settings (`bypassPermissionsUpdated` — the skip-permissions posture, broadcast to every office on change because every launch reads it) + directories (`directoriesLoaded`, `directorySaved` — a save's ack to its sender, carrying the entry as stored, whose name keys the Area mapping; `directoryRejected`, `directorySuggestions`), terminal, diagnostics, and the fork's Conductor and Pokémon messages (`agentDetails`, `agentLinks`, `agentMessage`, `agentNotice`, `sessionDetail`, `conductorStatus`, `conductorSessions`, `conductorActionResult`, `pokemonSpeciesLoaded`, `pokemonThemeUpdated`).
+- **38 ClientMessage variants** (client → server): lifecycle (`webviewReady`, `launchAgent`, `focusAgent`, `closeAgent`), layout (`saveAgentSeats`, `saveLayout`, `exportLayout`, `importLayout`), settings (`setSoundEnabled`, `setHooksEnabled`, `setWatchAllSessions`, `setAlwaysShowLabels`, `setHooksInfoShown`, `setLastSeenVersion`, `setBypassPermissions`, `setShowHostDirectories` — whether the host's own Directories are listed, off by default; only the list is gated, launches still name agents after them), directories (`saveDirectory`, `removeDirectory`, `requestDirectorySuggestions`), terminal, discovery + assets, diagnostics, and the fork's session actions (`setPokemonTheme`, `openExternal`, `requestSessionDetail`, `sendSessionMessage`, `stopSession`, `archiveSession`, `restoreSession`, `requestConductorSessions`, `setConductorScope`, `setSessionHidden`, `setSessionPinned`) — every one privileged, so a read-only office can't send them.
 
 Both unions use `oneOf` with `discriminator: type`. Every concrete message sets `additionalProperties: false`.
 
@@ -262,7 +269,20 @@ export type TransportState = 'connecting' | 'connected' | 'reconnecting' | 'disc
 - **Optional file fallback**: `getSessionDirs(workspace)`, `getAllSessionRoots()`, `sessionFilePattern`, `parseTranscriptLine(line)`, `buildLaunchCommand(sessionId, cwd, opts)`. Used when hooks aren't installed.
 - **Optional team extension**: `team?: TeamProvider` for Lead + Teammates support.
 
-`AgentEvent.kind` values: `toolStart`, `toolEnd`, `turnEnd`, `subagentStart`, `subagentEnd`, `subagentTurnEnd`, `progress`, `permissionRequest`, `sessionStart`, `sessionEnd`. The runtime dispatches on `kind`, never on CLI-specific tool names.
+`AgentEvent.kind` values: `toolStart`, `toolEnd`, `turnEnd`, `subagentStart`, `subagentEnd`, `subagentTurnEnd`, `progress`, `permissionRequest`, `sessionStart`, `sessionEnd`, plus the stream-only `turnStart`, `awaitingInput`, `permissionClear`, `contextUsage`, `notice` (and `turnEnd.outcome` `done | error | aborted` with `errorMessage`). The runtime dispatches on `kind`, never on CLI-specific tool names.
+
+### StreamProvider + StreamAgentDriver (sources without hooks)
+
+`StreamProvider` (`core/src/provider.ts`, `kind: 'stream'`) is the second integration type: the provider owns its own polling and pushes into an `AgentEventSink` given to `start(sink)`. `start()` resolves after the first discovery pass (or a definitive auth failure) and never rejects; `stop()` ends polling. Like a HookProvider it declares `formatToolStatus`, `permissionExemptTools`, `subagentToolNames`, `readingTools` and optionally `contextWindowForModel`. Optional hooks back the UI actions: `onDismiss`, `setSessionHidden`, `setSessionPinned`, `getScope`/`setScope`, `listSessions`, `getSessionDetail`, `sendMessage`, `stopSession`, `archiveSession`, `restoreSession`, `setFocus`.
+
+The sink: `upsertSession(StreamSessionInfo)` (create or update an agent, with `details` for the Pokédex), `emit(sessionId, AgentEvent)`, `link(AgentLinkEvent)` (`spawned | messaged | watched`, `live` only for fresh steady-state items), `removeSession`, `setStatus` (→ `conductorStatus`) and `sessionsChanged` (→ `conductorSessions`).
+
+`AgentRuntime.attachStreamProvider(provider)` returns a `StreamAgentDriver` (`server/src/streamAgentDriver.ts`), the sink implementation; `dispose()` disposes drivers. The driver mirrors the broadcasts the hook and transcript paths already send, so the webview needs no provider-specific code:
+
+- **Agents**: `isExternal`, `hooksOnly`, `hookDelivered`, `jsonlFile: ''`, `projectDir: ''`, `providerId: 'conductor'`, `sessionId: 'conductor:<uuid>'`, `directoryName` = repo short name, `label` = session name else `#<number> <workspace>`. Ids are stable through `conductor-state.json`. `agentCreated` carries `providerId`, `label`, `species`, `shiny`, `level` and `seatId`; `agentDetails` follows on creation, on every change and on reconnect.
+- **Events**: `turnStart` → `agentStatus active`; tools tracked as the transcript path does (`toolEnd` delayed `TOOL_DONE_DELAY_MS`); `permissionRequest/Clear` → `agentToolPermission(Clear)`; `awaitingInput` → `agentStatus waiting awaitingInput:true` (clears nothing); `turnEnd` → `markAgentWaiting`, and `outcome: 'error'` → `agentStatus error` with `errorMessage` (≤ 200 chars) until the next `turnStart`; `contextUsage` → `reportContextUsage`; `notice` → `agentNotice`. Identical statuses are never re-broadcast; seeding and reconnect resends are `silent`.
+- **Runtime guards**: the stale check skips agents without a `jsonlFile`; `/clear` detection needs `isExternal && !hooksOnly`; permission and waiting timers return early for `hooksOnly` agents; `providerCapabilities` sends the union of active providers' tool sets plus `activeProviders`.
+- **Links and teams**: links keyed `(from, to, kind)` with `count`, `lastAt`, `preview`; `agentLinks` snapshots (both ends in the office) debounced 500 ms; live `agentMessage` coalesced to one per pair per 2 s and 6/s overall. A session with an outgoing `spawned` link is a Lead (`isTeamLead`, `promoteToOrchestrator`); its targets get `leadAgentId`, `agentName`, `teamUsesTmux: true`, never `teamName`. Removing a Lead clears its children's `leadAgentId`; closing a Conductor agent hides it (`onDismiss`) and never removes its children.
 
 ### TeamProvider (Lead + Teammates)
 
@@ -291,6 +311,30 @@ The gate for both: the sidecar `toolUseId` must match a LIVE entry in the lead's
 Teammate dismissal is driven by team config polling (`getTeamMembers(teamName)` is authoritative; members with `isActive: false` are treated as departed), by the teammate's own `sessionEnd` (own-session teammates), and by `sessionEnd` on the lead.
 
 **Subtle gate (the one that bit us recently)**: in `webview-ui/src/hooks/useExtensionMessages.ts`, `agentToolStart` with `runInBackground=true` only creates a Subtask sub-character when the **parent has no `teamName`**. With a team, `onTeammateDetected` creates the teammate instead (and the gate prevents a ghost sub-agent). Without a team, the teammate path never fires and the basic Subtask sub-character is the only visible representation. The gate's blind spot — a TEAMED lead's unnamed background spawn — is covered by `subagentToolStart` creating the sub-character lazily when it's missing (`addSubagent` is idempotent); the same lazy path recreates subs after a panel reload.
+
+## Conductor Provider
+
+`server/src/providers/stream/conductor/`: `createConductorProvider(opts)` returns the `StreamProvider` with `id: 'conductor'`. Files: `conductor.ts` (the provider), `auth.ts`, `client.ts` (rate budget, errors), `harness.ts`, `normalize/{claude,cursor,codex}.ts` (pure `normalizeItem(item, state) → AgentEvent[]`), `tools.ts` (canonical tool names and status text, wrapping Claude's `formatToolStatus`), `links.ts` (pure link extraction), `poller.ts`, `sessionLog.ts` (Pokédex ring buffer), `state.ts` (`conductor-state.json`), `constants.ts`. Synthetic fixtures with real field names live in `server/__tests__/fixtures/conductor/`; never commit real transcript content.
+
+- **API**: Conductor's public REST API (`https://api.conductor.build`, or `CONDUCTOR_API_URL`), Bearer auth. It needs Conductor Pro and covers **cloud workspaces only**, so local Mac workspaces never appear.
+- **Auth**: `CONDUCTOR_API_KEY`, then `CONDUCTOR_API_TOKEN`, then on macOS the Keychain item `conductor auth login` writes: `/usr/bin/security find-generic-password -s com.conductor.cli -a default:<base URL minus trailing /, query and hash> -w`, through `execFile` with no shell. The token is never persisted, logged or put on a command line. No token → status `authRequired`; 401/403 → `unauthorized`; network errors → `unreachable`; 429 → `rateLimited`.
+- **Budget**: a token bucket, 120 requests/min by default (`--conductor-budget`). A general 429 halves it, honors `retry-after` plus 0-1 s jitter and recovers 10 %/min; a per-session `/status` 429 pauses only that session's status checks; 5xx and network errors back off 1, 2, 4, 8 s, capped at 30 s.
+- **Discovery**: `/me` once; `GET /v0/workspaces?since=<now − window>&limit=100[&creator=me]` every 15 s, a full list every 5 min; `/v0/workspaces/:id/sessions` when a workspace's `lastActivityAt` advanced or the list is older than 60 s; archived sessions (for the PC Box) at most every 2 min per active workspace. Never-started sessions (no name, model or messages) are ignored.
+- **Tiers**: Focus (the selected agent and its links) and Hot poll messages every 2-3 s and `/status` every 30-60 s; Warm polls messages every 15-30 s; Cold polls nothing until workspace activity or a link promotes it. Intervals stretch to fit the budget.
+- **Startup**: the server starts first, then the poller adopts pinned, working, then recently active sessions. Per session: `/status`; item #1 (`messages?limit=1`) for `senderSessionId` (the spawn edge and the queued-first-message check), cached in state; for Hot and Warm, the tail (exponential + binary search on `offset`) replayed **silently** to rebuild open tools, waiting state, usage and the last texts. Cold sessions seed from `/status`. A session whose newest user message is queued, or that has no agent items yet, seeds as active.
+- **Live vs backfill**: link events and notices are `live` only for items received in the last 30 s **and** read by a steady-state tail poll, never by a backfill, re-probe or promotion.
+- **Reconcile with `/status`**: `idle` while active forces `turnEnd` (for Claude only when no permission is pending); `working` while done forces `turnStart`; `error` or a new `lastErrorAt` forces `turnEnd { outcome: 'error' }`.
+- **Context windows**: `claude-*` from Claude's table, `gpt-*` 272,000, otherwise unknown (gauge hidden until usage appears).
+- **Scope**, default `{ creator: 'me', activeWithinHours: 6, showIdle: true, maxSessions: 24 }`. Cap order: pinned, waiting/permission, working, errored, Leads with visible active children, most recent activity; stable by first-seen order. A shown session stays until it falls 4 places past the cap. At most 12 children per Lead are shown.
+- **State file** `~/.pixel-agents/conductor-state.json`: `version: 1`, atomic tmp+rename, mode 0600; `scope` plus `sessions[id] = { agentId, hidden?, pinned?, pokemonLine?, shiny?, cursor?, harness?, firstSender?, lastActivityAt? }`. Never the token.
+- **Pokédex log**: per session, a 40-entry ring: the first prompt (≤ 600 chars), user messages, assistant text (≤ 400 chars), the last 5 tool labels and peer messages. `getSessionDetail` fetches the tail first for a never-tailed Cold session.
+- **Writes** come only from explicit UI actions, through privileged client messages, each answered with `conductorActionResult`: `sendMessage` → `POST /v0/sessions/:id/messages` (`messageId` = random UUID), `stopSession` → `/cancel` (Conductor drops queued messages, so the UI confirms), `archiveSession`/`restoreSession` → `/archive`/`/unarchive`. Tests use a fake client: never call a write endpoint from tests or during development. `openExternal` re-validates the URL on the server (scheme `^conductor(-[a-z0-9-]+)?:$`, host `workspace`).
+
+### Standalone modes and the desktop window
+
+- Conductor is on by default (`--no-conductor` turns it off). Claude Code is off unless `--claude`: without it there is no hook install, consent, Claude scanner or PTY, and `activeProviders` says so. `StandaloneAccess` carries both flags, so a running server is reused only in the same mode.
+- `--open` (`--app`) opens the tokened URL in a Chromium app window (`server/src/openAppWindow.ts`, injectable exec): macOS `open -n -b <bundleId> --args --app=<url>` over Chrome, Edge, Brave, Chromium, Vivaldi and Chrome Canary (`--browser <id>` forces one), else `open <url>`; Linux `xdg-open`.
+- Default port 41510, ephemeral when busy and no `--port` was given, so an installed PWA keeps its origin; the manifest's `id: "./"` keeps the app's identity across token changes. Banner: `Poke Agents running at <url>`.
 
 ## Server Runtime
 
@@ -362,7 +406,11 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
   layout.json              OfficeLayout (shared across surfaces)
   server.json              { port, pid, authToken }
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
+  conductor-state.json     Conductor scope + per-session { agentId, hidden, pinned, pokemonLine, shiny, cursor, harness, firstSender } (0600, never the token)
+  cache/pmd/               Runtime-downloaded Pokémon sprites, portraits and metadata
 ```
+
+The data directory and the `[Pixel Agents]` log prefixes keep upstream's names on purpose: renaming `~/.pixel-agents` orphans settings and the hook identity. A standalone server is reused only when its access matches, including its `conductor` and `claude` modes.
 
 `FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksInfoShown` (the hooks preference is per-provider and machine-global, at the config top level). Running both surfaces in parallel never clobbers either.
 
@@ -429,6 +477,16 @@ Custom ESLint rules (`eslint-rules/pixel-agents-rules.mjs`) enforce: `no-inline-
 **Mobile shell** (standalone only): below `MOBILE_MEDIA_QUERY` the browser renders `mobile/MobileShell` instead of the desktop layout — office and terminal as two full-screen pages in a 200%-wide sliding track (both always laid out, never `display:none`, so the canvas and xterm keep dimensions); the track's transform makes it the containing block of `position: fixed`, so modals and other viewport overlays mount at App's top level, never inside the office region), the agent cards in a bottom scroller, and `MobileKeyBar` above the software keyboard. "Keyboard open" and "clamp the shell" are separate answers (`mobile/keyboardViewport.ts`, sampled by `useKeyboardViewport`) because the two resize policies differ: iOS shrinks only the visual viewport (open, and the shell is clamped to it so the PTY resizes instead of hiding its input line), Android `interactive-widget=resizes-content` shrinks both (open, nothing to clamp). Open = an editable focused AND the visual viewport `KEYBOARD_MIN_HEIGHT_PX` below the tallest height seen at the current width (per-orientation baseline). `useIsMobile` is gated on `isBrowserRuntime`: a narrow VS Code panel must never get it (it broke every VS Code e2e shard once). Navigation rules live in `useMobileShell`: the >_ / Office toggle and the edge swipe share one handler; a card tap in the office is two-step (focus the character, then open its terminal), in the terminal it switches panes; + slides over only for launches made from it (a reload re-announcing sessions stays on the office). The terminal-pane model (active vs shown pane, socket status, `statusFor`) is `useTerminalDrawer`, shared with the desktop drawer. Touch rules: every gesture tracks ONE finger by identifier (`findTouch`) and uses one tap slop (`withinTapSlop`); gesture decisions are pure reducers with thin DOM adapters (`edgeSwipe.ts`/`useEdgeSwipe.ts`, `terminal/touchGesture.ts`/`touchInput.ts`), because WebKit keeps addressing a gesture's events to its touchstart node — when terminal rows repaint, that node detaches and events stop bubbling, so each adapter binds "rescue" listeners on the touch target. **Terminal copy is verbatim by default** (Cmd/Ctrl+C, the browser's Copy, the pill's Copy): `flowTerminalCopy` is a heuristic that joins a long row with a two-space-indented next line, which is also what YAML under a long key or a method body under a long signature look like, so re-flowing is opt-in only — Alt+C (Option+C) on desktop, "Copy as text" on the pill. Every write goes through `terminal/clipboard.ts`. PWA: `manifest.webmanifest` (icon paths relative — the file is served verbatim), conventional-path icons in `public/`, `?v=N` cache-busters on icon links.
 
 **Seats**: Derived from chair furniture. `layoutToSeats()` creates a seat at every footprint tile of every chair. Multi-tile chairs produce multiple seats keyed `uid` / `uid:1` / `uid:2`. Facing direction priority: 1) chair `orientation` from catalog (front→DOWN, back→UP, left→LEFT, right→RIGHT), 2) adjacent desk direction, 3) forward (DOWN). Click character → select (white outline) → click available seat → reassign.
+
+## Pokémon Theme
+
+On by default (`AdapterSettings.pokemonTheme`; `setPokemonTheme` → `pokemonThemeUpdated`). Off restores the upstream look and fetches nothing. VS Code keeps upstream characters.
+
+- **No Pokémon art in the repo.** Sprites and portraits come from the PMD Sprite Repository (PMDCollab/SpriteCollab) at runtime: CHUNSOFT art © Nintendo, Creatures, GAME FREAK and Spike Chunsoft; community art CC BY-NC 4.0, non-commercial. The local server downloads them into `~/.pixel-agents/cache/pmd/` and serves them same-origin. Settings → Credits shows the disclaimer and per-species credits (`credits.txt`, `credit_names.txt`). Tests use synthetic PNGs (pngjs) and hand-written `AnimData.xml`; the only in-house Pokémon-styled art is a small Poké Ball `SpriteData`.
+- **Server** (`server/src/pokemon/`): `pmdCache.ts` fetches from `raw.githubusercontent.com/PMDCollab/SpriteCollab/master`, falling back to `cdn.jsdelivr.net/gh/PMDCollab/SpriteCollab@master`, with 7-day ETag revalidation, single-flight per path, concurrency 4, a 10 s timeout, a 2 MB cap, a PNG signature check and an injectable `fetch`. Paths are built only from a dex in 1..1025 plus an anim declared in that species' `AnimData.xml` (`^[A-Z][A-Za-z]{1,24}$`) or an allowlisted portrait emotion. `GET /api/pokemon/:dex4/:file`, `/api/pokemon/:dex4/portrait/:file` and the `shiny/` variants stream from the cache dir with an explicit root, the WS route's Host allowlist, `cache-control: private, max-age=86400` and `nosniff`; standalone only. `POKE_AGENTS_SPRITES=off` or `--no-sprites` disables all fetching (CI, e2e, tests).
+- **Species**: `speciesCatalog.ts` is committed metadata (`lines`, `legendaries`, `leadDefaults`), regenerated by `scripts/generate-pokemon-catalog.mjs`; the default pool excludes `size: 'large'`. `speciesAssigner.ts`: stable key = Conductor session id, else Claude session id, else agent id; the least-used line with an FNV-1a tie-break, and shiny duplicates once every line is in use; Leads get a non-large legendary from `leadDefaults` and never evolve. Level = `1 + floor(sqrt(messageCount / k))` (`k` = 2 for Codex, 4 otherwise), else `1 + floor(sqrt(toolCallCount))`, clamped to 1..100; stage 2 from Lv 16, 3 from Lv 36. `pokemonLine`, `species` and `shiny` persist. `pokemonSpeciesLoaded` reaches each connection once per `dex:shiny` in use, and an evolution loads the next species before `agentDetails` announces it.
+- **Webview**: `office/sprites/pokemonSprites.ts` decodes sheets (`fetch → blob → createImageBitmap`), slices frames lazily and exposes DOM-free geometry (`getPokemonGeometry`); `office/engine/pokemonAnim.ts` (pure) picks the PMD anim: Walk, Idle, Charge → Shoot → Attack while writing, Nod while reading, Sleep after 120 s inactive, Pose plus `!` when waiting, Hurt then a held Faint at 60 % alpha on error, Hop at turn end, Wake on waking. The renderer falls back to upstream characters until a species is ready. Spawn and despawn are a Poké Ball throw and recall behind the `matrixEffect` field; evolution is a 1.2 s white flash. `:root[data-theme='pokemon']` restyles panels as GBA dialog boxes. Overlays show the nickname, `Lv N`, the species and `SLP`/`FNT`/`!` badges; the HP bar replaces the context gauge and keeps `data-testid="context-gauge"` with `data-context-pct` = percent used.
+- **Surfaces**: party bar (the themed card bar: Leads first with children nested, blinking for attention), Pokédex panel (`SessionPanel`; `requestSessionDetail` on open and every 5 s), PC Box modal, Sessions modal, link lines with Poké Ball projectiles and preview bubbles, the battle log (client-side ring of 30 events), Settings toggles (theme, Show connections, battle log) and Credits. Without `claude` in `providerCapabilities.activeProviders`, the hooks settings, **+ Agent** and Directories are hidden and the Intro never appears. Stream agents are never auto-selected or camera-followed on creation.
 
 ## Layout Editor
 
@@ -516,7 +574,7 @@ Run: `npm run test:webview`.
 
 ### End-to-end (Playwright)
 
-`e2e/` contains Playwright tests against a real VS Code Electron instance and a standalone Fastify server. CI runs the suite on Linux, macOS, and Windows in three shards at `--workers=1`. The generated [e2e inventory](e2e/README.md) is the source of truth for current specs, scenarios, and `@area:` coverage.
+`e2e/` contains Playwright tests against a real VS Code Electron instance and a standalone Fastify server. CI runs only the standalone specs, on Linux at `--workers=1` with `POKE_AGENTS_SPRITES=off`; standalone specs must launch with `--no-conductor` so a developer's `CONDUCTOR_API_KEY` never adopts real sessions into a test office. The generated [e2e inventory](e2e/README.md) is the source of truth for current specs, scenarios, and `@area:` coverage.
 
 **Running VS Code e2e locally needs explicit approval.** The VS Code specs (`e2e/tests/claude/**`) launch real VS Code windows one after another, which cover the screen and steal keyboard focus from whatever the user is typing in. Ask the user before running any of them, and when approved:
 
@@ -582,7 +640,7 @@ The webview Vite dev server is **not** included in `npm run watch` — it has to
 
 ### CI
 
-Single workflow runs (in order): install, lint, `asyncapi:validate`, `asyncapi:generate` + drift check, `e2e:inventory` + drift check, `check-types`, `test:server`, `test:webview`, `e2e` (3-OS x 3-shard matrix: Linux, macOS, Windows), `package`, then a PR-only Vercel preview deploy of the combined Allure report (gated on secrets; gracefully skips on forks, non-blocking on failure). Pushes to `main` run the checks but never deploy to Vercel.
+`.github/workflows/ci.yml`, on pushes to `main` and PRs: the `ci` job (install with `POKE_AGENTS_SKIP_BUILD=1`, `asyncapi:validate`, `asyncapi:generate` + drift check, `e2e:inventory` + drift check, `check-types`, `lint`, `test:webview`, format check, knip (advisory), build, npm package contract + installed-tarball smoke, `test:server`, audit (advisory)), `npm-package-node20` (the same smoke on Node 20), and `standalone-e2e` (Linux, `e2e/tests/standalone`, `--workers=1`, sprites off). `required-checks` aggregates the three. Nothing publishes or deploys: the Marketplace/npm publish workflow, the badge cron, Dependabot and the Vercel report previews were removed with the fork. GitHub keeps a fork's Actions disabled until the owner enables them.
 
 The drift checks are the central guarantees: `core/asyncapi.yaml` ↔ `core/src/messages.ts` stay in lockstep; `e2e/README.md` stays in sync with the spec list.
 
@@ -668,6 +726,8 @@ Supporting: `wall-tile-editor.html` (wall sprite editing), `jsonl-viewer.html` (
 - **AgentStateStore** as single source of truth with typed mutations and typed events. No transport calls outside the broadcast layer.
 - **Transport abstraction**: `MessageTransport` interface, `PostMessageTransport` + `WebSocketTransport`. One branching point in the entire UI.
 - **HookProvider** as the integration boundary, with optional file fallback. New CLIs are a single subdirectory under `server/src/providers/hook/<id>/`.
+- **StreamProvider** for sources without hooks (Conductor): the provider polls and pushes `AgentEvent`s into a `StreamAgentDriver` that reuses the existing broadcast shapes, so the webview stays provider-agnostic.
+- **No Pokémon art in the repo, ever** — not in assets, tests, fixtures or docs. Sprites are downloaded at runtime to the user's own cache; tests use synthetic PNGs.
 - **TeamProvider** as optional extension. Claude Agent Teams is the only implementation.
 - **Per-adapter namespaced persistence** under `~/.pixel-agents/`. VS Code and standalone never clobber each other.
 - **Verify-before-clear migration** for legacy VS Code state.
@@ -683,7 +743,9 @@ Supporting: `wall-tile-editor.html` (wall sprite editing), `jsonl-viewer.html` (
 
 ## Project Identity
 
-- Extension ID: `pablodelucca.pixel-agents` (VS Code Marketplace + Open VSX)
-- npm package: `pixel-agents` (CLI bin: `pixel-agents`)
-- GitHub: `https://github.com/pixel-agents-hq/pixel-agents`
-- License: MIT
+- Product: **Poke Agents**, a fork of [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) (Pablo De Lucca, MIT)
+- GitHub: `https://github.com/joshle298/poke-agents`
+- npm package: `@joshle298/poke-agents` (CLI bin: `poke-agents`), not published; installed from GitHub. The unscoped `poke-agents` npm name belongs to an unrelated package.
+- Version line: `0.1.x` (upstream history in `CHANGELOG.md` below the fork's entries)
+- VS Code extension ID unchanged (`pablodelucca.pixel-agents`, `pixel-agents.*` command/view IDs); not published by this fork
+- License: MIT (`LICENSE` keeps the upstream copyright line)

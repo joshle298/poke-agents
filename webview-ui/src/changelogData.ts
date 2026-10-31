@@ -21,11 +21,42 @@ export function toMajorMinor(version: string): string {
   return parts.length >= 2 ? `${parts[0]}.${parts[1]}` : version;
 }
 
-export const CHANGELOG_REPO_URL = 'https://github.com/pixel-agents-hq/pixel-agents';
+export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
 
-export const DISCORD_INVITE_URL = 'https://discord.gg/Yk7jXebv9H';
-
+/** Newest first. Entries before 0.1 are the upstream Pixel Agents releases this
+ *  fork is built on. */
 export const changelogEntries: ChangelogEntry[] = [
+  {
+    version: '0.1',
+    sections: [
+      {
+        title: 'Features',
+        items: [
+          'Conductor cloud sessions appear live in the office, each as a Pokémon that keeps its species',
+          'Levels and evolution at Lv 16 and Lv 36, plus status conditions: SLP asleep, FNT fainted on an error, ! when a session needs you',
+          'Leads (sessions that spawned others) are legendaries, linked to their sessions; messages between sessions fly as Poké Balls',
+          'Pokédex panel: task, recent replies and messages, with Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin',
+          'PC Box for archived sessions, and a Sessions modal for scope, search, hide and pin',
+          'Party bar, an optional battle log, and npm start to open the office in its own window',
+        ],
+      },
+      {
+        title: 'Changes',
+        items: [
+          'Conductor is on by default (--no-conductor turns it off); Claude Code tracking is opt-in with --claude',
+          'The command is poke-agents, on fixed port 41510 so an installed web app keeps working',
+          'Settings can turn the Pokémon theme off for the Pixel Agents look',
+        ],
+      },
+    ],
+    contributors: [
+      {
+        name: '@joshle298',
+        url: 'https://github.com/joshle298',
+        description: 'Poke Agents: Conductor sessions, the Pokémon theme and the desktop window',
+      },
+    ],
+  },
   {
     version: '1.5',
     sections: [
