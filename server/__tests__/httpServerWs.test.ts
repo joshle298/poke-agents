@@ -226,6 +226,54 @@ describe('/ws connection gate', () => {
 
     expect(result.accepted).toBe(true);
   });
+
+  // 7. DNS rebinding: `evil.example` re-resolved to 127.0.0.1 sends Origin and
+  //    Host as the same attacker-chosen name, so the same-origin check passes.
+  //    Even read-only, the feed carries session names, commands and message
+  //    previews, so a DNS name off the allowlist is refused outright, before
+  //    any of the handshake reaches it.
+  it('refuses a rebound (Origin === Host) connection, read-only included', async () => {
+    const { port } = await startStandalone();
+    const forged = `evil.example:${port.toString()}`;
+
+    const result = await connect(port, { Origin: `http://${forged}`, Host: forged });
+    sockets.push(result.socket);
+
+    expect(result.accepted).toBe(false);
+    expect(result.closeCode).toBe(WS_CLOSE_FORBIDDEN_ORIGIN);
+  });
+
+  // 8. A LAN viewer browsing to the machine's IP address (`--host 0.0.0.0`)
+  //    still watches: rebinding needs a DNS name, so IP literals stay allowed.
+  it('accepts a read-only viewer that reaches the office by IP address', async () => {
+    const { port } = await startStandalone();
+    const lan = `192.168.1.20:${port.toString()}`;
+
+    const result = await connect(port, { Origin: `http://${lan}`, Host: lan });
+    sockets.push(result.socket);
+
+    expect(result.accepted).toBe(true);
+    const access = waitForMessage(result.socket, 'officeAccess');
+    result.socket.send(JSON.stringify({ type: 'webviewReady' }));
+    expect(await access).toMatchObject({ readOnly: true });
+  });
+
+  // 9. ...and one using a DNS name the operator listed with --allowed-host.
+  it('accepts a read-only viewer under an --allowed-host name', async () => {
+    const config = await server.start({
+      embedded: false,
+      store: new AgentStateStore(),
+      allowedHosts: ['office.example.ts.net'],
+    });
+
+    const result = await connect(config.port, {
+      Origin: 'https://office.example.ts.net',
+      Host: 'office.example.ts.net',
+    });
+    sockets.push(result.socket);
+
+    expect(result.accepted).toBe(true);
+  });
 });
 
 /**
@@ -298,10 +346,10 @@ describe('/ws privileged-message gate', () => {
 
   // KNOWN-BAD FIXTURE 1 — DNS rebinding, on the DEFAULT loopback bind.
   // `evil.com` re-resolved to 127.0.0.1: the browser sends Origin AND Host as
-  // `evil.com:PORT`, both attacker-controlled, so the CONNECTION gate's equality
-  // check passes and the peer address is genuinely loopback. What the rebound
-  // page never receives is the token — it reached our origin by name, not by the
-  // URL the CLI printed — so the consent-bearing message is refused.
+  // `evil.com:PORT`, both attacker-controlled, so the same-origin equality check
+  // passes and the peer address is genuinely loopback. The Host is a DNS name
+  // the operator never listed, so the connection itself is refused; the token
+  // (which the rebound page never has) would not have helped it either.
   it('refuses setHooksEnabled from a rebound (Origin === Host) connection', async () => {
     const { port } = await startStandalone();
     const forged = `evil.example:${port.toString()}`;
@@ -309,10 +357,17 @@ describe('/ws privileged-message gate', () => {
     const result = await connect(port, { Origin: `http://${forged}`, Host: forged });
     sockets.push(result.socket);
 
-    // The connection gate passes — that is precisely the residual.
-    expect(result.accepted).toBe(true);
+    expect(result.accepted).toBe(false);
+    expect(result.closeCode).toBe(WS_CLOSE_FORBIDDEN_ORIGIN);
 
-    await sendToggle(result.socket, true);
+    try {
+      result.socket.send(
+        JSON.stringify({ type: 'setHooksEnabled', providerId: 'claude', enabled: true }),
+      );
+    } catch {
+      /* socket already closed — that IS the point */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
     expect(sideEffects).toEqual([]);
     expect(readHooksConsent()).toBe(false);
   });
@@ -411,15 +466,33 @@ describe('/ws privileged-message gate', () => {
   // ── The Host allowlist (wsAuth.privilegedHostnames) ──
 
   // Defence in depth on top of the token, applied exactly as on the terminal
-  // socket: a VALID token arriving under a Host the operator never listed is
-  // watch-only. This is the rebinding shape with the token somehow in hand.
-  it('refuses setHooksEnabled from a tokened connection under an unlisted Host', async () => {
+  // socket: a VALID token arriving under a DNS name the operator never listed
+  // is refused at the connection gate. This is the rebinding shape with the
+  // token somehow in hand.
+  it('refuses a tokened connection under an unlisted Host name', async () => {
     const { port, token } = await startStandalone();
     const forged = `evil.example:${port.toString()}`;
 
     const result = await connectTo(
       `ws://127.0.0.1:${port.toString()}/ws?token=${encodeURIComponent(token)}`,
       { Origin: `http://${forged}`, Host: forged },
+    );
+    sockets.push(result.socket);
+    expect(result.accepted).toBe(false);
+    expect(result.closeCode).toBe(WS_CLOSE_FORBIDDEN_ORIGIN);
+    expect(sideEffects).toEqual([]);
+    expect(readHooksConsent()).toBe(false);
+  });
+
+  // ...while a tokened connection under an IP address it was not bound to
+  // connects but stays watch-only: only listed names grant privilege.
+  it('refuses setHooksEnabled from a tokened connection under an unlisted IP', async () => {
+    const { port, token } = await startStandalone();
+    const lan = `192.168.1.20:${port.toString()}`;
+
+    const result = await connectTo(
+      `ws://127.0.0.1:${port.toString()}/ws?token=${encodeURIComponent(token)}`,
+      { Origin: `http://${lan}`, Host: lan },
     );
     sockets.push(result.socket);
     expect(result.accepted).toBe(true);

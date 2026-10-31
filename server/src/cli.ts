@@ -66,8 +66,10 @@ export interface CliArgs {
    *  browser can neither launch them nor attach to their terminals. */
   terminal: boolean;
   /** --allowed-host names (repeatable): extra Host names, beyond loopback and a
-   *  specific --host, that a tokened browser session is privileged under --
-   *  typically a reverse proxy's public name. See wsAuth.privilegedHostnames. */
+   *  specific --host, that a browser may connect under (any other DNS name is
+   *  refused) and a tokened session is privileged under -- typically a reverse
+   *  proxy's public name. See wsAuth.privilegedHostnames and
+   *  wsAuth.standaloneConnectionHostAllowed. */
   allowedHosts: string[];
   /** --rotate-token: replace the persisted server token before starting. */
   rotateToken: boolean;
@@ -180,9 +182,11 @@ Options:
   --port, -p <number>   Port to listen on (default: ${DEFAULT_STANDALONE_PORT}, or an
                         OS-assigned port when that one is busy)
   --host <string>       Host to bind to (default: 127.0.0.1)
-  --allowed-host <name> Also accept the tokened URL at this host name, e.g. a
-                        reverse proxy's (Tailscale Serve). Repeatable. Without
-                        it, only localhost and a specific --host are privileged
+  --allowed-host <name> Also accept this host name, e.g. a reverse proxy's
+                        (Tailscale Serve), for viewing and for the tokened
+                        URL. Repeatable. Other names are refused (DNS-rebinding
+                        defence); IP addresses may watch, and only localhost
+                        and a specific --host may make changes
   --rotate-token        Replace the server token. Every URL that carried the
                         old one (bookmarks, other devices) stops working
   --open, --app         Open the office in an app window (Chromium browsers;

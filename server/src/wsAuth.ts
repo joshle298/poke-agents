@@ -11,6 +11,7 @@
  */
 
 import * as crypto from 'crypto';
+import { isIP } from 'net';
 
 import { LOOPBACK_HOSTNAMES, WILDCARD_HOSTNAMES } from './constants.js';
 
@@ -51,9 +52,9 @@ export function bearerTokenValid(authorization: string | undefined, expected: st
  * the operator's own URL delivers and the forwarded attacker never sees.
  *
  * A tokenless client is not locked out of Pixel Agents — it connects and
- * watches the office exactly as before (the connection gate,
- * isAllowedWebSocketOrigin, is separate and unchanged). It simply cannot act
- * on this machine.
+ * watches the office (the connection gate, isAllowedWebSocketOrigin plus
+ * standaloneConnectionHostAllowed, is separate). It simply cannot act on this
+ * machine.
  *
  * The query is never written to the request log: httpServer's logger redacts
  * it (redactTokenQuery), so carrying the token here costs nothing on disk.
@@ -89,10 +90,11 @@ export function standaloneTokenValid(url: string | undefined, expected: string):
  * server's read surface is deliberately open to whatever address it was told
  * to bind (`--host 0.0.0.0` exposes the SPA to the LAN by design).
  *
- * This gate is NOT sufficient for privileged actions and never was. Both header
- * values are attacker-supplied, so a DNS-rebound page (`evil.com` → 127.0.0.1)
- * sends `Origin: http://evil.com:PORT` AND `Host: evil.com:PORT` and passes
- * equality. See standaloneHandshakeVerdict for what actually guards privilege.
+ * This check alone does not stop DNS rebinding. Both header values are
+ * attacker-supplied, so a rebound page (`evil.com` → 127.0.0.1) sends
+ * `Origin: http://evil.com:PORT` AND `Host: evil.com:PORT` and passes equality;
+ * standaloneConnectionHostAllowed refuses it by its Host, and
+ * standaloneHandshakeVerdict guards privilege.
  */
 export function isAllowedWebSocketOrigin(
   origin: string | undefined,
@@ -182,6 +184,31 @@ export function privilegedHostnames(
     }
   }
   return names;
+}
+
+/**
+ * Standalone CONNECTION gate, second half: may a socket arriving under this
+ * `Host` connect at all, read-only included?
+ *
+ * The same-origin check (isAllowedWebSocketOrigin) cannot stop DNS rebinding:
+ * a rebound page sends `Origin` and `Host` as the same attacker-chosen name.
+ * Read-only is not harmless here: a watcher receives every broadcast, which
+ * with Conductor includes session and repo names, tool status text (commands)
+ * and the previews of messages between sessions. Rebinding needs a DNS name,
+ * so a Host that is neither on the allowlist (loopback, a specific bind
+ * address, `--allowed-host`) nor an IP literal is refused. LAN viewers who
+ * browse to the machine's address (`--host 0.0.0.0`) keep working; one who
+ * uses a DNS name needs that name passed with `--allowed-host`. A handshake
+ * with no Host at all is not a browser and connects as before.
+ */
+export function standaloneConnectionHostAllowed(
+  host: string | undefined,
+  allowedHostnames: ReadonlySet<string>,
+): boolean {
+  if (host === undefined || host === '') return true;
+  const name = normalizeHostname(host);
+  if (name === null) return false;
+  return allowedHostnames.has(name) || isIP(name) !== 0;
 }
 
 /** What a standalone handshake proves: privilege, or why not. */

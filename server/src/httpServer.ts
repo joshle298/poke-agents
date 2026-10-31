@@ -18,6 +18,7 @@ import { handleClientMessage } from './clientMessageHandler.js';
 import {
   HOOK_API_PREFIX,
   MAX_HOOK_BODY_SIZE,
+  REFUSED_HOST_LOG_MAX,
   WS_CLOSE_FORBIDDEN_ORIGIN,
   WS_CLOSE_UNAUTHORIZED,
 } from './constants.js';
@@ -29,8 +30,10 @@ import type { AgentState } from './types.js';
 import {
   bearerTokenValid,
   isAllowedWebSocketOrigin,
+  normalizeHostname,
   privilegedHostnames,
   redactTokenQuery,
+  standaloneConnectionHostAllowed,
   standaloneHandshakeVerdict,
 } from './wsAuth.js';
 
@@ -198,9 +201,11 @@ function registerWebSocketRoute(
   app.get('/ws', { websocket: true }, (socket, request) => {
     // CONNECTION gate. Embedded (VS Code) requires the Bearer token. Standalone
     // requires a same-origin handshake instead (isAllowedWebSocketOrigin), so a
-    // non-browser local client with no Origin can still watch the office. What
-    // may be DONE over an accepted connection is a separate question, decided
-    // below.
+    // non-browser local client with no Origin can still watch the office, and
+    // a Host that is an allowlisted name or an IP literal: a DNS-rebound page
+    // arrives under its own name and must not even watch (the feed carries
+    // session names, commands and message previews). What may be DONE over an
+    // accepted connection is a separate question, decided below.
     if (options.embedded) {
       if (!bearerTokenValid(request.headers.authorization, options.token)) {
         socket.close(WS_CLOSE_UNAUTHORIZED, 'unauthorized');
@@ -208,6 +213,10 @@ function registerWebSocketRoute(
       }
     } else if (!isAllowedWebSocketOrigin(request.headers.origin, request.headers.host)) {
       socket.close(WS_CLOSE_FORBIDDEN_ORIGIN, 'forbidden origin');
+      return;
+    } else if (!standaloneConnectionHostAllowed(request.headers.host, allowedHostnames)) {
+      warnRefusedHost(request.headers.host);
+      socket.close(WS_CLOSE_FORBIDDEN_ORIGIN, 'forbidden host');
       return;
     }
 
@@ -298,6 +307,19 @@ function registerWebSocketRoute(
       species?.dispose();
     });
   });
+}
+
+/** Host names already reported as refused, so a page retrying its socket logs once. */
+const reportedRefusedHosts = new Set<string>();
+
+/** Say once per name why a connection was refused and how to allow it. */
+function warnRefusedHost(host: string | undefined): void {
+  const name = normalizeHostname(host) ?? 'an unreadable Host header';
+  if (reportedRefusedHosts.has(name) || reportedRefusedHosts.size >= REFUSED_HOST_LOG_MAX) return;
+  reportedRefusedHosts.add(name);
+  console.warn(
+    `[Pixel Agents] Refused a connection via Host "${name}" (DNS-rebinding defence). If that is your own name for this machine, restart with --allowed-host ${name}.`,
+  );
 }
 
 // ── Auth Helper ────────────────────────────────────────────────

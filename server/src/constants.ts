@@ -94,10 +94,13 @@ export const SERVER_REGISTRY_PROTOCOL_VERSION = 1;
  *  still connects, unprivileged -- see wsAuth.ts). */
 export const WS_CLOSE_UNAUTHORIZED = 4001;
 
-/** Standalone mode: the handshake's Origin is not this server's own origin.
- *  WebSocket connects bypass CORS, so this is the only thing standing between
- *  a drive-by web page and the privileged client-message channel. */
+/** Standalone mode: the handshake's Origin is not this server's own origin, or
+ *  its Host is a DNS name off the allowlist (wsAuth.standaloneConnectionHostAllowed).
+ *  WebSocket connects bypass CORS, so this is what stands between a drive-by
+ *  or DNS-rebound web page and the office feed. */
 export const WS_CLOSE_FORBIDDEN_ORIGIN = 4003;
+/** Distinct refused Host names logged per process (each name once). */
+export const REFUSED_HOST_LOG_MAX = 32;
 /** Terminal socket: the agent has no PTY on this server (never spawned, or
  *  already exited). The route only ever attaches; it cannot start one. */
 export const WS_CLOSE_NO_SESSION = 4004;

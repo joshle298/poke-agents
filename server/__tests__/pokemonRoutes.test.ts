@@ -8,6 +8,7 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { PmdCache } from '../src/pokemon/pmdCache.js';
 import { resetLoadedSpecies, setPokemonSpritesEnabled } from '../src/pokemon/pokemonAssets.js';
 import { registerPokemonRoutes } from '../src/pokemon/routes.js';
+import type { AgentState } from '../src/types.js';
 import { privilegedHostnames } from '../src/wsAuth.js';
 import { addSyntheticSpecies, FakeUpstream, FALLBACK, PRIMARY } from './pokemonTestUtils.js';
 
@@ -18,6 +19,7 @@ let root: string;
 let upstream: FakeUpstream;
 let app: FastifyInstance;
 let theme: boolean;
+let store: AgentStateStore;
 
 beforeEach(async () => {
   base = fs.mkdtempSync(path.join(os.tmpdir(), 'pmd-route-test-'));
@@ -27,8 +29,10 @@ beforeEach(async () => {
   upstream = new FakeUpstream();
   addSyntheticSpecies(upstream, 25);
   addSyntheticSpecies(upstream, 25, true);
+  // Not in the species catalog: served only while an agent shows it.
+  addSyntheticSpecies(upstream, 400);
   theme = true;
-  const store = new AgentStateStore();
+  store = new AgentStateStore();
   store.setAdapter({
     loadAgents: () => [],
     saveAgents: () => undefined,
@@ -55,8 +59,8 @@ afterEach(async () => {
   fs.rmSync(base, { recursive: true, force: true });
 });
 
-function get(url: string, host = HOST) {
-  return app.inject({ method: 'GET', url, headers: { host } });
+function get(url: string, host = HOST, headers: Record<string, string> = {}) {
+  return app.inject({ method: 'GET', url, headers: { host, ...headers } });
 }
 
 describe('GET /api/pokemon', () => {
@@ -95,6 +99,39 @@ describe('GET /api/pokemon', () => {
     const res = await get('/api/pokemon/0025/Idle-Anim.png', 'rebound.example:3100');
     expect(res.statusCode).toBe(403);
     expect(upstream.calls).toHaveLength(calls);
+  });
+
+  it('refuses requests from another site, which an allowed Host does not stop', async () => {
+    const res = await get('/api/pokemon/0025/Walk-Anim.png', HOST, {
+      'sec-fetch-site': 'cross-site',
+      origin: 'https://evil.example',
+    });
+    expect(res.statusCode).toBe(403);
+    expect(
+      (await get('/api/pokemon/0025/Idle-Anim.png', HOST, { 'sec-fetch-site': 'same-site' }))
+        .statusCode,
+    ).toBe(403);
+    expect(upstream.calls).toHaveLength(0);
+    // The office's own fetches (and a typed URL) still load.
+    expect(
+      (await get('/api/pokemon/0025/Walk-Anim.png', HOST, { 'sec-fetch-site': 'same-origin' }))
+        .statusCode,
+    ).toBe(200);
+    expect(
+      (await get('/api/pokemon/0025/portrait/Normal.png', HOST, { 'sec-fetch-site': 'none' }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it('serves only species an agent shows or the catalog can assign', async () => {
+    const res = await get('/api/pokemon/0400/Walk-Anim.png');
+    expect(res.statusCode).toBe(404);
+    expect(upstream.callsFor('sprite/0400/AnimData.xml')).toHaveLength(0);
+    expect(upstream.calls).toHaveLength(0);
+
+    store.set(7, { id: 7, species: 400, shiny: false } as unknown as AgentState);
+    expect((await get('/api/pokemon/0400/Walk-Anim.png')).statusCode).toBe(200);
+    expect((await get('/api/pokemon/0400/portrait/Normal.png')).statusCode).toBe(200);
   });
 
   it('rejects traversal and anything off the allowlist without leaving the cache', async () => {

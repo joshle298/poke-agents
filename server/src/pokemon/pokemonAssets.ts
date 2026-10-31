@@ -88,6 +88,24 @@ function speciesName(dex: number): string {
   return POKEMON_CATALOG.legendaries.find((l) => l.dex === dex)?.name ?? `No. ${dex4(dex)}`;
 }
 
+/** Every dex the assigner can hand out (line members and legendaries). */
+const CATALOG_DEX: ReadonlySet<number> = new Set([
+  ...POKEMON_CATALOG.lines.flatMap((line) => line.members.map((m) => m.dex)),
+  ...POKEMON_CATALOG.legendaries.map((l) => l.dex),
+]);
+
+/**
+ * Whether the sprite route may serve (and so download) this species: one an
+ * agent shows now, or any the catalog can assign (PC Box portraits name
+ * species no agent in the office holds). Anything else is refused before the
+ * cache is touched, so a page cannot make the server mirror SpriteCollab.
+ */
+export function isServableSpecies(dex: number, store: AgentStateStore): boolean {
+  if (CATALOG_DEX.has(dex)) return true;
+  for (const agent of store.values()) if (agent.species === dex) return true;
+  return false;
+}
+
 /** URL of a cached file, matching the routes in routes.ts. */
 function assetUrl(urlBase: string, dex: number, shiny: boolean, file: string, portrait = false) {
   const parts = [urlBase, dex4(dex)];
