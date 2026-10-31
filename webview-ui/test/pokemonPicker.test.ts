@@ -5,6 +5,7 @@ import {
   currentEntryId,
   pickerEntries,
   pickerPortraitUrl,
+  shownShiny,
 } from '../src/conductor/pokemonPicker.js';
 
 /** Synthetic metadata in the server's shape (names only; no art). */
@@ -72,5 +73,15 @@ describe('Change Pokémon picker rules', () => {
     expect(pickerPortraitUrl(0, true)).toBeUndefined();
     expect(pickerPortraitUrl(1026, true)).toBeUndefined();
     expect(pickerPortraitUrl(1.5, true)).toBeUndefined();
+  });
+
+  it('shows a Shiny toggle’s new value until the office reports it', () => {
+    // Sent, not answered (or answered, agentDetails not here yet): the new value.
+    expect(shownShiny(false, { shiny: true }, true)).toBe(true);
+    // Refused or never answered: the agent's own.
+    expect(shownShiny(false, { shiny: true }, false)).toBe(false);
+    // A tile or the reset: the agent's own.
+    expect(shownShiny(true, {}, true)).toBe(true);
+    expect(shownShiny(false, null, false)).toBe(false);
   });
 });

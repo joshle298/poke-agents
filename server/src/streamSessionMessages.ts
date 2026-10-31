@@ -11,7 +11,8 @@
  * Switch model (requestModelCatalog, continueWithModel) only asks Conductor to
  * start a new session: its API can't change a running session's model, and
  * Poke Agents never changes Conductor's stored settings. The request is
- * validated here against the provider's catalog before the provider sees it.
+ * validated here against the maintained model table (no network) before the
+ * provider sees it; the provider validates it again.
  *
  * The Pokédex detail and the chat history carry conversation text (prompts,
  * replies, commands), more than the office feed shows, so they are privileged
@@ -29,9 +30,14 @@ import {
   EXTERNAL_URL_HOST,
   EXTERNAL_URL_MAX_LENGTH,
   EXTERNAL_URL_SCHEME_PATTERN,
+  MODEL_CATALOG_WAIT_MS,
   SESSION_MESSAGE_MAX_LENGTH,
 } from './constants.js';
-import { parseModelChoice } from './providers/stream/modelCatalog.js';
+import {
+  buildModelCatalog,
+  catalogAgents,
+  parseModelChoice,
+} from './providers/stream/modelCatalog.js';
 import type { StreamAgentDriver } from './streamAgentDriver.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
@@ -347,18 +353,41 @@ async function openExternal(url: unknown, send: WsSend, ctx: ClientMessageContex
   }
 }
 
-/** The Switch model picker's catalog, from the Conductor provider. */
+/**
+ * The Switch model picker's catalog, from the Conductor provider. When the
+ * favorites take longer than MODEL_CATALOG_WAIT_MS (a rate-limit pause, a slow
+ * network), the table goes out at once and the full catalog when it is ready,
+ * so the picker never waits on them.
+ */
 async function requestModelCatalog(send: WsSend, ctx: ClientMessageContext): Promise<void> {
   const provider = conductorDriver(ctx)?.provider;
   if (!provider?.getModelCatalog) {
     send({ type: 'modelCatalog', agents: [], favorites: [], error: NO_MODEL_CATALOG_MESSAGE });
     return;
   }
-  try {
-    send({ type: 'modelCatalog', ...(await provider.getModelCatalog()) });
-  } catch (err) {
-    send({ type: 'modelCatalog', agents: [], favorites: [], error: userMessage(err) });
+  const full = provider.getModelCatalog().then(
+    (catalog) => ({ ok: true as const, catalog }),
+    (err: unknown) => ({ ok: false as const, error: userMessage(err) }),
+  );
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), MODEL_CATALOG_WAIT_MS);
+    timer.unref?.();
+  });
+  const first = await Promise.race([full, late]);
+  clearTimeout(timer);
+  if (first) {
+    send(
+      first.ok
+        ? { type: 'modelCatalog', ...first.catalog }
+        : { type: 'modelCatalog', agents: [], favorites: [], error: first.error },
+    );
+    return;
   }
+  send({ type: 'modelCatalog', ...buildModelCatalog(undefined) });
+  const settled = await full;
+  // A late failure keeps the table the picker already has.
+  if (settled.ok) send({ type: 'modelCatalog', ...settled.catalog });
 }
 
 /**
@@ -380,7 +409,7 @@ async function continueWithModel(
     return reply(send, 'continueWithModel', false, NOT_A_SESSION_MESSAGE, id);
   }
   const provider = driver.provider;
-  if (!provider.getModelCatalog || !provider.continueWithModel) {
+  if (!provider.continueWithModel) {
     return reply(
       send,
       'continueWithModel',
@@ -389,9 +418,11 @@ async function continueWithModel(
       id,
     );
   }
+  // The maintained table, not the provider's catalog: validating must not
+  // wait on (or spend budget for) the favorites.
+  const parsed = parseModelChoice(msg, { agents: catalogAgents() });
+  if (!parsed.ok) return reply(send, 'continueWithModel', false, parsed.message, id);
   try {
-    const parsed = parseModelChoice(msg, await provider.getModelCatalog());
-    if (!parsed.ok) return reply(send, 'continueWithModel', false, parsed.message, id);
     const started = await provider.continueWithModel(sessionId, parsed.choice);
     send({
       type: 'conductorActionResult',

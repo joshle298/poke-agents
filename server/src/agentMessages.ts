@@ -58,6 +58,7 @@ export function agentDetailsMessage(id: number, agent: AgentState): AgentDetails
     label: agent.label,
     externalUrl: d?.externalUrl,
     model: d?.model,
+    modelId: d?.modelId,
     harness: d?.harness,
     effort: d?.effort,
     fastMode: d?.fastMode,

@@ -2094,6 +2094,7 @@ export class ConductorPoller {
     if (rec.api.deepLink) details.externalUrl = rec.api.deepLink;
     const model = rec.api.resolvedModel ?? rec.api.model ?? rec.norm.model;
     if (model) details.model = model;
+    if (rec.api.model) details.modelId = rec.api.model;
     if (rec.norm.harness) details.harness = rec.norm.harness;
     if (rec.api.effort) details.effort = rec.api.effort;
     if (typeof rec.api.fastMode === 'boolean') details.fastMode = rec.api.fastMode;
@@ -2253,8 +2254,13 @@ export class ConductorPoller {
       const archivedAt = parseTime(session.archivedAt);
       if (archivedAt) summary.archivedAt = archivedAt;
     }
-    const lead = rec?.firstSender ?? persisted?.firstSender ?? persisted?.continuedFrom;
-    if (lead) summary.leadSessionId = lead;
+    const spawnedBy = rec?.firstSender ?? persisted?.firstSender;
+    if (spawnedBy) summary.leadSessionId = spawnedBy;
+    else if (persisted?.continuedFrom) {
+      // Listed under the session it continues, which doesn't become a Lead.
+      summary.leadSessionId = persisted.continuedFrom;
+      summary.handoff = true;
+    }
     if (session.deepLink) summary.externalUrl = session.deepLink;
     if (ws?.creatorName) summary.creatorName = ws.creatorName;
     return summary;

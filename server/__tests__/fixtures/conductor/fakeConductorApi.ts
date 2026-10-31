@@ -92,18 +92,25 @@ export class FakeConductorApi {
     return full;
   }
 
-  /** Answer the next matching request with `response` (once unless `times`). */
+  /** Answer the next matching request with `response` (once unless `times`).
+   *  `response` gets the call, so it can let the fake act first (`answer`)
+   *  and then answer otherwise, like a server whose reply is lost. */
   override(
     match: (call: FakeCall) => boolean,
-    response: () => Response | Promise<Response>,
+    response: (call: FakeCall) => Response | Promise<Response>,
     times = 1,
   ): void {
     let left = times;
     this.overrides.push((call) => {
       if (left <= 0 || !match(call)) return undefined;
       left--;
-      return response();
+      return response(call);
     });
+  }
+
+  /** What the fake would answer `call` (and do: a create commits). */
+  answer(call: FakeCall): Response {
+    return this.route(call);
   }
 
   callsTo(pathPart: string): FakeCall[] {

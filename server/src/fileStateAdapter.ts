@@ -175,6 +175,8 @@ function parseStreamAgents(raw: unknown): Record<string, StreamAgentRecord> {
       species: Number.isSafeInteger(v.species) ? (v.species as number) : undefined,
       shiny: typeof v.shiny === 'boolean' ? v.shiny : undefined,
       pokemonChosen: v.pokemonChosen === true ? true : undefined,
+      pokemonAutoLine: typeof v.pokemonAutoLine === 'string' ? v.pokemonAutoLine : undefined,
+      pokemonAutoShiny: typeof v.pokemonAutoShiny === 'boolean' ? v.pokemonAutoShiny : undefined,
     };
   }
   return out;

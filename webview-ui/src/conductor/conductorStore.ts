@@ -57,6 +57,8 @@ export interface ConductorAgent {
   speciesLevel?: number;
   externalUrl?: string;
   model?: string;
+  /** The create-session model id (Switch model's catalog), when known. */
+  modelId?: string;
   harness?: string;
   effort?: string;
   fastMode?: boolean;
@@ -292,7 +294,8 @@ function actionToastText(
     setConductorScope: "Couldn't change the scope",
     archiveSession: "Couldn't deposit the session",
     restoreSession: "Couldn't withdraw the session",
-    continueWithModel: "Couldn't start the new session",
+    // Its message says what happened (refused, or not confirmed).
+    continueWithModel: 'Switch model',
     setAgentPokemon: "Couldn't change the Pokémon",
   };
   return message ? `${failure[action]}: ${message}` : failure[action];
@@ -433,6 +436,7 @@ export class ConductorStore {
             label: msg.label,
             externalUrl: msg.externalUrl,
             model: msg.model,
+            modelId: msg.modelId,
             harness: msg.harness,
             effort: msg.effort,
             fastMode: msg.fastMode,

@@ -132,6 +132,46 @@ describe('species assigner: the user’s choice', () => {
     expect({ pokemonLine: a.pokemonLine, species: a.species, shiny: a.shiny }).toEqual(automatic);
   });
 
+  it('gives back the automatic Pokémon the first choice replaced, not a new pick', () => {
+    const store = new AgentStateStore();
+    const a = agent();
+    assignSpeciesIfNeeded(a, store, { stableKey: 's1' });
+    store.set(1, a);
+    const automatic = { pokemonLine: a.pokemonLine, species: a.species, shiny: a.shiny };
+    const first = automatic.pokemonLine === 'charmander' ? 'bulbasaur' : 'charmander';
+    choosePokemon(a, store, { line: first, shiny: true }, { stableKey: 's1' });
+    choosePokemon(a, store, { line: 'squirtle' }, { stableKey: 's1' });
+    expect(a).toMatchObject({ pokemonAutoLine: automatic.pokemonLine, pokemonAutoShiny: false });
+    // Meanwhile another agent took the automatic line: a fresh least-used
+    // pick would land elsewhere.
+    const other = agent({ id: 2, sessionId: 'conductor:s2' });
+    other.pokemonLine = automatic.pokemonLine;
+    other.shiny = false;
+    store.set(2, other);
+    expect(choosePokemon(a, store, { line: null }, { stableKey: 's1' })).toBe(true);
+    expect({ pokemonLine: a.pokemonLine, species: a.species, shiny: a.shiny }).toEqual(automatic);
+    expect(a.pokemonChosen).toBeUndefined();
+    expect(a.pokemonAutoLine).toBeUndefined();
+    expect(a.pokemonAutoShiny).toBeUndefined();
+  });
+
+  it('gives back the automatic Pokémon after a shiny-only choice, at the stage the level reaches now', () => {
+    const store = new AgentStateStore();
+    const a = agent({ details: { harness: 'claude', messageCount: MESSAGES_FOR.lv1 } });
+    assignSpeciesIfNeeded(a, store, { stableKey: 's1' });
+    const line = a.pokemonLine;
+    choosePokemon(a, store, { shiny: true }, { stableKey: 's1' });
+    expect(a).toMatchObject({ pokemonLine: line, shiny: true, pokemonChosen: true });
+    choosePokemon(a, store, { line: 'charmander' }, { stableKey: 's1' });
+    expect(a.species).toBe(CHARMANDER);
+    // It grew while it was a Charmander; the automatic line comes back at Lv 40.
+    a.details = { harness: 'claude', messageCount: MESSAGES_FOR.lv40 };
+    updateLevel(a);
+    choosePokemon(a, store, { line: null }, { stableKey: 's1' });
+    expect(a).toMatchObject({ pokemonLine: line, shiny: false, level: 40 });
+    expect(a.species).not.toBe(CHARIZARD);
+  });
+
   it('resets a delegating Lead to its legendary', () => {
     const store = new AgentStateStore();
     const a = agent();
@@ -185,6 +225,25 @@ describe('species assigner: the user’s choice', () => {
         pokemonChosen: true,
       }),
     ).toEqual({ pokemonLine: 'charmander', species: 5, shiny: true, pokemonChosen: true });
+    expect(
+      restoredPokemonFields({
+        pokemonLine: 'charmander',
+        pokemonChosen: true,
+        pokemonAutoLine: 'pikachu',
+        pokemonAutoShiny: true,
+      }),
+    ).toMatchObject({ pokemonChosen: true, pokemonAutoLine: 'pikachu', pokemonAutoShiny: true });
+    // The automatic line goes with the choice, and only when it still exists.
+    expect(
+      restoredPokemonFields({
+        pokemonLine: 'charmander',
+        pokemonChosen: true,
+        pokemonAutoLine: 'x',
+      }),
+    ).not.toHaveProperty('pokemonAutoLine');
+    expect(
+      restoredPokemonFields({ pokemonLine: 'charmander', pokemonAutoLine: 'pikachu' }),
+    ).not.toHaveProperty('pokemonAutoLine');
     expect(restoredPokemonFields({ pokemonLine: 'gone', pokemonChosen: true })).toEqual({});
     expect(restoredPokemonFields({ pokemonLine: 'charmander', pokemonChosen: 'yes' })).toEqual({
       pokemonLine: 'charmander',
@@ -386,23 +445,41 @@ describe('setAgentPokemon', () => {
     expect(store.get(again)).toMatchObject({ species: MEWTWO, pokemonChosen: true });
   });
 
-  it('resets a stream agent to automatic and forgets the choice', async () => {
-    const sink = attach();
+  it('resets a stream agent to the automatic Pokémon it had, across a restart, and forgets the choice', async () => {
+    let sink = attach();
     const id = adopt(sink, 's1', MESSAGES_FOR.lv1);
-    const automatic = store.get(id)!.species;
+    const automatic = { line: store.get(id)!.pokemonLine, species: store.get(id)!.species };
     send({
       type: 'setAgentPokemon',
       id,
-      line: automatic === CHARMANDER ? 'bulbasaur' : 'charmander',
+      line: automatic.species === CHARMANDER ? 'bulbasaur' : 'charmander',
     });
     await flushPromises();
-    send({ type: 'setAgentPokemon', id, line: null });
+    let saved = (store.getAdapter() as FileStateAdapter).loadStreamAgents().get('conductor:s1');
+    expect(saved).toMatchObject({ pokemonChosen: true, pokemonAutoLine: automatic.line });
+
+    // Restart, then another session takes the automatic line before the reset.
+    shutdown();
+    boot();
+    sink = attach();
+    const again = adopt(sink, 's1', MESSAGES_FOR.lv1);
+    const other = adopt(sink, 's2', MESSAGES_FOR.lv1);
+    store.get(other)!.pokemonLine = automatic.line;
+    send({ type: 'setAgentPokemon', id: again, line: null });
     await flushPromises();
-    expect(results().map((r) => r.ok)).toEqual([true, true]);
-    expect(store.get(id)).toMatchObject({ species: automatic, pokemonChosen: undefined });
-    expect(details(id).at(-1)).toMatchObject({ species: automatic, pokemonChosen: false });
-    const saved = (store.getAdapter() as FileStateAdapter).loadStreamAgents().get('conductor:s1');
+    expect(results().every((r) => r.ok)).toBe(true);
+    expect(store.get(again)).toMatchObject({
+      pokemonLine: automatic.line,
+      species: automatic.species,
+      pokemonChosen: undefined,
+    });
+    expect(details(again).at(-1)).toMatchObject({
+      species: automatic.species,
+      pokemonChosen: false,
+    });
+    saved = (store.getAdapter() as FileStateAdapter).loadStreamAgents().get('conductor:s1');
     expect(saved?.pokemonChosen).toBeUndefined();
+    expect(saved?.pokemonAutoLine).toBeUndefined();
   });
 
   it('changes a --claude agent through the store and persists it with the agent', async () => {
@@ -416,6 +493,7 @@ describe('setAgentPokemon', () => {
     });
     assignSpeciesIfNeeded(claude, store);
     store.set(7, claude);
+    const automaticLine = claude.pokemonLine;
     let release: (ready: boolean) => void = () => {};
     setEvolutionPreloader(() => new Promise((resolve) => (release = resolve)));
     broadcasts = [];
@@ -428,10 +506,15 @@ describe('setAgentPokemon', () => {
     expect(details(7).at(-1)).toMatchObject({ species: CHARMANDER, pokemonChosen: true });
 
     const persisted = (store.getAdapter() as FileStateAdapter).loadAgents().find((a) => a.id === 7);
-    expect(persisted).toMatchObject({ pokemonLine: 'charmander', pokemonChosen: true });
+    expect(persisted).toMatchObject({
+      pokemonLine: 'charmander',
+      pokemonChosen: true,
+      pokemonAutoLine: automaticLine,
+    });
     expect(restoredPokemonFields(persisted!)).toMatchObject({
       pokemonLine: 'charmander',
       pokemonChosen: true,
+      pokemonAutoLine: automaticLine,
     });
   });
 });

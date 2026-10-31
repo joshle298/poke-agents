@@ -8,7 +8,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ModelChoice } from '../../core/src/provider.js';
-import type { FakeConductorApi } from './fixtures/conductor/fakeConductorApi.js';
+import {
+  CONTINUE_REUSE_MS,
+  FAVORITES_RETRY_MS,
+  FAVORITES_TTL_MS,
+} from '../src/providers/stream/conductor/constants.js';
+import type { FakeCall, FakeConductorApi } from './fixtures/conductor/fakeConductorApi.js';
 import {
   boot,
   idleFeed,
@@ -54,6 +59,25 @@ function json(status: number, body: unknown, headers: Record<string, string> = {
 
 const isCreate = (c: { method: string; path: string }) =>
   c.method === 'POST' && c.path === '/v0/sessions';
+const isStatusOf = (id: string) => (c: { method: string; path: string }) =>
+  c.method === 'GET' && c.path === `/v0/sessions/${id}/status`;
+const createBodies = (api: FakeConductorApi) =>
+  api.calls.filter(isCreate).map((c) => c.body as Record<string, unknown>);
+/** Sessions in the workspace besides the original. */
+const created = (api: FakeConductorApi) =>
+  [...api.sessions.values()].filter((s) => s.workspaceId === WS && s.id !== ORIG);
+/** Like a server whose answer is lost: the create commits, the reply is a 500. */
+const commitThen500 = (api: FakeConductorApi) => (call: FakeCall) => {
+  api.answer(call);
+  return json(500, { userMessage: 'Internal error' });
+};
+/** Every status check of `id` fails, so nobody can say whether it exists. */
+const statusDown = (api: FakeConductorApi, times = 10) =>
+  api.override(
+    (c) => c.method === 'GET' && /^\/v0\/sessions\/[^/]+\/status$/.test(c.path),
+    () => json(503, { userMessage: 'Unavailable' }),
+    times,
+  );
 
 describe('Conductor Switch model: the model catalog', () => {
   it('serves the table with the favorites Conductor lists that it accepts, read once per TTL', async () => {
@@ -89,6 +113,68 @@ describe('Conductor Switch model: the model catalog', () => {
     expect(catalog.favorites).toEqual([]);
     expect(catalog.agents).toHaveLength(3);
     expect(logs.some((l) => l.startsWith('favorite models unavailable'))).toBe(true);
+    await provider.stop();
+  });
+
+  it('asks a local organization (404) for favorites once per TTL, not on every open', async () => {
+    const { api, clock, provider } = await boot({ prepare: office });
+    api.override(
+      (c) => c.path === '/v0/favorite-models',
+      () => json(404, { userMessage: 'Only in cloud organizations' }),
+      5,
+    );
+    await provider.getModelCatalog();
+    await provider.getModelCatalog();
+    clock.t += FAVORITES_TTL_MS - 1;
+    await provider.getModelCatalog();
+    expect(api.callsTo('/v0/favorite-models')).toHaveLength(1);
+    clock.t += 1;
+    await provider.getModelCatalog();
+    expect(api.callsTo('/v0/favorite-models')).toHaveLength(2);
+    await provider.stop();
+  });
+
+  it('tries a failed read again after a short pause, keeping the favorites it had', async () => {
+    const { api, clock, provider } = await boot({
+      prepare: (a) => {
+        office(a);
+        a.favoriteModels = [{ agent: 'cursor', model: 'auto' }];
+      },
+    });
+    expect((await provider.getModelCatalog()).favorites).toEqual([
+      { agent: 'cursor', model: 'auto' },
+    ]);
+    clock.t += FAVORITES_TTL_MS;
+    api.override(
+      (c) => c.path === '/v0/favorite-models',
+      () => json(502, { userMessage: 'Bad gateway' }),
+    );
+    expect((await provider.getModelCatalog()).favorites).toEqual([
+      { agent: 'cursor', model: 'auto' },
+    ]);
+    await provider.getModelCatalog();
+    expect(api.callsTo('/v0/favorite-models')).toHaveLength(2);
+    clock.t += FAVORITES_RETRY_MS;
+    await provider.getModelCatalog();
+    expect(api.callsTo('/v0/favorite-models')).toHaveLength(3);
+    await provider.stop();
+  });
+
+  it('shares one read between pickers opening at the same time', async () => {
+    const { api, provider } = await boot({ prepare: office });
+    let release: (r: Response) => void = () => {};
+    api.override(
+      (c) => c.path === '/v0/favorite-models',
+      () => new Promise<Response>((resolve) => (release = resolve)),
+    );
+    const first = provider.getModelCatalog();
+    const second = provider.getModelCatalog();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release(json(200, { favoriteModels: [{ agent: 'codex', model: 'gpt-5.5' }] }));
+    const [a, b] = await Promise.all([first, second]);
+    expect(a.favorites).toEqual([{ agent: 'codex', model: 'gpt-5.5' }]);
+    expect(b.favorites).toEqual(a.favorites);
+    expect(api.callsTo('/v0/favorite-models')).toHaveLength(1);
     await provider.stop();
   });
 });
@@ -141,6 +227,17 @@ describe('Conductor Switch model: continueWithModel', () => {
     expect(sink.lastUpsert(sessionId)?.details).toMatchObject({
       harness: 'claude',
       model: 'opus-5-5-1m',
+      modelId: 'opus-5-5-1m',
+    });
+    await provider.stop();
+  });
+
+  it('states the create-session model id beside the resolved one', async () => {
+    const { sink, provider } = await boot({ prepare: office });
+    // The fake's sessions report model opus-5-5-1m, resolved claude-opus-5-5[1m].
+    expect(sink.lastUpsert(ORIG)?.details).toMatchObject({
+      model: 'claude-opus-5-5[1m]',
+      modelId: 'opus-5-5-1m',
     });
     await provider.stop();
   });
@@ -168,14 +265,153 @@ describe('Conductor Switch model: continueWithModel', () => {
     await provider.stop();
   });
 
-  it('takes a 409 on a retry as the lost first attempt having gone through', async () => {
-    const { api, provider } = await boot({ prepare: office });
-    api.override(isCreate, () => json(503, { userMessage: 'Unavailable' }));
+  it('believes a 409 only when Conductor has the session', async () => {
+    const { api, provider, sink } = await boot({ prepare: office });
+    // The first attempt commits but its answer is lost; the retry gets a 409.
+    api.override(isCreate, commitThen500(api));
     api.override(isCreate, () => json(409, { userMessage: 'Session already exists' }));
     const { sessionId } = await provider.continueWithModel(ORIG, CHOICE);
-    const creates = api.calls.filter(isCreate);
-    expect(creates).toHaveLength(2);
-    expect(sessionId).toBe((creates[0].body as Record<string, unknown>).sessionId);
+    expect(createBodies(api)).toHaveLength(2);
+    expect(sessionId).toBe(createBodies(api)[0].sessionId);
+    expect(api.calls.filter(isStatusOf(sessionId))).toHaveLength(1);
+    expect(created(api)).toHaveLength(1);
+    expect(sink.links.some((l) => l.toSessionId === sessionId && l.handoff)).toBe(true);
+    await provider.stop();
+  });
+
+  it('checks before refusing when an earlier attempt may have gone through', async () => {
+    const { api, provider } = await boot({ prepare: office });
+    // The first attempt commits but answers 502; the retry is refused (400).
+    api.override(isCreate, (call) => {
+      api.answer(call);
+      return json(502, { userMessage: 'Bad gateway' });
+    });
+    api.override(isCreate, () => json(400, { userMessage: 'Session id already used' }));
+    const { sessionId } = await provider.continueWithModel(ORIG, CHOICE);
+    expect(createBodies(api)).toHaveLength(2);
+    expect(created(api).map((s) => s.id)).toEqual([sessionId]);
+    // Without the commit, the refusal stands.
+    api.override(isCreate, () => json(502, { userMessage: 'Bad gateway' }));
+    api.override(isCreate, () => json(400, { userMessage: 'Session id already used' }));
+    await expect(
+      provider.continueWithModel(ORIG, { ...CHOICE, message: 'Another try.' }),
+    ).rejects.toThrow('Conductor refused the request: Session id already used');
+    expect(created(api)).toHaveLength(1);
+    await provider.stop();
+  });
+
+  it('refuses a 409 for a session Conductor doesn’t have, and links nothing', async () => {
+    const { api, provider, sink } = await boot({ prepare: office });
+    api.override(isCreate, () => json(409, { userMessage: 'Name already taken' }));
+    await expect(provider.continueWithModel(ORIG, CHOICE)).rejects.toThrow(
+      'Conductor refused the request: Name already taken',
+    );
+    const [body] = createBodies(api);
+    expect(api.calls.filter(isStatusOf(body.sessionId as string))).toHaveLength(1);
+    expect(sink.links.filter((l) => l.fromSessionId === ORIG)).toEqual([]);
+    expect(created(api)).toEqual([]);
+    await provider.stop();
+  });
+
+  it('finds the session when every answer was lost, and starts it once', async () => {
+    const { api, provider, sink } = await boot({ prepare: office });
+    api.override(isCreate, commitThen500(api), 3);
+    const { sessionId } = await provider.continueWithModel(ORIG, CHOICE);
+    expect(createBodies(api)).toHaveLength(3);
+    expect(new Set(createBodies(api).map((b) => b.sessionId))).toEqual(new Set([sessionId]));
+    expect(created(api).map((s) => s.id)).toEqual([sessionId]);
+    expect(sink.links.filter((l) => l.toSessionId === sessionId)).toHaveLength(1);
+    await provider.stop();
+  });
+
+  it('a second click after an unconfirmed start reuses its ids: still one session', async () => {
+    const { api, provider, sink } = await boot({ prepare: office });
+    // Conductor commits, every answer is lost, and it can't be asked either.
+    api.override(isCreate, commitThen500(api), 3);
+    statusDown(api);
+    await expect(provider.continueWithModel(ORIG, CHOICE)).rejects.toThrow(
+      "Conductor didn't confirm the new session. Start again with the same choice: it won't make a second one.",
+    );
+    expect(created(api)).toHaveLength(1);
+    expect(sink.links.filter((l) => l.fromSessionId === ORIG)).toEqual([]);
+
+    // The user clicks Start again with the same choice.
+    const { sessionId } = await provider.continueWithModel(ORIG, CHOICE);
+    const bodies = createBodies(api);
+    expect(bodies).toHaveLength(4);
+    expect(new Set(bodies.map((b) => b.sessionId))).toEqual(new Set([sessionId]));
+    expect(new Set(bodies.map((b) => b.messageId)).size).toBe(1);
+    expect(created(api).map((s) => s.id)).toEqual([sessionId]);
+    expect(sink.links.filter((l) => l.toSessionId === sessionId && l.live)).toHaveLength(1);
+    await provider.stop();
+  });
+
+  it('the same request again after its answer was lost returns the same session, no second create', async () => {
+    const { api, provider } = await boot({ prepare: office });
+    const first = await provider.continueWithModel(ORIG, CHOICE);
+    const again = await provider.continueWithModel(ORIG, CHOICE);
+    expect(again).toEqual(first);
+    expect(createBodies(api)).toHaveLength(1);
+    // Another message is another request.
+    const other = await provider.continueWithModel(ORIG, { ...CHOICE, message: 'Something else.' });
+    expect(other.sessionId).not.toBe(first.sessionId);
+    expect(created(api)).toHaveLength(2);
+    await provider.stop();
+  });
+
+  it('another choice after an unconfirmed start checks first: refuses once if it exists, links it', async () => {
+    const { api, provider, sink } = await boot({ prepare: office });
+    api.override(isCreate, commitThen500(api), 3);
+    statusDown(api, 1);
+    await expect(provider.continueWithModel(ORIG, CHOICE)).rejects.toThrow(
+      "Conductor didn't confirm",
+    );
+    const [firstBody] = createBodies(api);
+    const other: ModelChoice = { agent: 'cursor', model: 'auto', message: 'Go on.' };
+    await expect(provider.continueWithModel(ORIG, other)).rejects.toThrow(
+      'The last try did start “Fix flaky tests · GPT-5.5”.',
+    );
+    expect(createBodies(api)).toHaveLength(3);
+    expect(
+      sink.links.some((l) => l.toSessionId === firstBody.sessionId && l.fromSessionId === ORIG),
+    ).toBe(true);
+    // Asked again, it starts the other one with fresh ids.
+    const { sessionId } = await provider.continueWithModel(ORIG, other);
+    expect(sessionId).not.toBe(firstBody.sessionId);
+    expect(createBodies(api).at(-1)).toMatchObject({ agent: 'cursor', model: 'auto' });
+    expect(created(api)).toHaveLength(2);
+    await provider.stop();
+  });
+
+  it('another choice after an unconfirmed start that never landed starts fresh', async () => {
+    const { api, provider } = await boot({ prepare: office });
+    api.override(isCreate, () => json(500, { userMessage: 'Internal error' }), 3);
+    statusDown(api, 1);
+    await expect(provider.continueWithModel(ORIG, CHOICE)).rejects.toThrow(
+      "Conductor didn't confirm",
+    );
+    const [firstBody] = createBodies(api);
+    const { sessionId } = await provider.continueWithModel(ORIG, {
+      agent: 'cursor',
+      model: 'auto',
+      message: 'Go on.',
+    });
+    expect(sessionId).not.toBe(firstBody.sessionId);
+    expect(created(api).map((s) => s.id)).toEqual([sessionId]);
+    await provider.stop();
+  });
+
+  it('forgets an unconfirmed start after CONTINUE_REUSE_MS', async () => {
+    const { api, clock, provider } = await boot({ prepare: office });
+    api.override(isCreate, () => json(500, { userMessage: 'Internal error' }), 3);
+    statusDown(api, 1);
+    await expect(provider.continueWithModel(ORIG, CHOICE)).rejects.toThrow(
+      "Conductor didn't confirm",
+    );
+    clock.t += CONTINUE_REUSE_MS;
+    await provider.continueWithModel(ORIG, CHOICE);
+    const bodies = createBodies(api);
+    expect(bodies.at(-1)?.sessionId).not.toBe(bodies[0].sessionId);
     await provider.stop();
   });
 
@@ -186,6 +422,7 @@ describe('Conductor Switch model: continueWithModel', () => {
     [400, 'Conductor refused the request: Model does not support ultracode', 1],
     [500, 'Conductor had a server error. Try again.', 3],
   ])('maps HTTP %i to "%s" (%i attempt(s))', async (status, message, attempts) => {
+    // A 500 that never committed: Conductor says the session isn't there.
     const { api, provider, sink } = await boot({ prepare: office });
     api.override(
       isCreate,
@@ -267,10 +504,12 @@ describe('Conductor Switch model: continueWithModel', () => {
       peerSessionId: sessionId,
       text: CHOICE.message,
     });
-    // The Sessions list groups it under the original.
-    expect(provider.listSessions().find((s) => s.sessionId === sessionId)?.leadSessionId).toBe(
-      ORIG,
-    );
+    // The Sessions list groups it under the original, marked as a handoff so
+    // the original gets no LEAD badge.
+    expect(provider.listSessions().find((s) => s.sessionId === sessionId)).toMatchObject({
+      leadSessionId: ORIG,
+      handoff: true,
+    });
     await provider.stop();
   });
 
@@ -284,6 +523,10 @@ describe('Conductor Switch model: continueWithModel', () => {
     const second = await boot({ stateDir, api: first.api, clock: first.clock, prepare: () => {} });
     const link = second.sink.links.find((l) => l.toSessionId === sessionId && l.kind === 'spawned');
     expect(link).toMatchObject({ fromSessionId: ORIG, live: false, handoff: true });
+    expect(second.provider.listSessions().find((s) => s.sessionId === sessionId)).toMatchObject({
+      leadSessionId: ORIG,
+      handoff: true,
+    });
     expect(second.sink.adopted.has(sessionId)).toBe(true);
     const order = second.sink.order.filter((e) => e.includes(sessionId));
     expect(order[0]).toBe(`link:spawned:${ORIG}>${sessionId}`);

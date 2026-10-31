@@ -74,6 +74,9 @@ export interface DemoSessionSpec {
   idleMinutes?: number;
   pinned?: boolean;
   hidden?: boolean;
+  /** The create-session model id (Conductor's `model` alias) where `model`
+   *  is the resolved one, e.g. `opus-5-5-1m` for `claude-opus-5-5[1m]`. */
+  modelId?: string;
   /** Reasoning effort and fast mode, when the session was started with them. */
   effort?: string;
   fastMode?: boolean;
@@ -433,6 +436,7 @@ export class DemoWorld {
       label: request.name,
       workspace: from.spec.workspace,
       model: request.model,
+      modelId: request.model,
       harness: request.agent,
       contextWindow: request.model.endsWith('-1m') ? 1_000_000 : undefined,
       prompt: request.message,
@@ -940,6 +944,7 @@ export class DemoWorld {
     return {
       externalUrl: deepLinkFor(spec),
       model: spec.model,
+      ...(spec.modelId ? { modelId: spec.modelId } : {}),
       harness: spec.harness,
       ...(spec.effort ? { effort: spec.effort } : {}),
       ...(spec.fastMode !== undefined ? { fastMode: spec.fastMode } : {}),
@@ -978,8 +983,11 @@ export class DemoWorld {
       summary.archived = true;
       if (session.archivedAt) summary.archivedAt = session.archivedAt;
     }
-    const lead = spec.leadId ?? spec.continuedFrom;
-    if (lead) summary.leadSessionId = lead;
+    if (spec.leadId) summary.leadSessionId = spec.leadId;
+    else if (spec.continuedFrom) {
+      summary.leadSessionId = spec.continuedFrom;
+      summary.handoff = true;
+    }
     return summary;
   }
 

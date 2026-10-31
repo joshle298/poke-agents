@@ -24,10 +24,19 @@ import { MODEL_PICKER_START_TIMEOUT_MS } from '../constants.js';
 import { Button } from './ui/Button.js';
 import { Checkbox } from './ui/Checkbox.js';
 import { Modal } from './ui/Modal.js';
+import { tabButtonId, tabPanelId } from './ui/tabKeys.js';
+import { TabList } from './ui/TabList.js';
 
 /** Why Switch model starts a session instead of changing this one. */
 const SWITCH_MODEL_NOTE =
   "Conductor's API can't change the model of a running session, so this starts a new session in the same workspace (same files and branch) with your message.";
+
+/** A start that got no answer: the server reuses the request's ids, so the
+ *  same choice again can't make a second session. */
+const NO_ANSWER_TEXT =
+  "No answer yet. Starting again with the same choice won't make a second session.";
+
+const TABS_ID = 'model-picker';
 
 /** Re-render often enough to notice a start that never got an answer. */
 const START_TICK_MS = 1_000;
@@ -35,6 +44,8 @@ const START_TICK_MS = 1_000;
 interface ModelPickerModalProps {
   agentId: number;
   agent: ConductorAgent | undefined;
+  /** The original is still working: ask to stop it (the Pokédex confirms). */
+  onStop?: () => void;
   onClose: () => void;
 }
 
@@ -44,7 +55,7 @@ interface ModelPickerModalProps {
  * handoff message, and start a new session in the same workspace. The office
  * then opens the new session's Pokédex when it walks in (App follows it).
  */
-export function ModelPickerModal({ agentId, agent, onClose }: ModelPickerModalProps) {
+export function ModelPickerModal({ agentId, agent, onStop, onClose }: ModelPickerModalProps) {
   const catalog = useConductor((s) => s.modelCatalog);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
   const [picked, setPicked] = useState<PickerChoice | null>(null);
@@ -86,6 +97,8 @@ export function ModelPickerModal({ agentId, agent, onClose }: ModelPickerModalPr
   const blocker = startBlocker(catalog, choice, message);
   const canStart = blocker === null && !pending;
   const fastOk = choice ? fastModeSupported(catalog, choice.agent, choice.model) : false;
+  const stillWorking = agent?.status === 'active' || agent?.permission === true;
+  const name = agent?.label?.trim() || 'This session';
 
   const start = () => {
     if (!choice || !canStart) return;
@@ -96,9 +109,9 @@ export function ModelPickerModal({ agentId, agent, onClose }: ModelPickerModalPr
   const status = pending
     ? 'Starting…'
     : answer && !answer.ok
-      ? `Couldn't start it: ${answer.message ?? 'Conductor refused the request.'}`
+      ? (answer.message ?? 'Conductor refused the request.')
       : sentAt !== null && !answer
-        ? 'No answer yet. You can try again.'
+        ? NO_ANSWER_TEXT
         : null;
 
   return (
@@ -118,103 +131,104 @@ export function ModelPickerModal({ agentId, agent, onClose }: ModelPickerModalPr
           <span className="text-xs text-text-muted">{catalog?.error ?? 'Loading models…'}</span>
         ) : (
           <>
-            <div role="tablist" aria-label="Agent" className="flex gap-4">
-              {catalog.agents.map((a) => (
-                <Button
-                  key={a.agent}
-                  role="tab"
-                  aria-selected={a.agent === choice.agent}
-                  size="sm"
-                  variant={a.agent === choice.agent ? 'active' : 'default'}
-                  className="flex-1"
-                  onClick={() => setPicked(choiceForAgent(catalog, a.agent))}
-                >
-                  {a.label}
-                </Button>
-              ))}
-            </div>
+            <TabList
+              label="Agent"
+              idPrefix={TABS_ID}
+              tabs={catalog.agents.map((a) => ({ id: a.agent, label: a.label }))}
+              selected={choice.agent}
+              onSelect={(id) => {
+                if (id !== choice.agent) setPicked(choiceForAgent(catalog, id));
+              }}
+            />
 
-            <div className="flex flex-col gap-4">
-              <span className="text-xs text-accent">Model</span>
-              <ul
-                ref={listRef}
-                aria-label="Models"
-                className="m-0 p-0 list-none flex flex-col max-h-[200px] overflow-y-auto pixel-scrollbar border-2 border-border"
-              >
-                {favorites.map((favorite, i) => {
-                  const chosen = isFavoriteChosen(favorite, choice);
-                  const extras = [favorite.effort, favorite.fastMode ? 'fast' : undefined]
-                    .filter(Boolean)
-                    .join(' · ');
-                  return (
-                    <li key={`fav:${i}`}>
-                      <button
-                        type="button"
-                        aria-pressed={chosen}
-                        title="One of your favorite models in Conductor"
-                        className={`w-full text-left text-xs py-3 px-6 border-0 rounded-none cursor-pointer ${
-                          chosen ? 'bg-active-bg text-text' : 'bg-transparent hover:bg-btn-hover'
-                        }`}
-                        onClick={() => setPicked(choiceFromFavorite(catalog, favorite))}
-                      >
-                        <span
-                          className="material-symbols-sharp text-accent mr-4 align-[-1px]"
-                          aria-hidden="true"
+            <div
+              role="tabpanel"
+              id={tabPanelId(TABS_ID)}
+              aria-labelledby={tabButtonId(TABS_ID, choice.agent)}
+              className="flex flex-col gap-10"
+            >
+              <div className="flex flex-col gap-4">
+                <span className="text-xs text-accent">Model</span>
+                <ul
+                  ref={listRef}
+                  aria-label="Models"
+                  className="m-0 p-0 list-none flex flex-col max-h-[200px] overflow-y-auto pixel-scrollbar border-2 border-border"
+                >
+                  {favorites.map((favorite, i) => {
+                    const chosen = isFavoriteChosen(favorite, choice);
+                    const extras = [favorite.effort, favorite.fastMode ? 'fast' : undefined]
+                      .filter(Boolean)
+                      .join(' · ');
+                    return (
+                      <li key={`fav:${i}`}>
+                        <button
+                          type="button"
+                          aria-pressed={chosen}
+                          title="One of your favorite models in Conductor"
+                          className={`w-full text-left text-xs py-3 px-6 border-0 rounded-none cursor-pointer ${
+                            chosen ? 'bg-active-bg text-text' : 'bg-transparent hover:bg-btn-hover'
+                          }`}
+                          onClick={() => setPicked(choiceFromFavorite(catalog, favorite))}
                         >
-                          star
-                        </span>
-                        <span className="sr-only">Favorite: </span>
-                        {modelName(catalog, favorite.model)}
-                        {extras && <span className="text-text-muted"> · {extras}</span>}
-                      </button>
-                    </li>
-                  );
-                })}
-                {row?.models.map((model) => {
-                  const chosen =
-                    model.id === choice.model &&
-                    !favorites.some((f) => isFavoriteChosen(f, choice));
-                  return (
-                    <li key={model.id}>
-                      <button
-                        type="button"
-                        aria-pressed={chosen}
-                        className={`w-full text-left text-xs py-3 px-6 border-0 rounded-none cursor-pointer ${
-                          chosen ? 'bg-active-bg text-text' : 'bg-transparent hover:bg-btn-hover'
-                        }`}
-                        onClick={() => setPicked(chooseModel(catalog, choice, model.id))}
-                      >
-                        {model.label}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+                          <span
+                            className="material-symbols-sharp text-accent mr-4 align-[-1px]"
+                            aria-hidden="true"
+                          >
+                            star
+                          </span>
+                          <span className="sr-only">Favorite: </span>
+                          {modelName(catalog, favorite.model)}
+                          {extras && <span className="text-text-muted"> · {extras}</span>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {row?.models.map((model) => {
+                    const chosen =
+                      model.id === choice.model &&
+                      !favorites.some((f) => isFavoriteChosen(f, choice));
+                    return (
+                      <li key={model.id}>
+                        <button
+                          type="button"
+                          aria-pressed={chosen}
+                          className={`w-full text-left text-xs py-3 px-6 border-0 rounded-none cursor-pointer ${
+                            chosen ? 'bg-active-bg text-text' : 'bg-transparent hover:bg-btn-hover'
+                          }`}
+                          onClick={() => setPicked(chooseModel(catalog, choice, model.id))}
+                        >
+                          {model.label}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
 
-            <div className="flex items-center gap-8 flex-wrap">
-              <label className="flex items-center gap-6 text-xs">
-                <span className="text-text-muted">Effort</span>
-                <select
-                  value={choice.effort}
-                  onChange={(e) => setPicked({ ...choice, effort: e.target.value })}
-                  className="text-xs py-2 px-4 bg-btn-bg border-2 border-border rounded-none text-text"
-                >
-                  {effortOptions(catalog, choice.agent).map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {fastOk && (
-                <Checkbox
-                  label="Fast mode"
-                  checked={choice.fastMode}
-                  onChange={() => setPicked({ ...choice, fastMode: !choice.fastMode })}
-                  className="w-auto! gap-8 py-2! px-4! text-xs"
-                />
-              )}
+              <div className="flex items-center gap-8 flex-wrap">
+                <label className="flex items-center gap-6 text-xs">
+                  <span className="text-text-muted">Effort</span>
+                  <select
+                    value={choice.effort}
+                    onChange={(e) => setPicked({ ...choice, effort: e.target.value })}
+                    className="text-xs py-2 px-4 bg-btn-bg border-2 border-border rounded-none text-text"
+                  >
+                    {effortOptions(catalog, choice.agent).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {fastOk && (
+                  <Checkbox
+                    label="Fast mode"
+                    checked={choice.fastMode}
+                    onChange={() => setPicked({ ...choice, fastMode: !choice.fastMode })}
+                    className="w-auto! gap-8 py-2! px-4! text-xs"
+                  />
+                )}
+              </div>
             </div>
           </>
         )}
@@ -230,6 +244,19 @@ export function ModelPickerModal({ agentId, agent, onClose }: ModelPickerModalPr
             style={{ lineHeight: 1.35 }}
           />
         </label>
+
+        {stillWorking && (
+          <div className="flex items-center gap-6 border-2 border-border px-6 py-4 text-xs">
+            <span className="flex-1 min-w-0" style={{ lineHeight: 1.35 }}>
+              {name} is still working. Both sessions will change the same files.
+            </span>
+            {onStop && (
+              <Button size="sm" className="shrink-0" onClick={onStop}>
+                Stop it
+              </Button>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between gap-8">
           <span

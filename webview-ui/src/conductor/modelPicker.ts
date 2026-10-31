@@ -40,8 +40,8 @@ export function agentLabel(
   return agentRow(catalog, agent)?.label ?? agent.charAt(0).toUpperCase() + agent.slice(1);
 }
 
-/** The display label of a model id within an agent, else the id. */
-export function modelName(
+/** The catalog's label for a model id, if it has one. */
+function catalogModelLabel(
   catalog: ModelCatalog | null,
   model: string | undefined,
 ): string | undefined {
@@ -50,7 +50,30 @@ export function modelName(
     const hit = row.models.find((m) => m.id === model);
     if (hit) return hit.label;
   }
-  return model;
+  return undefined;
+}
+
+/** The display label of a model id within an agent, else the id. */
+export function modelName(
+  catalog: ModelCatalog | null,
+  model: string | undefined,
+): string | undefined {
+  return catalogModelLabel(catalog, model) ?? model;
+}
+
+/** What a session reports about its model: the resolved id (`model`, e.g.
+ *  `claude-opus-5-5[1m]`) and the create-session id the catalog names
+ *  (`modelId`, e.g. `opus-5-5-1m`). */
+type SessionModel = Pick<ConductorAgent, 'harness' | 'model' | 'modelId' | 'effort' | 'fastMode'>;
+
+/** The session's model as the catalog names it, if the catalog has it. */
+function catalogModelOf(
+  catalog: ModelCatalog | null,
+  session: Pick<ConductorAgent, 'model' | 'modelId'> | undefined,
+): string | undefined {
+  if (catalogModelLabel(catalog, session?.modelId)) return session?.modelId;
+  if (catalogModelLabel(catalog, session?.model)) return session?.model;
+  return undefined;
 }
 
 /** "medium", "medium · fast mode", "fast mode", or undefined. */
@@ -62,14 +85,16 @@ export function effortText(
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-/** The Pokédex Overview's Agent / Model / Effort rows for a session. */
+/** The Pokédex Overview's Agent / Model / Effort rows for a session: the
+ *  catalog's label for its model, else the id it reports. */
 export function sessionModelRows(
-  agent: Pick<ConductorAgent, 'harness' | 'model' | 'effort' | 'fastMode'> | undefined,
+  agent: SessionModel | undefined,
   catalog: ModelCatalog | null,
 ): { agent?: string; model?: string; effort?: string } {
   return {
     agent: agentLabel(catalog, agent?.harness),
-    model: modelName(catalog, agent?.model),
+    model:
+      catalogModelLabel(catalog, catalogModelOf(catalog, agent)) ?? agent?.model ?? agent?.modelId,
     effort: effortText(agent?.effort, agent?.fastMode),
   };
 }
@@ -87,7 +112,8 @@ export function fastModeSupported(
   return agentRow(catalog, agent)?.fastModeModels.includes(model) ?? false;
 }
 
-/** The effort select: the agent's default first (value ''), then its levels. */
+/** The effort select: the agent's default first (value ''), then its levels;
+ *  a level only some models accept says so. */
 export function effortOptions(
   catalog: ModelCatalog | null,
   agent: string,
@@ -95,7 +121,13 @@ export function effortOptions(
   const row = agentRow(catalog, agent);
   if (!row) return [];
   const fallback = row.defaultEffort ? `Default (${row.defaultEffort})` : 'Default';
-  return [{ value: '', label: fallback }, ...row.efforts.map((e) => ({ value: e, label: e }))];
+  return [
+    { value: '', label: fallback },
+    ...row.efforts.map((e) => ({
+      value: e,
+      label: row.limitedEfforts?.includes(e) ? `${e} (some models)` : e,
+    })),
+  ];
 }
 
 /** A choice with everything the agent doesn't take dropped. */
@@ -146,7 +178,7 @@ export function chooseModel(
  */
 export function initialChoice(
   catalog: ModelCatalog | null,
-  session: Pick<ConductorAgent, 'harness' | 'model' | 'effort' | 'fastMode'> | undefined,
+  session: SessionModel | undefined,
 ): PickerChoice | null {
   if (!catalog || catalog.agents.length === 0) return null;
   const own = session?.harness && agentRow(catalog, session.harness) ? session.harness : undefined;
@@ -157,12 +189,13 @@ export function initialChoice(
       : undefined) ??
     catalog.agents[0].agent;
   const row = agentRow(catalog, agent);
-  if (own && session?.model && row?.models.some((m) => m.id === session.model)) {
+  const model = catalogModelOf(catalog, session);
+  if (own && model && row?.models.some((m) => m.id === model)) {
     return settle(catalog, {
       agent,
-      model: session.model,
-      effort: session.effort ?? '',
-      fastMode: session.fastMode === true,
+      model,
+      effort: session?.effort ?? '',
+      fastMode: session?.fastMode === true,
     });
   }
   return choiceForAgent(catalog, agent);

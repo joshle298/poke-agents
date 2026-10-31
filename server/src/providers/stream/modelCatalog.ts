@@ -7,7 +7,9 @@
  * The table mirrors Conductor's create-session contract (POST /v0/sessions in
  * https://api.conductor.build/v0/openapi.json: the `model` enum, grouped by
  * agent in the operation's description, the accepted effort levels per agent,
- * and the models that accept `fastMode`). Last checked 2026-10-31. When
+ * the levels that "require support from the selected model" (per-model
+ * support isn't in the contract, so they're marked, not filtered), and the
+ * models that accept `fastMode`). Last checked 2026-10-31. When
  * Conductor adds a model, add it here; a model missing from the table can't be
  * picked, one the API dropped is refused by Conductor with a 400 the office
  * shows. ACP agents are left out: they need an ACP agent id the create call
@@ -35,6 +37,10 @@ interface AgentRow {
   defaultEffort?: string;
   /** Models that accept fastMode: true. */
   fastModeModels: readonly string[];
+  /** Efforts Conductor takes only from models that support them; which
+   *  models do isn't in its contract, so they're offered for every model and
+   *  Conductor refuses the rest (a 400 the office shows). */
+  limitedEfforts?: readonly string[];
 }
 
 const CLAUDE_MODELS = [
@@ -86,6 +92,7 @@ const MODEL_TABLE: readonly AgentRow[] = [
     label: 'Claude',
     models: CLAUDE_MODELS,
     efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'],
+    limitedEfforts: ['ultracode'],
     defaultEffort: 'high',
     fastModeModels: [
       'opus-5-5-1m',
@@ -102,6 +109,7 @@ const MODEL_TABLE: readonly AgentRow[] = [
     label: 'Codex',
     models: CODEX_MODELS,
     efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    limitedEfforts: ['max', 'ultra'],
     defaultEffort: 'high',
     fastModeModels: CODEX_MODELS.map(([id]) => id),
   },
@@ -125,6 +133,7 @@ export function catalogAgents(table: readonly AgentRow[] = MODEL_TABLE): ModelCa
       fastModeModels: [...row.fastModeModels],
     };
     if (row.defaultEffort) agent.defaultEffort = row.defaultEffort;
+    if (row.limitedEfforts?.length) agent.limitedEfforts = [...row.limitedEfforts];
     return agent;
   });
 }

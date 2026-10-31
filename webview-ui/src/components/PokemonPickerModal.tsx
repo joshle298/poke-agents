@@ -9,6 +9,7 @@ import {
   pickerEntries,
   type PickerEntry,
   pickerPortraitUrl,
+  shownShiny,
 } from '../conductor/pokemonPicker.js';
 import { POKEMON_PICKER_PORTRAIT_PX, POKEMON_PICKER_TIMEOUT_MS } from '../constants.js';
 import { isBrowserRuntime } from '../runtime.js';
@@ -78,7 +79,9 @@ interface PokemonPickerModalProps {
 
 /**
  * Change Pokémon…: which evolution line (or, for a Lead, which legendary)
- * this agent is, shiny or not, or back to automatic. The level still picks
+ * this agent is, shiny or not, or back to automatic (the Pokémon it had
+ * before the first choice). Shiny applies to the current Pokémon at once and
+ * the picker stays open; a tile or the reset closes it. The level still picks
  * the stage within the line; the office plays the evolution flash. Portraits
  * come lazily from the local server's same-origin route; without it, the
  * capsule stands in.
@@ -88,8 +91,10 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
   const speciesMap = useConductor((s) => s.species);
   const pokemonTheme = useConductor((s) => s.pokemonTheme);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
-  const [shiny, setShiny] = useState(agent?.shiny === true);
-  const [sentAt, setSentAt] = useState<number | null>(null);
+  // The last request: a tile or the reset closes the picker once answered;
+  // a Shiny toggle keeps it open and shows its value until the office has it.
+  const [sent, setSent] = useState<{ at: number; shiny?: boolean } | null>(null);
+  const sentAt = sent?.at ?? null;
   const now = useNow(CHOICE_TICK_MS, sentAt !== null);
 
   useEffect(() => {
@@ -101,11 +106,15 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
       ? outcome
       : undefined;
   const pending = sentAt !== null && !answer && now - sentAt < POKEMON_PICKER_TIMEOUT_MS;
+  const shinyToggle = sent?.shiny !== undefined;
+  const currentShiny = agent?.shiny === true;
+  const shiny = shownShiny(currentShiny, sent, pending || answer?.ok === true);
 
-  // Chosen: close, so the evolution flash plays in view.
+  // A tile or the reset was answered: close, so the evolution flash plays in
+  // view. A Shiny toggle stays open.
   useEffect(() => {
-    if (answer?.ok) onClose();
-  }, [answer, onClose]);
+    if (answer?.ok && !shinyToggle) onClose();
+  }, [answer, shinyToggle, onClose]);
 
   const isLead = agent?.isTeamLead === true;
   const entries = useMemo(() => pickerEntries(catalog, isLead), [catalog, isLead]);
@@ -122,17 +131,18 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
 
   const choose = (line: string | null) => {
     if (pending) return;
-    if (
-      line !== null &&
-      line === currentId &&
-      shiny === (agent?.shiny === true) &&
-      agent?.pokemonChosen
-    ) {
+    if (line !== null && line === currentId && shiny === currentShiny && agent?.pokemonChosen) {
       onClose();
       return;
     }
-    setSentAt(Date.now());
+    setSent({ at: Date.now() });
     setAgentPokemon(agentId, line === null ? { line: null } : { line, shiny });
+  };
+
+  const toggleShiny = () => {
+    if (pending) return;
+    setSent({ at: Date.now(), shiny: !shiny });
+    setAgentPokemon(agentId, { shiny: !shiny });
   };
 
   const lines = entries.filter((e) => e.kind === 'line');
@@ -150,7 +160,7 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
           <Checkbox
             label="Shiny"
             checked={shiny}
-            onChange={() => setShiny((s) => !s)}
+            onChange={toggleShiny}
             className="w-auto! gap-8 py-2! px-4! text-xs"
           />
           <Button
@@ -158,7 +168,7 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
             variant={agent?.pokemonChosen && !pending ? 'default' : 'disabled'}
             disabled={!agent?.pokemonChosen || pending}
             onClick={() => choose(null)}
-            title="Let Poke Agents pick this agent's Pokémon again"
+            title="Back to the Pokémon Poke Agents picked for this agent"
           >
             Reset to automatic
           </Button>

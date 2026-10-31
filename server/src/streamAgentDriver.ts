@@ -65,6 +65,9 @@ export interface StreamAgentRecord {
   shiny?: boolean;
   /** The user chose this Pokémon (Change Pokémon). */
   pokemonChosen?: boolean;
+  /** The automatic line and shiny flag the choice replaced (for the reset). */
+  pokemonAutoLine?: string;
+  pokemonAutoShiny?: boolean;
 }
 
 /** Durable home for StreamAgentRecords, keyed by the namespaced session key
@@ -513,6 +516,8 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
       shiny: agent.shiny,
     };
     if (agent.pokemonChosen) record.pokemonChosen = true;
+    if (agent.pokemonAutoLine !== undefined) record.pokemonAutoLine = agent.pokemonAutoLine;
+    if (agent.pokemonAutoShiny !== undefined) record.pokemonAutoShiny = agent.pokemonAutoShiny;
     const previous = this.remembered.get(key);
     if (
       previous &&
@@ -520,7 +525,9 @@ export class StreamAgentDriver implements AgentEventSink, SilentSeedSink {
       previous.pokemonLine === record.pokemonLine &&
       previous.species === record.species &&
       previous.shiny === record.shiny &&
-      previous.pokemonChosen === record.pokemonChosen
+      previous.pokemonChosen === record.pokemonChosen &&
+      previous.pokemonAutoLine === record.pokemonAutoLine &&
+      previous.pokemonAutoShiny === record.pokemonAutoShiny
     ) {
       return;
     }

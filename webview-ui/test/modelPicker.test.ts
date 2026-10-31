@@ -36,6 +36,7 @@ const CATALOG: ModelCatalog = {
       efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultracode'],
       defaultEffort: 'high',
       fastModeModels: ['opus-5-5-1m'],
+      limitedEfforts: ['ultracode'],
     },
     {
       agent: 'codex',
@@ -47,6 +48,7 @@ const CATALOG: ModelCatalog = {
       efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
       defaultEffort: 'high',
       fastModeModels: ['gpt-5.5', 'gpt-6.1-sol'],
+      limitedEfforts: ['max', 'ultra'],
     },
     {
       agent: 'cursor',
@@ -92,6 +94,14 @@ describe('Switch model picker rules', () => {
     expect(sessionModelRows(undefined, CATALOG)).toEqual({});
   });
 
+  it('names a Claude session’s model by its create-session id, not the resolved one', () => {
+    const session = { harness: 'claude', model: 'claude-opus-5-5[1m]', modelId: 'opus-5-5-1m' };
+    expect(sessionModelRows(session, CATALOG).model).toBe('Opus 5.5 (1M)');
+    // Without the catalog (or an id it lists), the id the session reports.
+    expect(sessionModelRows(session, null).model).toBe('claude-opus-5-5[1m]');
+    expect(sessionModelRows({ modelId: 'opus-9' }, CATALOG).model).toBe('opus-9');
+  });
+
   it('opens on the session’s own agent and model, keeping what that model takes', () => {
     expect(
       initialChoice(CATALOG, {
@@ -101,6 +111,15 @@ describe('Switch model picker rules', () => {
         fastMode: true,
       }),
     ).toEqual({ agent: 'claude', model: 'opus-5-5-1m', effort: 'max', fastMode: true });
+    // The resolved id with the create-session id beside it: the session's own.
+    expect(
+      initialChoice(CATALOG, {
+        harness: 'claude',
+        model: 'claude-opus-5-5[1m]',
+        modelId: 'opus-5-5-1m',
+        effort: 'low',
+      }),
+    ).toEqual({ agent: 'claude', model: 'opus-5-5-1m', effort: 'low', fastMode: false });
     // A model the catalog doesn't list: the agent's first favorite.
     expect(initialChoice(CATALOG, { harness: 'claude', model: 'claude-opus-5-5[1m]' })).toEqual({
       agent: 'claude',
@@ -174,6 +193,14 @@ describe('Switch model picker rules', () => {
     expect(effortOptions(CATALOG, 'acp')).toEqual([]);
   });
 
+  it('says which effort levels only some models take', () => {
+    const labels = (agent: string) => effortOptions(CATALOG, agent).map((o) => o.label);
+    expect(labels('claude').slice(-2)).toEqual(['max', 'ultracode (some models)']);
+    expect(labels('codex').slice(-2)).toEqual(['max (some models)', 'ultra (some models)']);
+    expect(effortOptions(CATALOG, 'codex').at(-1)?.value).toBe('ultra');
+    expect(labels('cursor')).not.toContainEqual(expect.stringContaining('some models'));
+  });
+
   it('says why Start is disabled', () => {
     const choice = { agent: 'codex', model: 'gpt-5.5', effort: '', fastMode: false };
     expect(startBlocker(null, null, 'go')).toBe('Loading models…');
@@ -236,6 +263,8 @@ describe('Conductor store: Switch model and Change Pokémon', () => {
       id: 2,
       providerId: 'conductor',
       label: 'Fix flaky tests',
+      model: 'claude-opus-5-5[1m]',
+      modelId: 'opus-5-5-1m',
       effort: 'medium',
       fastMode: true,
       species: 4,
@@ -245,6 +274,8 @@ describe('Conductor store: Switch model and Change Pokémon', () => {
     expect(state.modelCatalog).toBe(CATALOG);
     expect(state.pokemonCatalog?.lines).toHaveLength(1);
     expect(state.agents[2]).toMatchObject({
+      model: 'claude-opus-5-5[1m]',
+      modelId: 'opus-5-5-1m',
       effort: 'medium',
       fastMode: true,
       pokemonChosen: true,
@@ -279,8 +310,17 @@ describe('Conductor store: Switch model and Change Pokémon', () => {
     expect(store.getState().toasts.at(-1)?.text).toBe(
       "Couldn't change the Pokémon: Unknown Pokémon.",
     );
-    // A refused start follows nothing.
-    store.apply({ type: 'conductorActionResult', action: 'continueWithModel', id: 2, ok: false });
+    // A refused start follows nothing, and its toast says what happened.
+    store.apply({
+      type: 'conductorActionResult',
+      action: 'continueWithModel',
+      id: 2,
+      ok: false,
+      message: "Conductor didn't confirm the new session.",
+    });
     expect(store.getState().follow).toBeNull();
+    expect(store.getState().toasts.at(-1)?.text).toBe(
+      "Switch model: Conductor didn't confirm the new session.",
+    );
   });
 });

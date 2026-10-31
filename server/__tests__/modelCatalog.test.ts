@@ -58,6 +58,16 @@ describe('model catalog: the maintained table', () => {
     expect(cursor.defaultEffort).toBeUndefined();
   });
 
+  it('marks the efforts Conductor takes only from models that support them', () => {
+    const [claude, codex, cursor] = agents;
+    expect(claude.limitedEfforts).toEqual(['ultracode']);
+    expect(codex.limitedEfforts).toEqual(['max', 'ultra']);
+    expect(cursor.limitedEfforts).toBeUndefined();
+    for (const agent of agents) {
+      for (const effort of agent.limitedEfforts ?? []) expect(agent.efforts).toContain(effort);
+    }
+  });
+
   it('hands out copies, so a caller cannot change the table', () => {
     const first = catalogAgents();
     first[0].models.push({ id: 'made-up', label: 'Made up' });

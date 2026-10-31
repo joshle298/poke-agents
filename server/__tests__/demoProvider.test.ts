@@ -394,12 +394,16 @@ describe('demo provider (synthetic sessions through the real stream driver)', ()
     expect(created.label).toBe('Dependency bumps · GPT-5.5');
     expect(created.details).toMatchObject({
       model: 'gpt-5.5',
+      modelId: 'gpt-5.5',
       harness: 'codex',
       effort: 'medium',
       fastMode: true,
       workspaceId: DEMO_CAST.deps.spec.workspace.id,
     });
-    expect(summaries().find((s) => s.sessionId === newSession)?.leadSessionId).toBe(DEMO_IDS.deps);
+    expect(summaries().find((s) => s.sessionId === newSession)).toMatchObject({
+      leadSessionId: DEMO_IDS.deps,
+      handoff: true,
+    });
     // It works through its handoff turn, then is done.
     expect(ofType('agentStatus').find((m) => m.id === newId)).toMatchObject({ status: 'active' });
     await play(30);

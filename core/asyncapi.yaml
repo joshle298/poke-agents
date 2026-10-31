@@ -1079,6 +1079,12 @@ components:
           description: Deep link that opens the session in its own app (conductor://...).
         model:
           type: string
+          description: The model as the provider resolved it (e.g. claude-opus-5-5[1m]).
+        modelId:
+          type: string
+          description: >-
+            The model id the provider's create-session takes (Conductor's `model`,
+            e.g. opus-5-5-1m), when known: what Switch model's catalog names.
         harness:
           type: string
           description: Agent harness running the session (claude, codex, cursor, ...).
@@ -2370,6 +2376,11 @@ components:
         leadSessionId:
           type: string
           description: The session that spawned this one, if any.
+        handoff:
+          type: boolean
+          description: >-
+            leadSessionId is the session this one continues (Switch model), not a
+            Lead: it is listed under that session, which gets no LEAD badge for it.
         externalUrl:
           type: string
         creatorName:
@@ -2416,6 +2427,13 @@ components:
         fastModeModels:
           type: array
           description: Models of this agent that accept fast mode.
+          items:
+            type: string
+        limitedEfforts:
+          type: array
+          description: >-
+            Effort levels Conductor accepts only for models that support them (the
+            catalog doesn't say which models do; Conductor refuses the others).
           items:
             type: string
 

@@ -258,6 +258,7 @@ export interface AgentDetails {
   label?: string;
   externalUrl?: string;
   model?: string;
+  modelId?: string;
   harness?: string;
   effort?: string;
   fastMode?: boolean;
@@ -402,6 +403,7 @@ export interface ConductorSessionSummary {
   archivedAt?: number;
   agentId?: number;
   leadSessionId?: string;
+  handoff?: boolean;
   externalUrl?: string;
   creatorName?: string;
 }
@@ -444,6 +446,7 @@ export interface ModelCatalogAgent {
   efforts: string[];
   defaultEffort?: string;
   fastModeModels: string[];
+  limitedEfforts?: string[];
 }
 
 export interface ModelCatalogModel {

@@ -52,6 +52,7 @@ export const DEMO_CAST: Record<DemoRole, DemoCastMember> = {
       label: 'Release v2 orchestration',
       workspace: { id: workspaceId(141), name: 'release-v2', number: 141, repo: 'example-org/web' },
       model: 'claude-opus-5-5[1m]',
+      modelId: 'opus-5-5-1m',
       harness: 'claude',
       prompt:
         'Ship v2. Split the work into parallel sessions (the accounts migration, the flaky tests, the docs, the PR #42 review and a perf pass), keep docs/RELEASE_PLAN.md current, and tag a release candidate once every track reports green.',
@@ -136,6 +137,7 @@ export const DEMO_CAST: Record<DemoRole, DemoCastMember> = {
         repo: 'example-org/infra',
       },
       model: 'gpt-6.1-sol',
+      modelId: 'gpt-6.1-sol',
       harness: 'codex',
       prompt:
         "Go through last night's alerts, group them by cause, fix what is ours and open issues for the rest.",
@@ -238,6 +240,7 @@ export const DEMO_CAST: Record<DemoRole, DemoCastMember> = {
         repo: 'example-org/api',
       },
       model: 'gpt-6.1-sol',
+      modelId: 'gpt-6.1-sol',
       harness: 'codex',
       leadId: DEMO_IDS.lead,
       prompt:
@@ -371,6 +374,7 @@ export const DEMO_CAST: Record<DemoRole, DemoCastMember> = {
       label: 'Perf pass',
       workspace: { id: workspaceId(146), name: 'perf-pass', number: 146, repo: 'example-org/web' },
       model: 'grok-4.7',
+      modelId: 'grok-4.7',
       harness: 'cursor',
       contextWindow: CURSOR_CONTEXT_WINDOW,
       leadId: DEMO_IDS.lead,

@@ -156,11 +156,19 @@ export const RESTORE_PIN_MS = 10 * 60_000;
  *  deduplicates), after 1 s, then 2 s. */
 export const CONTINUE_RETRY_MAX = 2;
 export const CONTINUE_RETRY_BASE_MS = 1_000;
+/** Switch model: the same request again (same session, choice and message)
+ *  within this long reuses the last create's session and message ids, so a
+ *  click after a lost answer can't start a second session. */
+export const CONTINUE_REUSE_MS = 10 * 60_000;
 /** A session the office just created is kept even when a session listing that
  *  was already in flight comes back without it. */
 export const CREATED_LIST_GRACE_MS = 60_000;
-/** The user's favorite models (Switch model) are read again after this long. */
+/** The user's favorite models (Switch model) are read again after this long,
+ *  and a refusal (404: local organizations have none) is kept as long. */
 export const FAVORITES_TTL_MS = 5 * 60_000;
+/** A favorites read that failed for another reason (network, 5xx, 429) is
+ *  tried again after this long. */
+export const FAVORITES_RETRY_MS = 30_000;
 /** Polls further apart than this are catch-ups, not steady tail polls. */
 export const STEADY_POLL_GAP_MS = 60_000;
 /** Feed items newer than this (and from a steady poll) animate links and notices. */

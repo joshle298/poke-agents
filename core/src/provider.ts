@@ -179,6 +179,10 @@ export interface StreamSessionDetails {
   /** Deep link that opens the session in its own app (conductor://...). */
   externalUrl?: string;
   model?: string;
+  /** The model id the provider's create-session takes (Conductor's `model`
+   *  alias, e.g. `opus-5-5-1m`, where `model` may be the resolved
+   *  `claude-opus-5-5[1m]`): what Switch model's catalog names. */
+  modelId?: string;
   /** Harness running the session: claude | codex | cursor | ... */
   harness?: string;
   /** Reasoning effort the session runs with, when the provider reports one. */

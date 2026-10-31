@@ -220,6 +220,9 @@ export const SESSION_MESSAGE_MAX_LENGTH = 32_000;
 /** Switch model: the new session's name ("<original name> · <model>") is cut
  *  to this length, the original name giving way first. */
 export const CONTINUE_SESSION_NAME_MAX_LENGTH = 120;
+/** Switch model: when the favorites take longer than this, the picker gets
+ *  the model table first and the favorites when they arrive. */
+export const MODEL_CATALOG_WAIT_MS = 1_000;
 /** Switch model: favorite models kept from Conductor's list. */
 export const MODEL_FAVORITES_MAX = 24;
 /** Longest id, effort or agent value a continueWithModel request may carry

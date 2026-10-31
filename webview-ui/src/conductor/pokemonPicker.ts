@@ -67,3 +67,13 @@ export function pickerPortraitUrl(dex: number, portraitRoute: boolean): string |
     return undefined;
   return `${POKEMON_PORTRAIT_ROUTE_PREFIX}/${String(dex).padStart(4, '0')}/portrait/Normal.png`;
 }
+
+/** The Shiny box: a toggle's new value while it is on its way (or answered
+ *  but not reported back yet), else the agent's own. */
+export function shownShiny(
+  current: boolean,
+  toggle: { shiny?: boolean } | null,
+  inFlight: boolean,
+): boolean {
+  return toggle?.shiny !== undefined && inFlight ? toggle.shiny : current;
+}
