@@ -506,7 +506,15 @@ export class OfficeState {
     directoryName?: string,
     nearAgentId?: number,
   ): void {
-    if (this.characters.has(id)) return;
+    const existing = this.characters.get(id);
+    if (existing) {
+      // Conductor sessions keep their agent id, so one can come back while
+      // its recall is still playing (hide then show, a cap flap, a paused
+      // background tab). Drop the leaving character and seat a new one;
+      // removeAgent already freed its seat.
+      if (existing.matrixEffect !== 'despawn') return;
+      this.characters.delete(id);
+    }
 
     let palette: number;
     let hueShift: number;

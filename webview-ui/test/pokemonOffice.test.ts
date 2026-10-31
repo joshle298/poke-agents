@@ -244,6 +244,32 @@ test('with a known species the Poké Ball spawn and recall run their own duratio
   assert.equal(os.characters.has(1), false);
 });
 
+test('an agent id that returns during its recall comes back instead of vanishing', async () => {
+  await loadSpecies(25);
+  for (const themed of [false, true]) {
+    setPokemonThemeEnabled(themed);
+    const os = new OfficeState(floorLayout());
+    os.seats.set('desk', { uid: 'desk', seatCol: 3, seatRow: 3, facingDir: 0, assigned: false });
+    os.addAgent(7, 0, 0, 'desk');
+    os.setAgentIdentity(7, { species: 25 });
+    os.update(1);
+    os.removeAgent(7);
+    assert.equal(os.characters.get(7)!.matrixEffect, 'despawn');
+    assert.equal(os.seats.get('desk')!.assigned, false, 'the recall frees the seat');
+
+    // agentCreated for the same id while the recall plays (stable Conductor ids).
+    os.addAgent(7, 0, 0, 'desk');
+    os.setAgentIdentity(7, { species: 25 });
+    for (let i = 0; i < 10; i++) os.update(0.1);
+
+    const ch = os.characters.get(7);
+    assert.ok(ch, `themed=${themed}: the returning agent is still in the office`);
+    assert.equal(ch.matrixEffect, null);
+    assert.equal(ch.seatId, 'desk');
+    assert.equal(os.seats.get('desk')!.assigned, true, 'its seat is taken again');
+  }
+});
+
 test('a child created with a Lead is thrown from the Lead; otherwise the ball drops', () => {
   const os = new OfficeState(floorLayout());
   const lead = placeAgent(os, 1, 2, 2);
