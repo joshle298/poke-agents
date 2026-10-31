@@ -719,8 +719,10 @@ export function useExtensionMessages(
           pinned: pinnedAgentIdsRef.current.has(id),
           changed,
         });
-        if (chime === 'done') playDoneSound();
-        else if (chime === 'attention') playPermissionSound();
+        // A stream agent's sounds are audio/usePokemonSounds.ts's (alert + cry, faint, done).
+        const chimes = ch?.providerId === undefined;
+        if (chime === 'done' && chimes) playDoneSound();
+        else if (chime === 'attention' && chimes) playPermissionSound();
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number;
         setAgentTools((prev) => {
@@ -732,7 +734,8 @@ export function useExtensionMessages(
           };
         });
         os.showPermissionBubble(id);
-        playPermissionSound();
+        // Stream agents: audio/usePokemonSounds.ts plays the alert and the cry.
+        if (os.characters.get(id)?.providerId === undefined) playPermissionSound();
       } else if (msg.type === 'subagentToolPermission') {
         const id = msg.id as number;
         const parentToolId = msg.parentToolId as string;

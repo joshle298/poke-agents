@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
 
+import { SoundSettings } from '../audio/SoundSettings.js';
 import { useConductor } from '../conductor/conductorStore.js';
 import { conductorStatusLine } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
-import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
@@ -107,7 +107,6 @@ export function SettingsModal({
   onToggleBattleLog,
   onOpenCredits,
 }: SettingsModalProps) {
-  const [soundLocal, setSoundLocal] = useState(isSoundEnabled);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [assetDirDraft, setAssetDirDraft] = useState('');
 
@@ -242,16 +241,8 @@ export function SettingsModal({
           </Button>
         </div>
       ))}
-      <Checkbox
-        label="Sound Notifications"
-        checked={soundLocal}
-        onChange={() => {
-          const newVal = !isSoundEnabled();
-          setSoundEnabled(newVal);
-          setSoundLocal(newVal);
-          transport.send({ type: 'setSoundEnabled', enabled: newVal });
-        }}
-      />
+      {/* Sound: the on/off switch (server setting), volume, categories, tests. */}
+      <SoundSettings />
       <Checkbox label="Pokémon Theme" checked={pokemonTheme} onChange={onTogglePokemonTheme} />
       <Checkbox
         label="Show Connections"

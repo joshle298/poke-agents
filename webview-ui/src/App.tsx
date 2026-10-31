@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
+import { usePokedexSounds, usePokemonSounds } from './audio/usePokemonSounds.js';
 import { toMajorMinor } from './changelogData.js';
 import type { SelectMods, TabStatus } from './components/AgentCard.js';
 import type { CardBarLayout } from './components/AgentCardBar.js';
@@ -89,6 +90,9 @@ function getOfficeState(): OfficeState {
   return officeStateRef.current;
 }
 
+/** The selected character, for the sound policy's "done" rule. */
+const getSelectedAgentId = (): number | null => getOfficeState().selectedAgentId;
+
 /** A stream-provider (Conductor) agent: its character and card open the
  *  Pokédex instead of focusing a terminal. */
 function isStreamAgent(agent: ConductorAgent | undefined): agent is ConductorAgent {
@@ -99,6 +103,8 @@ function App() {
   // Conductor chrome store. Registered before useExtensionMessages (effects
   // run in call order), so it is listening before webviewReady goes out.
   useConductorFeed();
+  // Pokémon sounds listen to the same feed (audio/usePokemonSounds.ts).
+  usePokemonSounds(getSelectedAgentId);
 
   // Browser runtime (dev or static dist): dispatch mock messages after the
   // useExtensionMessages listener has been registered.
@@ -189,6 +195,7 @@ function App() {
   const [isCreditsOpen, setIsCreditsOpen] = useState(false);
   // The agent whose Pokédex is open (stream agents only).
   const [detailAgentId, setDetailAgentId] = useState<number | null>(null);
+  usePokedexSounds(detailAgentId);
   const [battleLogOn, setBattleLogOn] = useBoolPref(BATTLE_LOG_STORAGE_KEY, true);
   // Per-device (localStorage), owned by the office: its link layer reads the
   // same module state every frame.
