@@ -41,6 +41,7 @@ import { ConductorApiError, type ConductorClient, userFacingMessage } from './cl
 import {
   ARCHIVE_INTEREST_MS,
   ARCHIVED_LIST_INTERVAL_MS,
+  ARCHIVED_LIST_PROMPT_WORKSPACES,
   BUDGET_PLANNING_FRACTION,
   CAP_HYSTERESIS,
   DETAILS_THROTTLE_MS,
@@ -815,13 +816,27 @@ export class ConductorPoller {
             now - ws.archivedListedAt >= ARCHIVED_LIST_INTERVAL_MS,
         )
         .sort((a, b) => b.lastActivityMs - a.lastActivityMs);
+      const prompt = new Set(
+        [...this.workspaces.values()]
+          .filter((ws) => ws.discovered)
+          .sort((a, b) => b.lastActivityMs - a.lastActivityMs)
+          .slice(0, ARCHIVED_LIST_PROMPT_WORKSPACES),
+      );
       for (const ws of due) {
+        // The user is looking at the PC Box: the most recent workspaces, where
+        // recent deposits are, go ahead of the routine session lists (2.5),
+        // which can keep both list slots busy on a large scope.
+        const soon = prompt.has(ws);
         add(
-          6.9,
+          soon ? 2.4 : 6.9,
           async () => {
             ws.archivedListing = true;
             try {
-              await this.listWorkspaceSessions(ws, true, PRIORITY_BACKGROUND);
+              await this.listWorkspaceSessions(
+                ws,
+                true,
+                soon ? PRIORITY_DISCOVERY : PRIORITY_BACKGROUND,
+              );
             } catch (err) {
               // Try this workspace again after a discovery interval, not every tick.
               ws.archivedListedAt =
@@ -831,7 +846,7 @@ export class ConductorPoller {
               ws.archivedListing = false;
             }
           },
-          'background',
+          soon ? 'list' : 'background',
         );
       }
     }

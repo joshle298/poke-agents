@@ -351,6 +351,52 @@ describe('Conductor poller: units that wait for a free slot', () => {
   });
 });
 
+describe('Conductor poller: the PC Box on a saturated budget', () => {
+  it("lists the most recent workspaces' archived sessions within seconds of opening", async () => {
+    const archived = uuid(0x3601);
+    const clock = manualClock(NOW);
+    const api = new FakeConductorApi(() => clock.t);
+    // Every session is working, so steady polls alone fill a small budget.
+    for (let i = 0; i < 40; i++) {
+      const id = uuid(0x3700 + i);
+      api.addWorkspace({
+        id: uuid(0x3800 + i),
+        lastActivityAt: new Date(NOW - (i + 1) * 1000).toISOString(),
+      });
+      api.addSession({ id, workspaceId: uuid(0x3800 + i), items: workingFeed(id, NOW - i * 1000) });
+    }
+    // Deposited in one of the most recently active workspaces.
+    api.addSession({
+      id: archived,
+      workspaceId: uuid(0x3801),
+      archivedAt: new Date(NOW - HOUR).toISOString(),
+      items: idleFeed(archived, NOW - 2 * HOUR),
+    });
+    const provider = createConductorProvider({
+      fetchImpl: api.fetch,
+      env: { CONDUCTOR_API_KEY: KEY },
+      stateDir: tmpStateDir(),
+      clock,
+      autoTick: false,
+      platform: 'linux',
+      budgetPerMinute: 24,
+    });
+    await provider.start(new RecordingSink());
+    const advance = async (ms: number) => {
+      const until = clock.t + ms;
+      while (clock.t < until) {
+        clock.t += 500;
+        await provider.tick();
+      }
+    };
+    await advance(3 * MINUTE);
+    provider.listSessions();
+    await advance(20_000);
+    expect(provider.listSessions().find((s) => s.sessionId === archived)?.archived).toBe(true);
+    await provider.stop();
+  });
+});
+
 describe('Conductor poller: ranking by a session own activity', () => {
   it("never shows a busy workspace's old chats ahead of recently active sessions", async () => {
     const stateDir = tmpStateDir();

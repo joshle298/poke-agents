@@ -22,7 +22,9 @@ import {
   DEFAULT_BUDGET_PER_MINUTE,
   DEFAULT_RETRY_AFTER_MS,
   MIN_BUDGET_PER_MINUTE,
+  PRIORITY_AGING_MS,
   PRIORITY_BACKGROUND,
+  PRIORITY_HOT,
   PRIORITY_USER,
   REQUEST_TIMEOUT_MS,
   RETRY_AFTER_JITTER_MS,
@@ -116,6 +118,7 @@ export const systemClock: ClientClock = {
 interface Waiter {
   priority: number;
   seq: number;
+  enqueuedAt: number;
   resolve: () => void;
   reject: (err: Error) => void;
 }
@@ -522,7 +525,13 @@ export class ConductorClient {
 
   private acquire(priority: number): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      const waiter: Waiter = { priority, seq: this.seq++, resolve, reject };
+      const waiter: Waiter = {
+        priority,
+        seq: this.seq++,
+        enqueuedAt: this.clock.now(),
+        resolve,
+        reject,
+      };
       let i = this.waiters.length;
       while (
         i > 0 &&
@@ -534,6 +543,19 @@ export class ConductorClient {
       this.waiters.splice(i, 0, waiter);
       void this.pump();
     });
+  }
+
+  /** The waiter to serve next: the best aged priority, then the oldest. */
+  private nextWaiter(now: number): number {
+    let best = 0;
+    for (let i = 1; i < this.waiters.length; i++) {
+      const a = this.waiters[i];
+      const b = this.waiters[best];
+      const pa = agedPriority(a, now);
+      const pb = agedPriority(b, now);
+      if (pa < pb || (pa === pb && a.seq < b.seq)) best = i;
+    }
+    return best;
   }
 
   private async pump(): Promise<void> {
@@ -550,7 +572,8 @@ export class ConductorClient {
         this.refill(now);
         if (this.tokens >= 1) {
           this.tokens -= 1;
-          this.waiters.shift()?.resolve();
+          const [next] = this.waiters.splice(this.nextWaiter(now), 1);
+          next?.resolve();
           continue;
         }
         const waitMs = Math.ceil(((1 - this.tokens) * 60_000) / this.budget);
@@ -560,4 +583,15 @@ export class ConductorClient {
       this.pumping = false;
     }
   }
+}
+
+/**
+ * A waiter's priority after waiting: one level better per PRIORITY_AGING_MS,
+ * never past PRIORITY_HOT, so user actions and an open Pokédex still go first
+ * while background work can't starve behind a budget that steady polls fill.
+ */
+function agedPriority(waiter: Waiter, now: number): number {
+  if (waiter.priority <= PRIORITY_HOT) return waiter.priority;
+  const steps = Math.floor((now - waiter.enqueuedAt) / PRIORITY_AGING_MS);
+  return Math.max(PRIORITY_HOT, waiter.priority - steps);
 }

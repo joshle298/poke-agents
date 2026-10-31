@@ -114,6 +114,37 @@ describe('ConductorClient', () => {
     expect(api.calls.slice(3).map((c) => c.url.split('/')[5])).toEqual(['high', 'mid', 'low']);
   });
 
+  it('serves a background request within about a minute, however busy the budget', async () => {
+    const clock = manualClock();
+    const api = fakeFetch(clock, () => json(200, {}));
+    // 12/min: one request every 5 s once the burst is spent, with 30 Hot polls
+    // queued behind a PC Box listing: strict priority would serve it last.
+    const client = new ConductorClient({
+      baseUrl: BASE,
+      token: 't',
+      fetchImpl: api.fetch,
+      budgetPerMinute: 12,
+      clock,
+    });
+    await Promise.all([client.getSession('a'), client.getSession('b'), client.getSession('c')]);
+    const requests = [client.getSessionStatus('pcbox', 5)];
+    for (let i = 0; i < 30; i++) requests.push(client.getSessionStatus(`hot${i}`, 2));
+    await Promise.all(requests);
+    const order = api.calls.slice(3).map((c) => c.url.split('/')[5]);
+    // Waiting 45 s ages it from background (5) to Hot (2), and the older
+    // request goes first among equals: within 50 s, not after all 30 polls.
+    const servedAt = api.calls.find((c) => c.url.includes('/pcbox/'))!.at - 1_000_000;
+    expect(servedAt).toBeLessThanOrEqual(50_000);
+    expect(order.indexOf('pcbox')).toBeLessThan(order.length - 10);
+
+    // A user action still goes first, however long a background request waited.
+    const served: string[] = [];
+    const stale = client.getSessionStatus('stale', 5).then(() => served.push('background'));
+    clock.t += 120_000;
+    await Promise.all([client.getSessionStatus('user', 0).then(() => served.push('user')), stale]);
+    expect(served[0]).toBe('user');
+  });
+
   it('on a general 429: honours retry-after plus jitter, halves the budget, recovers 10 %/min', async () => {
     const clock = manualClock();
     let limited = true;

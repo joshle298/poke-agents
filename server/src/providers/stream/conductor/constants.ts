@@ -52,6 +52,10 @@ export const PRIORITY_HOT = 2;
 export const PRIORITY_DISCOVERY = 3;
 export const PRIORITY_WARM = 4;
 export const PRIORITY_BACKGROUND = 5;
+/** A request waiting this long moves up one priority level, but never past
+ *  PRIORITY_HOT: under a saturated budget, background work (PC Box listings,
+ *  off-screen onboarding) is otherwise never served and holds its unit slots. */
+export const PRIORITY_AGING_MS = 15_000;
 
 // ── Messages feed ───────────────────────────────────────────
 
@@ -83,6 +87,12 @@ export const SESSION_LIST_MIN_GAP_MS = 60_000;
 export const ARCHIVED_LIST_INTERVAL_MS = 2 * 60_000;
 /** How long a listSessions() call keeps the archived listings refreshing. */
 export const ARCHIVE_INTEREST_MS = 5 * 60_000;
+/** An open PC Box lists this many of the most recently active workspaces at
+ *  discovery priority (the rest in the background), so recent deposits show
+ *  within seconds even when steady polls fill the budget. A deposit counts as
+ *  workspace activity, so they are where recent deposits are. Two at a time
+ *  (the list class), at most once per ARCHIVED_LIST_INTERVAL_MS each. */
+export const ARCHIVED_LIST_PROMPT_WORKSPACES = 24;
 export const WORKSPACES_PAGE_LIMIT = 100;
 export const SESSIONS_PAGE_LIMIT = 100;
 /** A workspace's session list is read at most this many pages deep. */
