@@ -689,8 +689,8 @@ export const AGENT_NOTICE_SEC = 4;
 export const AGENT_NOTICE_MAX_CHARS = 120;
 /** Max width (CSS px) of preview and notice bubbles. */
 export const SPEECH_BUBBLE_MAX_WIDTH_PX = 220;
-/** CSS px between a character's bubble anchor and a notice / preview bubble. */
-export const SPEECH_BUBBLE_RISE_PX = 18;
+/** CSS px between a character's sprite bubble and a notice / preview above it. */
+export const SPEECH_BUBBLE_RISE_PX = 4;
 export const SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX = 14;
 export const NOTICE_ERROR_COLOR = '#c03028';
 

@@ -80,7 +80,7 @@ export type { ConnectionsRenderState } from './connectionsRender.js';
 /** The Pokémon theme switch: set from settingsLoaded.pokemonTheme (absent =
  *  on) and pokemonThemeUpdated. Lives in a DOM-free module so OfficeState
  *  reads the same flag. */
-export { isPokemonThemeEnabled, setPokemonThemeEnabled } from './pokemonTheme.js';
+export { setPokemonThemeEnabled } from './pokemonTheme.js';
 
 // ── Settings ────────────────────────────────────────────────────
 

@@ -170,9 +170,10 @@ interface ThemedLabelProps {
   onClose: () => void;
 }
 
-/** The themed label: nickname + Lv and status badges, the species in small
- *  text, the activity, and an HP bar (context left) in place of the gauge.
- *  Hangs from its anchor by its bottom edge, so extra lines grow upward. */
+/** The themed label: nickname + Lv and a status badge, the activity, the
+ *  species and directory in small text, and an HP bar (context left) in place
+ *  of the gauge. Hangs from its anchor by its bottom edge, so extra lines grow
+ *  upward instead of over the character. */
 function ThemedLabel({
   ch,
   id,
@@ -244,20 +245,15 @@ function ThemedLabel({
               )}
             </span>
           )}
-          {label.species && (
-            <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
-              {label.species}
-            </span>
-          )}
           <span
             className="overflow-hidden text-ellipsis block leading-none"
             style={{ fontSize: '20px' }}
           >
             {activityText}
           </span>
-          {ch.directoryName && (
+          {(label.species || ch.directoryName) && (
             <span className="text-2xs leading-none overflow-hidden text-ellipsis block">
-              {ch.directoryName}
+              {[label.species, ch.directoryName].filter(Boolean).join(' · ')}
             </span>
           )}
         </div>
@@ -294,16 +290,22 @@ function ThemedLabel({
 }
 
 /** Message previews near their receivers and agent notices above heads: DOM
- *  speech bubbles that follow the characters (projected every frame). */
+ *  speech bubbles that follow the characters (projected every frame), lifted
+ *  clear of the sprite bubble ("!", checkmark) a character may be showing. */
 function SpeechBubbles({
   officeState,
   project,
+  zoom,
+  dpr,
 }: {
   officeState: OfficeState;
   project: OverlayProjection;
+  zoom: number;
+  dpr: number;
 }) {
   const fadeOf = (timer: number) =>
     timer < BUBBLE_FADE_DURATION_SEC ? timer / BUBBLE_FADE_DURATION_SEC : 1;
+  const lift = (BUBBLE_ALERT_SPRITE.length * zoom) / dpr + SPEECH_BUBBLE_RISE_PX;
   const bubbleStyle = (left: number, top: number, timer: number, centered: boolean) => ({
     left,
     top,
@@ -323,7 +325,7 @@ function SpeechBubbles({
             className="absolute pixel-panel px-6 py-2 text-2xs leading-tight whitespace-normal break-words pointer-events-none"
             style={bubbleStyle(
               project.toScreenX(ch.x) + SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
-              project.toScreenY(overlayAnchorY(ch, 'bubble')) - SPEECH_BUBBLE_RISE_PX,
+              project.toScreenY(overlayAnchorY(ch, 'bubble')) - lift,
               m.timer,
               false,
             )}
@@ -342,7 +344,7 @@ function SpeechBubbles({
             style={{
               ...bubbleStyle(
                 project.toScreenX(ch.x),
-                project.toScreenY(overlayAnchorY(ch, 'bubble')) - SPEECH_BUBBLE_RISE_PX,
+                project.toScreenY(overlayAnchorY(ch, 'bubble')) - lift,
                 notice.timer,
                 true,
               ),
@@ -400,7 +402,7 @@ export function ToolOverlay({
 
   return (
     <>
-      <SpeechBubbles officeState={officeState} project={project} />
+      <SpeechBubbles officeState={officeState} project={project} zoom={zoom} dpr={dpr} />
       {allIds.map((id) => {
         const ch = officeState.characters.get(id);
         if (!ch) return null;
