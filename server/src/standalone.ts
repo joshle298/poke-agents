@@ -46,6 +46,11 @@ import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemon
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
 import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
+import {
+  DEMO_OPEN_EXTERNAL_REFUSAL,
+  DEMO_STATE_FILE_STEM,
+} from './providers/stream/demo/constants.js';
+import { createDemoProvider } from './providers/stream/demo/demo.js';
 import { PixelAgentsServer, type ServerConfig } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
 import { isLoopbackHost } from './wsAuth.js';
@@ -83,6 +88,10 @@ export interface StandaloneOptions {
   openExternal?: OpenExternalSideEffect;
   /** Directory whose Claude Code sessions are scanned. Default: process.cwd(). */
   cwd?: string;
+  /** Play the scripted demo (synthetic sessions) instead of connecting to
+   *  Conductor: `poke-agents --demo`. Implies no Conductor; its seats and
+   *  agents persist apart from the real office's (`demo-state.json`). */
+  demo?: { seed?: number; speed?: number };
 }
 
 /** A running office, owned by this process or reused from another one. */
@@ -275,8 +284,14 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   );
 
   // ── Store + adapter (shared settings + standalone-scoped agents/seats) ──
+  // The demo keeps its seats and agents apart, so it never moves the real
+  // office's characters or leaves synthetic sessions in its memory.
+  const demo = opts.demo;
+  const conductorOn = opts.conductor && !demo;
   const store = new AgentStateStore();
-  const adapter = new FileStateAdapter({ namespace: 'standalone' });
+  const adapter = demo
+    ? new FileStateAdapter({ namespace: 'standalone', stateFileStem: DEMO_STATE_FILE_STEM })
+    : new FileStateAdapter({ namespace: 'standalone' });
   store.setAdapter(adapter);
   // A Claude agent's evolution waits for its new species' sprites (as the
   // stream driver's does), so the office plays the flash.
@@ -399,8 +414,12 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
           allowedHosts: opts.allowedHosts ?? [],
           rotateToken: opts.rotateToken ?? false,
           claude: opts.claude,
-          conductor: opts.conductor,
-          openExternal: opts.openExternal ?? ((url) => openWithSystem(url)),
+          conductor: conductorOn,
+          demo: demo !== undefined,
+          // Demo sessions exist nowhere else: "Open in Conductor" says so.
+          openExternal: demo
+            ? () => Promise.reject(new Error(DEMO_OPEN_EXTERNAL_REFUSAL))
+            : (opts.openExternal ?? ((url) => openWithSystem(url))),
         }),
       opts.port,
     );
@@ -417,7 +436,25 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   // A Conductor failure never takes the office down with it.
   let conductor: StreamProvider | null = null;
   let conductorLock: PollerLock | null = null;
-  if (opts.conductor && ownsServer) {
+  if (demo && ownsServer) {
+    // No lock: the demo never polls Conductor, so a real office may run beside it.
+    try {
+      conductor = createDemoProvider({
+        seed: demo.seed,
+        speed: demo.speed,
+        log: (message) => console.log(`[Pixel Agents] Demo: ${message}`),
+      });
+      // No stream memory: every run replays the same story from the start.
+      const sink = runtime.attachStreamProvider(conductor);
+      void conductor.start(sink).catch((err: unknown) => {
+        console.error(`[Pixel Agents] The demo failed to start: ${errorText(err)}`);
+      });
+    } catch (err) {
+      console.error(`[Pixel Agents] The demo is unavailable: ${errorText(err)}`);
+      conductor = null;
+    }
+  }
+  if (conductorOn && ownsServer) {
     // One poller per machine: an office in another mode (no shared server)
     // would otherwise double the API traffic and overwrite this one's state.
     conductorLock = acquireConductorLock(config.port);

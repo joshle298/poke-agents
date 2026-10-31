@@ -40,6 +40,7 @@ server/                              Lifecycle runtime + Fastify HTTP/WS server
     pokemon/                         Sprite cache + route, species catalog, species assigner, agentLevel (see "Pokémon theme")
     audio/                           Cry cache + GET /api/pokemon/cry/:dex4, sound pack routes, --no-sounds switch (see "Pokémon theme")
     providers/stream/silentSeed.ts   Optional sink extension: seedSilently(fn) sends every status an adoption causes with silent:true
+    providers/stream/demo/           --demo: a StreamProvider (id 'conductor') playing a scripted story of synthetic sessions (see "Demo mode")
     streamAgentDriver.ts             AgentEventSink for stream providers: drives the store with the hook path's broadcast shapes
     streamSessionMessages.ts         Client messages for stream sessions (Pokédex detail and history pages, session actions, scope, openExternal, setPokemonTheme)
     agentTransitions.ts              markAgentWaiting / endAgentTurn, shared by HookEventHandler and the stream driver
@@ -77,7 +78,8 @@ desktop/                             Mac app (Electron). Own package.json + lock
     navigation.ts                    Window navigation verdict: office origin / default browser / Conductor deep link / block
     menu.ts                          App menu template (File → Close Window, Settings…, Reconnect, Help); Electron-free
     reconnect.ts                     Reconnect outcome from conductorStatus, and the app's dialog text
-    args.ts, species.ts, constants.ts
+    args.ts                          --smoke, --smoke-out, --smoke-reconnect and --demo (POKE_AGENTS_DEMO=1): the demo office instead of Conductor
+    species.ts, constants.ts
   src/electron/                      main.ts (lifecycle, window, office start/reuse/takeover, IPC), preload.ts (office bridge), notifier.ts, smoke.ts
   scripts/build.mjs                  esbuild main → dist/main.js (server + Fastify bundled; electron external), preload → dist/preload.js, copies dist/{webview,assets} → dist/office
   scripts/dist-mac.mjs               electron-builder --mac for this Mac's arch (--all: arm64 + x64)
@@ -256,7 +258,7 @@ webview-ui/                          npm workspace
 
 ## Distribution
 
-- **npm package `@joshle298/poke-agents`** (bin `poke-agents`), **not published**. Users install from GitHub: `git clone … && npm ci && npm start` (`start` = `node dist/cli.js --open`), or `npx github:joshle298/poke-agents --open` (npm ≥ 12 refuses git specs unless given `--allow-git=all`). `dist/` is gitignored, so `prepare` (`scripts/prepare.mjs`) builds it (`npm run build:app`, about 5 s) when it is missing — always the case for a git-dependency install — or was built from another commit (stamp `dist/.build-commit`); `POKE_AGENTS_SKIP_BUILD=1` skips it (CI builds explicitly). It prints what it builds and, after the build, the time and `npm start` as the next step (npm hides this output for git-dependency installs, so the first `npx` run is silent for about 20 s). When a build is needed but the build tools (`BUILD_TOOLS`: esbuild, typescript, vite) are missing (`--omit=dev`, `NODE_ENV=production`), it prints `npm ci --include=dev` and fails the install, or keeps a stale `dist/` with a warning. A failed build ends with a two-line hint, never a stack trace from `prepare.mjs`. Never document `npx poke-agents`: that unscoped npm name is an unrelated package.
+- **npm package `@joshle298/poke-agents`** (bin `poke-agents`), **not published**. Users install from GitHub: `git clone … && npm ci && npm start` (`start` = `node dist/cli.js --open`; `npm run demo` = `node dist/cli.js --demo --open`), or `npx github:joshle298/poke-agents --open` (npm ≥ 12 refuses git specs unless given `--allow-git=all`). `dist/` is gitignored, so `prepare` (`scripts/prepare.mjs`) builds it (`npm run build:app`, about 5 s) when it is missing — always the case for a git-dependency install — or was built from another commit (stamp `dist/.build-commit`); `POKE_AGENTS_SKIP_BUILD=1` skips it (CI builds explicitly). It prints what it builds and, after the build, the time and `npm start` as the next step (npm hides this output for git-dependency installs, so the first `npx` run is silent for about 20 s). When a build is needed but the build tools (`BUILD_TOOLS`: esbuild, typescript, vite) are missing (`--omit=dev`, `NODE_ENV=production`), it prints `npm ci --include=dev` and fails the install, or keeps a stale `dist/` with a warning. A failed build ends with a two-line hint, never a stack trace from `prepare.mjs`. Never document `npx poke-agents`: that unscoped npm name is an unrelated package.
 - **Mac app** (`desktop/`) — `npm run app:mac` builds `desktop/release/mac-arm64/Poke Agents.app`, `desktop/release/mac/Poke Agents.app` and zips; `npm run app:dev` runs it unpackaged. Not distributed: built on the owner's Mac (ad hoc signed). See "The Mac app" below.
 - **VS Code extension** — still builds from this tree (`vscode:prepublish`), with upstream's IDs (`pablodelucca.pixel-agents`, `pixel-agents.*`) and upstream characters. Poke Agents does not publish it.
 
@@ -392,14 +394,25 @@ Teammate dismissal is driven by team config polling (`getTeamMembers(teamName)` 
 
 ### Standalone modes and the desktop window
 
-- Conductor is on by default (`--no-conductor` turns it off). Claude Code is off unless `--claude`: without it there is no hook install, consent, Claude scanner or PTY, and `activeProviders` says so. `StandaloneAccess` carries both flags, so a running server is reused only in the same mode.
+- Conductor is on by default (`--no-conductor` turns it off). Claude Code is off unless `--claude`: without it there is no hook install, consent, Claude scanner or PTY, and `activeProviders` says so. `StandaloneAccess` carries both flags (and `demo`), so a running server is reused only in the same mode.
 - `--open` (`--app`) opens a one-time launch URL in a Chromium app window (`server/src/openAppWindow.ts`, injectable exec), so the token never reaches the browser's command line (other local users can read a browser's argv). The CLI asks the running server for a code (`POST /api/launch-code` with the Bearer token) and opens `/launch/<code>`; the server redeems it once, under an allowed Host, within 2 min, and redirects to `/?token=…` (`server/src/launchCodes.ts`; used or expired codes get 410, and codes are redacted from the request log). The printed URL is unchanged. macOS: `open -n -b <bundleId> --args --app=<url>` over Chrome, Edge, Brave, Chromium, Vivaldi and Chrome Canary (`--browser <id>` forces one), else `open <url>`; Linux `xdg-open`. A failed launch prints one line (`execFailure`), never the command line or its stderr.
 - Only one office per machine polls Conductor (the poller lock above); a second office in another mode says which office has it.
 - Default port 41510, ephemeral when busy and no `--port` was given, so an installed PWA keeps its origin; the manifest's `id: "./"` keeps the app's identity across token changes. Banner: `Poke Agents running at <url>`.
 
+### Demo mode (`--demo`)
+
+`poke-agents --demo` (`npm run demo`; the Mac app's `--demo` launch flag or `POKE_AGENTS_DEMO=1`) replaces the Conductor provider with `server/src/providers/stream/demo/` (`createDemoProvider`): synthetic sessions only, no Conductor request, no `conductor-state.json`, no poller lock. It is for README screenshots, people without Conductor Pro, and manual checks. `--demo` can't be combined with `--claude`.
+
+- **Provider**: registers as `id: 'conductor'` (`displayName` "Conductor demo"), so every Conductor path works unchanged: the webview's mode gating and chrome, `conductorDriver(ctx)` session actions, `agentDetails.conductorSessionId`, the Mac app's notifications. `conductorStatus` is `connected` with `account` "demo mode, synthetic sessions" and no `lastSyncAt`. Tool status text, reading/subagent tool sets and context windows are the Conductor provider's.
+- **Files**: `world.ts` (`DemoWorld`: per-session fake state and action queues played against script time; emits through the `AgentEventSink` exactly as the poller does: adoption seeds inside `seedSilently`, children before their Lead so a Lead is created legendary, the spawned link before the child's adoption so it is thrown out of the Lead, details throttled to 1.5 s, the session list throttled like the poller's), `story.ts` (the script), `cast.ts` (sessions: synthetic names, `example-org/*` repos, claude/codex/cursor models), `random.ts` (seeded mulberry32), `constants.ts`, `demo.ts`.
+- **Story**: round 0 (300 s) is fixed for every seed: the Lead spawns five workers over ~20 s; "Update docs" finishes at ~27 s and sleeps; "Review PR #42" asks an AskUserQuestion at ~27 s (the Lead answers at 200 s if nobody did); "Fix flaky tests" faints at ~35 s and the Lead revives it at 75 s; "Triage nightly alerts" (Lv 15, Codex) evolves at ~57 s; "Prototype pricing page" is deposited at 24 s (the PC Box's session); "Perf pass" fills its context and compacts; "Onboarding copy tweaks" is hidden and "Dependency bumps" pinned. Later rounds hand every worker a new task with the same beats; `--demo-seed` varies only the generated history, the replies and later rounds. `--demo-speed` / `POKE_AGENTS_DEMO_SPEED` scale script time (0.25-20).
+- **User actions** act on the fake state: a message to an idle session runs a short turn and a reply, to a busy one an acknowledgement, to a fainted one its scripted revive (else a generic one), to an asking one answers the question; stop ends the turn (`aborted`); deposit, withdraw, hide, pin and scope work as in the poller. `openExternal` is refused ("This is a demo session…"). Pokédex detail = the newest 40 entries (5 tool rows); history pages of 30 with `t<index>` cursors, over a generated back-story for sessions that existed before the start.
+- **Persistence**: no stream memory (every run replays the same story from the start); seats and agents in `demo-state.json` (`FileStateAdapter` `stateFileStem`), settings shared with the standalone office. `StandaloneAccess.demo` keeps a demo office and a real one from reusing each other.
+- **Tests**: `server/__tests__/demoProvider.test.ts` drives the real `StreamAgentDriver` with fake timers and no network (adoption, legendary Lead, spawns, links, messages, faint and revive, the question, evolution, compaction, PC Box, user actions, history, determinism).
+
 ### The Mac app (`desktop/`)
 
-A visualizer only: it runs the Conductor-only office (`startStandalone({ conductor: true, claude: false, terminal: false })`), never agents, hooks or a PTY, never writes Conductor settings, and adds no Conductor writes of its own.
+A visualizer only: it runs the Conductor-only office (`startStandalone({ conductor: true, claude: false, terminal: false })`; with the `--demo` launch flag, the demo office instead, see "Demo mode"), never agents, hooks or a PTY, never writes Conductor settings, and adds no Conductor writes of its own.
 
 - **Server**: in-process in the Electron main process, or **reused** from a running `poke-agents` with the same `StandaloneAccess` (a default `npm start` matches). Reused → the app watches the owner's PID and starts its own office (same port 41510 when free, same persisted token) when it exits. **Reconnect to Conductor** (app menu, or the sign-in card's Reconnect button through the preload) = stop + start the in-process office (re-reads `CONDUCTOR_API_KEY`/Keychain); the next settled `conductorStatus` decides the feedback (`reconnect.ts`: a dialog when it is still `authRequired`/`unauthorized`). `StandaloneOffice.conductorStatus()` lets the feed catch up on a status sent before it subscribed. For a reused office Reconnect only explains how to restart `npm start`. The in-process office takes the Conductor poller lock like any office (released on stop, so Reconnect takes it again); beside an office in another mode that holds it, the app shows no Conductor sessions and `conductorStatus()` stays null. The window loads `office.url` itself (no launch code: no browser command line carries it), a loopback Host with the token, so the office is privileged; the smoke run fails when it shows "View only". Quit (`will-quit`) awaits `office.stop()` (5 s cap), then quits on a later turn: a quit requested while `will-quit` is still dispatching is swallowed.
 - **Data**: `~/.pixel-agents/` shared with the CLI. Window frame: `<userData>/window-state.json` (`placeWindow` clamps it to the current displays); one-time events (the notifications introduction): `<userData>/app-state.json`. Packaged office: `Contents/Resources/office/{webview,assets}`; dev: `desktop/dist/office/`.
@@ -487,12 +500,13 @@ Per-agent runtime data: provider reference, session key, transcript-fallback fie
   hooks/claude-hook.js     Bundled hook script (CJS, shebang)
   conductor-state.json     Conductor scope + per-session { hidden, pinned, restoredAt, cursor, harness, firstSender, lastActivityAt, seenAt } (0600, never the token)
   conductor.lock           { pid, port } of the one office polling Conductor (0600)
+  demo-state.json          { agents, seats } of the --demo office (never streamAgents)
   cache/pmd/               Runtime-downloaded Pokémon sprites, portraits and metadata
   cache/cries/             Runtime-downloaded Pokémon cries (<dex4>.ogg + .etag)
   sounds/                  The user's sound pack: <event>.(ogg|mp3|wav), read-only to the app
 ```
 
-The data directory and the `[Pixel Agents]` log prefixes keep upstream's names on purpose: renaming `~/.pixel-agents` orphans settings and the hook identity. A standalone server is reused only when its access matches, including its `conductor` and `claude` modes.
+The data directory and the `[Pixel Agents]` log prefixes keep upstream's names on purpose: renaming `~/.pixel-agents` orphans settings and the hook identity. A standalone server is reused only when its access matches, including its `conductor`, `claude` and `demo` modes.
 
 `FileStateAdapter({ namespace })` backs both runtimes. Per-namespace settings: `soundEnabled`, `lastSeenVersion`, `alwaysShowLabels`, `watchAllSessions`, `hooksInfoShown` (the hooks preference is per-provider and machine-global, at the config top level). Running both surfaces in parallel never clobbers either.
 
@@ -651,6 +665,7 @@ Three tiers, each with its own framework.
 | `launchCodes.test.ts`               | `--open` launch codes: no token in argv, single use, Bearer to mint, Host gate on redeem                                                       |
 | `conductorPollerScheduling.test.ts` | Conductor tiers and budget: Focus TTL and peers, catch-up polls, level wait, pinned and PC Box units                                           |
 | `conductorHistory.test.ts`          | Chat history pages: cursors, keys shared with the detail, refusals                                                                             |
+| `demoProvider.test.ts`              | `--demo` through the real stream driver: spawns, links, faint and revive, the question, evolution, user actions, determinism, no network       |
 | `mockClaudeRunner.test.ts`          | E2E scenario runner sanity                                                                                                                     |
 
 Run: `npm run test:server` (or `npm test` for all).

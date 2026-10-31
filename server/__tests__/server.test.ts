@@ -285,6 +285,31 @@ describe('PixelAgentsServer', () => {
     withoutConductor.stop();
   });
 
+  it('keeps the demo office apart: a demo never reuses a real office, nor the reverse', async () => {
+    const real = await server.start({ embedded: false, conductor: false, claude: false });
+    const demo = new PixelAgentsServer();
+    const demoConfig = await demo.start({
+      embedded: false,
+      conductor: false,
+      claude: false,
+      demo: true,
+    });
+    expect(demoConfig.port).not.toBe(real.port);
+    expect(demoConfig.standalone?.demo).toBe(true);
+    const secondDemo = new PixelAgentsServer();
+    expect(
+      (await secondDemo.start({ embedded: false, conductor: false, claude: false, demo: true }))
+        .port,
+    ).toBe(demoConfig.port);
+    const secondReal = new PixelAgentsServer();
+    expect(
+      (await secondReal.start({ embedded: false, conductor: false, claude: false })).port,
+    ).toBe(real.port);
+    demo.stop();
+    secondDemo.stop();
+    secondReal.stop();
+  });
+
   it('reuses only when the allowed hosts match (order and case aside)', async () => {
     const config1 = await server.start({
       embedded: false,

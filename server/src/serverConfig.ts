@@ -29,6 +29,10 @@ export interface StandaloneAccess {
   /** Whether the server tracks Claude Code (hooks, scanners, terminal). Absent
    *  on entries written before the field existed: those always did (true). */
   claude?: boolean;
+  /** Whether the server plays the scripted demo (`--demo`) instead of
+   *  Conductor. Absent = false, so a demo office and a real one never reuse
+   *  each other. */
+  demo?: boolean;
 }
 
 /** Complete per-server discovery record stored in the multi-server registry. */
@@ -56,6 +60,7 @@ export function sameStandaloneAccess(
     running.host === wanted.host &&
     (running.conductor ?? false) === (wanted.conductor ?? false) &&
     (running.claude ?? true) === (wanted.claude ?? true) &&
+    (running.demo ?? false) === (wanted.demo ?? false) &&
     running.allowedHosts.length === wanted.allowedHosts.length &&
     running.allowedHosts.every((h, i) => h === wanted.allowedHosts[i])
   );
@@ -69,7 +74,8 @@ function isStandaloneAccess(value: unknown): value is StandaloneAccess {
     Array.isArray(value.allowedHosts) &&
     value.allowedHosts.every((h) => typeof h === 'string') &&
     (value.conductor === undefined || typeof value.conductor === 'boolean') &&
-    (value.claude === undefined || typeof value.claude === 'boolean')
+    (value.claude === undefined || typeof value.claude === 'boolean') &&
+    (value.demo === undefined || typeof value.demo === 'boolean')
   );
 }
 

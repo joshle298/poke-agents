@@ -39,7 +39,7 @@ The exception is `--claude`, upstream's local Claude Code mode. It is opt-in, an
 
 ## Requirements
 
-- A [Conductor](https://conductor.build) Pro account with **cloud** workspaces. Conductor's public API needs Pro and only covers cloud workspaces.
+- A [Conductor](https://conductor.build) Pro account with **cloud** workspaces. Conductor's public API needs Pro and only covers cloud workspaces. The [demo](#try-the-demo) needs neither.
 - A Conductor API key in `CONDUCTOR_API_KEY`, or a Conductor CLI login (`conductor auth login`) on macOS. The Mac app, opened from Finder, needs the CLI login: it can't see your shell's variables.
 - Node.js 20 or later, and git. Building the Mac app needs Node.js 22.12 or later.
 - For the Mac app, macOS 13 or later. For the browser window, macOS with Chrome, Edge, Brave, Chromium or Vivaldi. On Linux, the office works in any browser.
@@ -74,6 +74,21 @@ The first run downloads about 125 MB of build tools and builds the app. It takes
 The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
 
 Without a Conductor sign-in, the office opens with the steps to sign in, and the terminal says the same. Run `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart Poke Agents.
+
+## Try the Demo
+
+No Conductor account, or just curious? Run the demo from a clone:
+
+```bash
+npm ci
+npm run demo   # the same as: node dist/cli.js --demo --open
+```
+
+The demo office plays a scripted story with synthetic sessions instead of connecting to Conductor. A Lead, "Release v2 orchestration", spawns five sessions in the first 20 seconds. They run tools, message the Lead and level up. "Fix flaky tests" faints and the Lead revives it, "Update docs" finishes early and falls asleep, "Review PR #42" waits on a question for you, and "Triage nightly alerts" evolves. The finished "Prototype pricing page" goes to the PC Box.
+
+Everything in the office works on the demo's sessions: the Pokédex and its Chat tab, a question's options, **Send**, **Revive**, **Stop**, **Deposit in PC** and **Withdraw**, **Hide** and **Pin**, and the Sessions modal. Nothing reaches Conductor, and **Open in Conductor** says there is nothing to open. Sprites and cries download as usual.
+
+The first round, about five minutes long, plays the same way every time. Then the Lead hands out new tasks and the office keeps going. `--demo-seed <n>` varies the generated history and the later rounds, and `--demo-speed <x>` (or `POKE_AGENTS_DEMO_SPEED`) plays the story faster or slower. The demo office keeps its seats in its own file, and it never reuses or replaces an office that shows your real sessions. For the Mac app, quit it, then launch the demo with `open -a "Poke Agents" --args --demo`.
 
 ## Mac App
 
@@ -219,6 +234,9 @@ Use the names exactly as written. Each file must be an audio file of at most 2 M
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                                                                                                          |
 | `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                                                                                                                |
 | `--no-sounds`            | sounds on    | Never download cries or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                                                                                                                 |
+| `--demo`                 | off          | Play the scripted [demo](#try-the-demo) with synthetic sessions instead of connecting to Conductor. Not with `--claude`.                                                                                                                                         |
+| `--demo-seed <n>`        | `42`         | Vary the demo's generated history, replies and later rounds. The first round is the same for every seed. Implies `--demo`.                                                                                                                                       |
+| `--demo-speed <x>`       | `1`          | Demo speed factor, from 0.25 to 20. Implies `--demo`.                                                                                                                                                                                                            |
 | `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                               |
 | `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                                                                                                               |
 
@@ -230,6 +248,7 @@ Use the names exactly as written. Each file must be an audio file of at most 2 M
 | `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                     |
 | `POKE_AGENTS_SOUNDS`           | `off` disables cry downloads and the sound pack, like `--no-sounds`.      |
 | `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
+| `POKE_AGENTS_DEMO_SPEED`       | The demo's speed factor when `--demo-speed` is not given.                 |
 | `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
 
 Without either token variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
@@ -241,6 +260,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 | `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`). With `--claude`, each agent's tool-call count (its level).                          |
 | `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, recent withdrawals, and where Poke Agents last read each session. Entries untouched for 30 days are dropped. |
 | `conductor.lock`        | Which office polls Conductor. Only one office per machine does.                                                                                                      |
+| `demo-state.json`       | The demo office's seats (`--demo`), apart from the real office's.                                                                                                    |
 | `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                                                                                 |
 | `config.json`           | Settings such as the Pokémon theme and sounds.                                                                                                                       |
 | `layout.json`           | The office layout.                                                                                                                                                   |
@@ -250,7 +270,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, and for cries to `raw.githubusercontent.com`. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, and for cries to `raw.githubusercontent.com`. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries. The demo (`--demo`) never contacts Conductor.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
 - The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions, and other sites can't make it download sprites.
@@ -293,6 +313,7 @@ These need a Mac and can't be checked in CI:
 11. A session that starts waiting for an answer posts a notification while another app is in front; clicking it opens that session's Pokédex. The notification leaves Notification Center when the session continues. The Dock badge counts waiting sessions and clears when they continue.
 12. **File → Close Window** (Cmd-W) keeps the app in the Dock, clicking the Dock icon reopens it, and Cmd-Q quits. Reopened, the window keeps its size and position. **Settings…** (Cmd-,) opens Settings, and the title bar stays dark in Light Mode.
 13. With `npm start` running, the app opens the same office; after stopping `npm start`, the app keeps working on its own server.
+14. With the app quit, `open -a "Poke Agents" --args --demo` opens the demo office: the scripted sessions appear without a Conductor sign-in, and a session that faints or asks a question posts a notification.
 
 ## Development
 
@@ -300,6 +321,7 @@ These need a Mac and can't be checked in CI:
 npm ci
 npm run build                      # protocol generation, type check, lint, esbuild and Vite
 node dist/cli.js --no-conductor    # run the office without Conductor
+node dist/cli.js --demo            # or with the scripted demo sessions
 ```
 
 Checks:

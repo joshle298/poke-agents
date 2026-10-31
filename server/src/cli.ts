@@ -10,7 +10,8 @@
  *
  * Providers: Conductor cloud sessions are tracked by default (--no-conductor
  * turns it off); Claude Code tracking -- hooks, transcript scanners and the
- * embedded terminal -- is opt-in with --claude.
+ * embedded terminal -- is opt-in with --claude. --demo replaces Conductor
+ * with a scripted story of synthetic sessions.
  */
 
 import {
@@ -28,6 +29,11 @@ import {
   openAppWindow,
   requestLaunchUrl,
 } from './openAppWindow.js';
+import {
+  DEMO_SEED_MAX,
+  DEMO_SPEED_MAX,
+  DEMO_SPEED_MIN,
+} from './providers/stream/demo/constants.js';
 import { type StandaloneOffice, startStandalone } from './standalone.js';
 import { normalizeHostname } from './wsAuth.js';
 
@@ -66,6 +72,13 @@ export interface CliArgs {
   sprites: boolean;
   /** False with --no-sounds: never download cries or serve the sound pack. */
   sounds: boolean;
+  /** --demo: play synthetic sessions instead of connecting to Conductor.
+   *  --demo-seed / --demo-speed imply it. */
+  demo: boolean;
+  /** --demo-seed <n>: varies the demo's generated history and later rounds. */
+  demoSeed?: number;
+  /** --demo-speed <x>: demo script speed factor. */
+  demoSpeed?: number;
 }
 
 /** Thrown by parseArgs on an invalid --port. Kept separate from process.exit so
@@ -84,6 +97,7 @@ export function parseArgs(argv: string[]): CliArgs {
     open: false,
     sprites: true,
     sounds: true,
+    demo: false,
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--port' || argv[i] === '-p') {
@@ -158,6 +172,36 @@ export function parseArgs(argv: string[]): CliArgs {
       args.sprites = false;
     } else if (argv[i] === '--no-sounds') {
       args.sounds = false;
+    } else if (argv[i] === '--demo') {
+      args.demo = true;
+    } else if (argv[i] === '--demo-seed') {
+      const raw = argv[i + 1];
+      const parsed = Number(raw);
+      if (raw === undefined || !Number.isInteger(parsed) || parsed < 0 || parsed > DEMO_SEED_MAX) {
+        throw new CliArgsError(
+          `${raw === undefined ? 'Missing value for --demo-seed' : `Invalid --demo-seed "${raw}"`}: expected an integer between 0 and ${DEMO_SEED_MAX}.`,
+        );
+      }
+      args.demo = true;
+      args.demoSeed = parsed;
+      i++;
+    } else if (argv[i] === '--demo-speed') {
+      const raw = argv[i + 1];
+      const parsed = Number(raw);
+      if (
+        raw === undefined ||
+        raw.trim() === '' ||
+        !Number.isFinite(parsed) ||
+        parsed < DEMO_SPEED_MIN ||
+        parsed > DEMO_SPEED_MAX
+      ) {
+        throw new CliArgsError(
+          `${raw === undefined ? 'Missing value for --demo-speed' : `Invalid --demo-speed "${raw}"`}: expected a speed factor between ${DEMO_SPEED_MIN} and ${DEMO_SPEED_MAX}.`,
+        );
+      }
+      args.demo = true;
+      args.demoSpeed = parsed;
+      i++;
     } else if (argv[i] === '--help') {
       console.log(`Usage: poke-agents [options]
 
@@ -186,9 +230,20 @@ Options:
                         POKE_AGENTS_SPRITES=off)
   --no-sounds           Never download Pokémon cries or serve a sound pack
                         (also POKE_AGENTS_SOUNDS=off)
+  --demo                Play a scripted demo with synthetic sessions instead of
+                        connecting to Conductor (no account needed)
+  --demo-seed <n>       Vary the demo's generated history and later rounds
+                        (the first round is always the same)
+  --demo-speed <x>      Demo speed factor, ${DEMO_SPEED_MIN} to ${DEMO_SPEED_MAX} (default: 1; also
+                        POKE_AGENTS_DEMO_SPEED)
   --help                Show this help message`);
       process.exit(0);
     }
+  }
+  if (args.demo && args.claude) {
+    throw new CliArgsError(
+      '--demo shows synthetic sessions only and cannot be combined with --claude.',
+    );
   }
   return args;
 }
@@ -208,7 +263,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  if (!args.claude && !args.conductor) {
+  if (!args.claude && !args.conductor && !args.demo) {
     console.warn(
       '[Pixel Agents] Both Conductor and Claude Code tracking are off: the office will stay empty. Drop --no-conductor or add --claude.',
     );
@@ -224,11 +279,12 @@ async function main(): Promise<void> {
       terminal: args.terminal,
       allowedHosts: args.allowedHosts,
       rotateToken: args.rotateToken,
-      conductor: args.conductor,
+      conductor: args.conductor && !args.demo,
       claude: args.claude,
       conductorBudget: args.conductorBudget,
       sprites: args.sprites,
       sounds: args.sounds,
+      ...(args.demo ? { demo: { seed: args.demoSeed, speed: args.demoSpeed } } : {}),
     });
   } catch (err) {
     console.error('Failed to start server:', err);

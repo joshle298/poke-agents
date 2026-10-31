@@ -5,6 +5,7 @@
 ### Features
 
 - **Mac app:** `npm run app:mac` builds Poke Agents as a macOS app: the office in its own window, notifications when a session needs you or faints, and a Dock badge counting the sessions waiting on you.
+- **Demo mode.** `npm run demo` (`poke-agents --demo`) plays a scripted story with synthetic sessions instead of connecting to Conductor, so you can try Poke Agents without a Conductor account: a Lead spawns five sessions that work, message it, level up, faint and get revived, fall asleep, wait on a question and evolve. Every action in the office works on the demo's sessions, and nothing reaches Conductor. The first round is the same on every run (for screenshots); `--demo-seed` and `--demo-speed` (or `POKE_AGENTS_DEMO_SPEED`) vary it. The Mac app takes `--demo` too.
 - **Sounds.** Each Pokémon's official cry (downloaded at runtime from the PokéAPI cries project to `~/.pixel-agents/cache/cries/`, never bundled) when its session needs you, faints, arrives or evolves, plus original chiptune effects for level-ups, evolutions, Poké Balls, messages and recalls. Rate-limited and quiet after a reconnect; **Settings → Sound** has volume, Cries / Alerts / Effects toggles and a test button per sound, and files in `~/.pixel-agents/sounds/` replace the effects.
 
 ### Changes
