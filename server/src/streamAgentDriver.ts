@@ -33,14 +33,17 @@ import {
   AGENT_MESSAGE_PAIR_INTERVAL_MS,
   STREAM_LINKS_MAX,
   STREAM_SNAPSHOT_DEBOUNCE_MS,
+  STREAM_SPECIES_LOAD_TIMEOUT_MS,
   STREAM_TEXT_MAX_LENGTH,
   TOOL_DONE_DELAY_MS,
 } from './constants.js';
 import { reportContextUsage, widenContextWindow } from './contextUsage.js';
 import { assignPaletteIfNeeded } from './paletteAssigner.js';
+import { ensureSpeciesLoaded } from './pokemon/pokemonAssets.js';
 import {
   assignSpeciesIfNeeded,
   promoteToOrchestrator,
+  restoredPokemonFields,
   updateLevel,
 } from './pokemon/speciesAssigner.js';
 import { clearAgentActivity } from './timerManager.js';
@@ -114,6 +117,8 @@ export class StreamAgentDriver implements AgentEventSink {
   private readonly statusOf = new Map<number, StatusKey>();
   private readonly teamKeyOf = new Map<number, string>();
   private readonly detailsJsonOf = new Map<number, string>();
+  /** Agents whose new species is still loading: their agentDetails waits for it. */
+  private readonly speciesLoading = new Set<number>();
   private readonly links = new Map<string, LinkRecord>();
   private readonly lastMessageAt = new Map<string, number>();
   private recentMessageTimes: number[] = [];
@@ -348,9 +353,8 @@ export class StreamAgentDriver implements AgentEventSink {
       details: mergeDetails(undefined, info.details),
       lastDataAt: Date.now(),
       toolCallCount: 0,
-      pokemonLine: remembered?.pokemonLine,
-      species: remembered?.species,
-      shiny: remembered?.shiny,
+      // Only what the catalog still backs; assignSpeciesIfNeeded fills the rest.
+      ...(remembered ? restoredPokemonFields(remembered) : {}),
     });
     this.agentIdBySession.set(sessionId, id);
     this.sessionByAgent.set(id, sessionId);
@@ -405,7 +409,7 @@ export class StreamAgentDriver implements AgentEventSink {
       const countChanged = details?.messageCount !== agent.details?.messageCount;
       agent.details = details;
       detailsChanged = true;
-      if (countChanged) this.refreshLevel(agent);
+      if (countChanged) this.refreshLevel(id, agent);
     }
 
     if (detailsChanged) this.broadcastDetails(id, agent);
@@ -463,6 +467,7 @@ export class StreamAgentDriver implements AgentEventSink {
     this.statusOf.delete(id);
     this.teamKeyOf.delete(id);
     this.detailsJsonOf.delete(id);
+    this.speciesLoading.delete(id);
     this.runtime.unregisterAgent(this.key(sessionId));
     if (this.disposed) return;
     // A departing Lead releases its children; a departing child may demote
@@ -539,7 +544,14 @@ export class StreamAgentDriver implements AgentEventSink {
   ): void {
     const { toolId, toolName } = event;
     if (typeof toolId !== 'string' || typeof toolName !== 'string') return;
-    if (agent.activeToolIds.has(toolId)) return;
+    if (agent.activeToolIds.has(toolId)) {
+      // A repeat for an open tool only says it turned out to run in the
+      // background (an async Agent spawn): an update, not a second call.
+      if (event.runInBackground === true && this.provider.subagentToolNames.has(toolName)) {
+        agent.backgroundAgentToolIds.add(toolId);
+      }
+      return;
+    }
     this.ensureActive(id, agent);
     if (agent.permissionSent) {
       // A new tool means the pending request was answered.
@@ -699,20 +711,50 @@ export class StreamAgentDriver implements AgentEventSink {
 
   private countToolCall(id: number, agent: AgentState): void {
     agent.toolCallCount = (agent.toolCallCount ?? 0) + 1;
-    if (this.refreshLevel(agent)) this.broadcastDetails(id, agent);
+    if (this.refreshLevel(id, agent)) this.broadcastDetails(id, agent);
   }
 
-  /** Recompute level and stage; true when either changed. */
-  private refreshLevel(agent: AgentState): boolean {
+  /** Recompute level and stage; true when either changed. An evolution loads
+   *  the new species before agentDetails announces it. */
+  private refreshLevel(id: number, agent: AgentState): boolean {
     const change = updateLevel(agent, {
       messageCount: agent.details?.messageCount,
       toolCalls: agent.toolCallCount,
     });
-    if (change.speciesChanged) this.remember(agent.sessionId, agent);
+    if (change.speciesChanged) this.speciesChanged(id, agent);
     return change.levelChanged || change.speciesChanged;
   }
 
+  /** The agent's species changed (evolution, Lead promotion): remember it, and
+   *  hold its agentDetails until the new species' sprites are loaded, so the
+   *  office can play the evolution flash instead of dropping to the upstream
+   *  character. */
+  private speciesChanged(id: number, agent: AgentState): void {
+    this.remember(agent.sessionId, agent);
+    this.store.persist();
+    if (agent.species === undefined || this.speciesLoading.has(id)) return;
+    this.speciesLoading.add(id);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<void>((resolve) => {
+      timeout = setTimeout(resolve, STREAM_SPECIES_LOAD_TIMEOUT_MS);
+      timeout.unref?.();
+    });
+    void Promise.race([
+      ensureSpeciesLoaded(agent.species, agent.shiny === true, this.store),
+      timedOut,
+    ])
+      .catch(() => undefined)
+      .then(() => {
+        clearTimeout(timeout);
+        this.speciesLoading.delete(id);
+        if (this.disposed || this.store.get(id) !== agent) return;
+        this.guard('speciesChanged', () => this.broadcastDetails(id, agent));
+      });
+  }
+
   private broadcastDetails(id: number, agent: AgentState): void {
+    // An evolution in flight sends the newest details once its species loads.
+    if (this.speciesLoading.has(id)) return;
     const message = agentDetailsMessage(id, agent);
     if (!message) return;
     const json = JSON.stringify(message);
@@ -781,8 +823,7 @@ export class StreamAgentDriver implements AgentEventSink {
         });
       }
       if (becameLead && promoteToOrchestrator(agent, this.store)) {
-        this.remember(agent.sessionId, agent);
-        this.broadcastDetails(id, agent);
+        this.speciesChanged(id, agent);
       }
     }
     if (changed) this.store.persist();

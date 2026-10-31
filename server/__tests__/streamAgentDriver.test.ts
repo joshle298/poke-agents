@@ -49,7 +49,26 @@ vi.mock('../src/pokemon/speciesAssigner.js', () => ({
     agent.species = 150;
     return true;
   }),
+  restoredPokemonFields: vi.fn(
+    (p: { pokemonLine?: string; species?: number; shiny?: boolean }) => ({
+      pokemonLine: p.pokemonLine,
+      species: p.species,
+      shiny: p.shiny,
+    }),
+  ),
 }));
+
+// Sprite loading: resolves at once (sprites are off in tests) unless a test
+// holds it to pin the order of an evolution's announcement.
+let holdSpeciesLoad: Promise<boolean> | null = null;
+vi.mock('../src/pokemon/pokemonAssets.js', () => ({
+  ensureSpeciesLoaded: vi.fn(() => holdSpeciesLoad ?? Promise.resolve(false)),
+}));
+
+/** Let pending promise callbacks (a species load settling) run. */
+async function flushPromises(): Promise<void> {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
 
 type Message = Record<string, unknown>;
 
@@ -297,7 +316,7 @@ describe('StreamAgentDriver', () => {
       expect(sent[0]).toMatchObject({ repo: 'hue-run/fern', conductorWorkspaceNumber: 12 });
     });
 
-    it('recomputes the level when the message count changes', () => {
+    it('recomputes the level when the message count changes', async () => {
       sink.upsertSession(session('s1'));
       sent = [];
 
@@ -306,6 +325,7 @@ describe('StreamAgentDriver', () => {
         messageCount: 40,
         toolCalls: 0,
       });
+      await flushPromises();
       // 1 + 40/10 = Lv 5: past the evolution level.
       expect(sent).toEqual([
         expect.objectContaining({ type: 'agentDetails', messageCount: 40, level: 5, species: 25 }),
@@ -518,13 +538,52 @@ describe('StreamAgentDriver', () => {
       expect(sent).toEqual([]);
     });
 
-    it('levels up from tool calls and re-broadcasts the details', () => {
+    it('levels up from tool calls and re-broadcasts the details', async () => {
       sink.emit('s1', { kind: 'toolStart', toolId: 'a', toolName: 'Bash' });
       sink.emit('s1', { kind: 'toolStart', toolId: 'b', toolName: 'Bash' });
+      await flushPromises();
       expect(ofType('agentDetails').map((m) => [m.level, m.species])).toEqual([
         [2, 172],
         [3, 25],
       ]);
+    });
+
+    it('announces an evolution only once the new species has loaded', async () => {
+      let finishLoad!: (ready: boolean) => void;
+      holdSpeciesLoad = new Promise<boolean>((resolve) => {
+        finishLoad = resolve;
+      });
+      try {
+        sink.emit('s1', { kind: 'toolStart', toolId: 'a', toolName: 'Bash' });
+        sink.emit('s1', { kind: 'toolStart', toolId: 'b', toolName: 'Bash' }); // evolves
+        sink.emit('s1', { kind: 'toolStart', toolId: 'c', toolName: 'Bash' }); // Lv 4, held too
+        await flushPromises();
+        expect(ofType('agentDetails').map((m) => [m.level, m.species])).toEqual([[2, 172]]);
+
+        finishLoad(true);
+        await flushPromises();
+        // One announcement with the newest state, after the sprites are ready.
+        expect(ofType('agentDetails').map((m) => [m.level, m.species])).toEqual([
+          [2, 172],
+          [4, 25],
+        ]);
+      } finally {
+        holdSpeciesLoad = null;
+      }
+    });
+
+    it('counts a repeated toolStart that marks an open tool as background once', () => {
+      sink.emit('s1', { kind: 'toolStart', toolId: 'spawn', toolName: 'Agent' });
+      sink.emit('s1', {
+        kind: 'toolStart',
+        toolId: 'spawn',
+        toolName: 'Agent',
+        runInBackground: true,
+      });
+      const agent = store.get(id)!;
+      expect(agent.toolCallCount).toBe(1);
+      expect(agent.backgroundAgentToolIds.has('spawn')).toBe(true);
+      expect(ofType('agentToolStart')).toHaveLength(1);
     });
 
     it('sessionEnd removes the agent', () => {
@@ -631,7 +690,7 @@ describe('StreamAgentDriver', () => {
   // ── Teams ─────────────────────────────────────────────────────
 
   describe('teams from spawned links', () => {
-    it('makes the spawner a Lead (legendary) and the spawned session its child', () => {
+    it('makes the spawner a Lead (legendary) and the spawned session its child', async () => {
       sink.upsertSession(session('lead'));
       sink.upsertSession(session('child'));
       const leadId = agentIdOf('lead');
@@ -665,6 +724,7 @@ describe('StreamAgentDriver', () => {
         },
       ]);
       expect(species.promoteToOrchestrator).toHaveBeenCalledWith(store.get(leadId), store);
+      await flushPromises();
       expect(ofType('agentDetails')).toEqual([
         expect.objectContaining({ id: leadId, species: 150 }),
       ]);

@@ -190,6 +190,9 @@ export const STREAM_LINKS_MAX = 500;
 /** Remembered stream sessions (agent id + Pokémon) in <namespace>-state.json;
  *  the oldest entries go first past this. */
 export const STREAM_AGENT_MEMORY_MAX = 1_000;
+/** An evolved (or promoted) species is announced once its sprites load, or
+ *  after this long, whichever comes first (the office keeps the old one meanwhile). */
+export const STREAM_SPECIES_LOAD_TIMEOUT_MS = 15_000;
 /** Upper bounds a setConductorScope request may ask for (a year of activity,
  *  and more characters than any office can seat). */
 export const CONDUCTOR_SCOPE_MAX_HOURS = 24 * 365;
