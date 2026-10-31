@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { Button } from '../components/ui/Button.js';
@@ -41,10 +41,11 @@ const TESTS: ReadonlyArray<{ sound: SfxName | 'cry'; label: string }> = [
 /**
  * Settings → Sound: the server's on/off switch, then this device's volume,
  * Cries / Alerts / Effects toggles, a test button per sound and the sound
- * pack files in use. Mounted only while Settings is open, so it reads the
- * current switch each time it opens.
+ * pack files in use, then `children` (Settings puts the Jukebox there). Mounted
+ * only while Settings is open, so it reads the current switch each time it
+ * opens.
  */
-export function SoundSettings() {
+export function SoundSettings({ children }: { children?: ReactNode } = {}) {
   const [soundOn, setSoundOn] = useState(isSoundEnabled);
   const prefs = useSyncExternalStore(subscribeSoundPrefs, getSoundPrefs);
   const pack = useSyncExternalStore(subscribeSoundPack, getSoundPack);
@@ -126,6 +127,7 @@ export function SoundSettings() {
             : pack.map((o) => `${o.event}.${o.format}`).join(', ')}
         </div>
       )}
+      {children}
       <div className="mx-10 my-4 border-b border-border" />
     </>
   );

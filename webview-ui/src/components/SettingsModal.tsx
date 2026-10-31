@@ -6,6 +6,7 @@ import { conductorStatusLine } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
 import { CONDUCTOR_UI_TICK_MS } from '../constants.js';
 import { isDesktopApp } from '../desktopApp.js';
+import { JukeboxMenuItem } from '../music/JukeboxButton.js';
 import { isBrowserRuntime } from '../runtime.js';
 import { transport } from '../transport/index.js';
 import { Button } from './ui/Button.js';
@@ -242,8 +243,11 @@ export function SettingsModal({
           </Button>
         </div>
       ))}
-      {/* Sound: the on/off switch (server setting), volume, categories, tests. */}
-      <SoundSettings />
+      {/* Sound: the on/off switch (server setting), volume, categories, tests,
+          and the Jukebox (local music) at the end of the section. */}
+      <SoundSettings>
+        <JukeboxMenuItem onBeforeOpen={onClose} />
+      </SoundSettings>
       <Checkbox label="Pokémon Theme" checked={pokemonTheme} onChange={onTogglePokemonTheme} />
       <Checkbox
         label="Show Connections"

@@ -1,0 +1,31 @@
+import { useCallback, useEffect } from 'react';
+
+import { requestMusicLibrary } from './actions.js';
+import { JukeboxPanel } from './JukeboxPanel.js';
+import { musicStore, useMusic } from './musicStore.js';
+import { NowPlayingPill } from './NowPlayingPill.js';
+import { useMusicFeed } from './useMusicFeed.js';
+
+/**
+ * The Jukebox: background music from music the user owns (the music folder)
+ * or plays in their own apps (Music, Spotify). A local nicety that never
+ * touches Conductor. Mount once at App's top level, for privileged standalone
+ * offices only; it renders the panel while open and the now-playing pill.
+ */
+export function Jukebox({ isMobile }: { isMobile: boolean }) {
+  useMusicFeed();
+  const open = useMusic((s) => s.open);
+  const close = useCallback(() => musicStore.setOpen(false), []);
+
+  // Opening rescans the folder, so music added a moment ago shows up.
+  useEffect(() => {
+    if (open) requestMusicLibrary();
+  }, [open]);
+
+  return (
+    <>
+      {open && <JukeboxPanel onClose={close} />}
+      <NowPlayingPill isMobile={isMobile} />
+    </>
+  );
+}

@@ -16,6 +16,7 @@ vi.mock('os', async () => {
 const { displayHostFor, startStandalone } = await import('../src/standalone.js');
 const { requestLaunchUrl } = await import('../src/openAppWindow.js');
 const { areSoundsEnabled, setSoundsEnabled } = await import('../src/audio/sounds.js');
+const { MusicService } = await import('../src/music/musicService.js');
 type Office = Awaited<ReturnType<typeof startStandalone>>;
 
 /** The CLI's build output: assets/ and webview/ (built by `npm run build:app`). */
@@ -250,6 +251,57 @@ describe('startStandalone: sounds', () => {
       expect((await fetch(`${off.baseUrl}/api/sounds`)).status).toBe(404);
     } finally {
       await off.stop();
+    }
+  });
+});
+
+describe('startStandalone: the Jukebox', () => {
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  it('serves music folder tracks with the MusicService the CLI and the Mac app pass, none without', async () => {
+    const musicDir = path.join(tmpBase, 'music-folder');
+    fs.mkdirSync(path.join(musicDir, 'Album'), { recursive: true });
+    fs.writeFileSync(path.join(musicDir, 'Album', '01 Song.mp3'), 'synthetic bytes');
+    const music = new MusicService({
+      musicDir,
+      stateFile: path.join(tmpBase, 'music.json'),
+      platform: 'linux',
+      home: tmpBase,
+      log: () => {},
+    });
+    const id = (await music.library()).albums[0].tracks[0].id;
+    const track = (office: Office) =>
+      `${office.baseUrl}/api/music/track/${id}?token=${office.token}`;
+
+    const withMusic = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      music,
+    });
+    try {
+      const res = await fetch(track(withMusic));
+      expect(res.status).toBe(200);
+      expect(await res.text()).toBe('synthetic bytes');
+    } finally {
+      await withMusic.stop();
+    }
+
+    // Without one there is no music route: the SPA's history fallback answers.
+    const without = await startOffice(await freePort());
+    try {
+      const res = await fetch(track(without));
+      expect(res.headers.get('content-type')).toMatch(/^text\/html/);
+      expect(await res.text()).not.toContain('synthetic bytes');
+    } finally {
+      await without.stop();
     }
   });
 });

@@ -139,6 +139,10 @@ components:
         - $ref: '#/components/schemas/TerminalSessionClosed'
         # Diagnostics
         - $ref: '#/components/schemas/AgentDiagnostics'
+        # Jukebox (local music; never touches Conductor)
+        - $ref: '#/components/schemas/MusicLibrary'
+        - $ref: '#/components/schemas/MusicState'
+        - $ref: '#/components/schemas/MusicActionResult'
       discriminator: type
 
     ClientMessage:
@@ -182,6 +186,9 @@ components:
         - $ref: '#/components/schemas/ArchiveSession'
         - $ref: '#/components/schemas/RestoreSession'
         - $ref: '#/components/schemas/RequestSessionHistory'
+        # Jukebox (local music; never touches Conductor)
+        - $ref: '#/components/schemas/RequestMusicLibrary'
+        - $ref: '#/components/schemas/MusicCommand'
       discriminator: type
 
     # ── Server message variants ────────────────────────────────────
@@ -1309,6 +1316,100 @@ components:
         enabled:
           type: boolean
 
+    # ── Jukebox (server) ──────────────────────────────────────────
+
+    MusicLibrary:
+      description: |
+        The Jukebox library, sent only to the client that asked (requestMusicLibrary,
+        or a musicCommand that changed it). It lists music the user owns or plays in
+        their own apps: audio files in the music folder, Pokémon albums the last scan
+        found in the Music app's library, and saved Apple Music and Spotify links.
+      type: object
+      additionalProperties: false
+      required: [type, sources, folderPath, albums, appleAlbums, appleLibraryScanned, stations]
+      properties:
+        type:
+          const: musicLibrary
+        sources:
+          type: array
+          description: Which sources work on this server (the Music and Spotify apps need macOS).
+          items:
+            $ref: '#/components/schemas/MusicSourceInfo'
+        folderPath:
+          type: string
+          description: The music folder as shown to the user (~ stands for the home directory).
+        folderTruncated:
+          type: boolean
+          description: The folder holds more files or folders than one scan lists.
+        albums:
+          type: array
+          description: Music folder albums (one per folder of audio files), sorted by name.
+          items:
+            $ref: '#/components/schemas/MusicAlbum'
+        appleAlbums:
+          type: array
+          description: Pokémon albums in the Music app's library, from the last scanLibrary.
+          items:
+            $ref: '#/components/schemas/MusicAppleAlbum'
+        appleLibraryScanned:
+          type: boolean
+          description: Whether the Music app's library has been scanned since the server started.
+        stations:
+          type: array
+          description: Apple Music and Spotify links the user saved.
+          items:
+            $ref: '#/components/schemas/MusicStation'
+
+    MusicState:
+      description: |
+        What the Music or Spotify app is playing, answering a musicCommand for that
+        source (refresh included). Folder music plays in the page and has no state here.
+      type: object
+      additionalProperties: false
+      required: [type, source, running, playing]
+      properties:
+        type:
+          const: musicState
+        source:
+          $ref: '#/components/schemas/MusicSourceId'
+        running:
+          type: boolean
+          description: The app is open.
+        playing:
+          type: boolean
+        track:
+          type: string
+        album:
+          type: string
+        artist:
+          type: string
+        shuffle:
+          type: boolean
+        volume:
+          type: integer
+          minimum: 0
+          maximum: 100
+        error:
+          type: string
+          description: Why the app could not be read or controlled (for example, Automation not allowed).
+
+    MusicActionResult:
+      description: Outcome of a musicCommand, sent to the client that sent it.
+      type: object
+      additionalProperties: false
+      required: [type, action, source, ok]
+      properties:
+        type:
+          const: musicActionResult
+        action:
+          $ref: '#/components/schemas/MusicCommandAction'
+        source:
+          $ref: '#/components/schemas/MusicSourceId'
+        ok:
+          type: boolean
+        message:
+          type: string
+
     # ── Client message variants ────────────────────────────────────
 
     WebviewReady:
@@ -1797,6 +1898,44 @@ components:
           type: string
           description: Cursor from a previous sessionHistory; absent means the newest page.
 
+    RequestMusicLibrary:
+      description: Ask for the Jukebox library (rescans the music folder). Privileged.
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          const: requestMusicLibrary
+
+    MusicCommand:
+      description: |
+        A Jukebox action. Privileged: a read-only office is refused. The server runs
+        only fixed, validated commands: it streams folder files, opens the music
+        folder, and drives the Music and Spotify apps through fixed AppleScripts.
+      type: object
+      additionalProperties: false
+      required: [type, action, source]
+      properties:
+        type:
+          const: musicCommand
+        action:
+          $ref: '#/components/schemas/MusicCommandAction'
+        source:
+          $ref: '#/components/schemas/MusicSourceId'
+        stationId:
+          type: string
+          description: An appleAlbums id or a station id (play, removeStation). Absent with play on apple means every Pokémon album.
+        uri:
+          type: string
+          description: A pasted open.spotify.com, spotify:, or music.apple.com link (addStation).
+        volume:
+          type: integer
+          minimum: 0
+          maximum: 100
+        shuffle:
+          type: boolean
+          description: Shuffle on or off (setShuffle), or play shuffled (play).
+
     # ── Supporting schemas ─────────────────────────────────────────
 
     AgentSeatMeta:
@@ -2167,3 +2306,106 @@ components:
     SessionQuestionKind:
       type: string
       enum: [askUser, plan, notice]
+
+    MusicSourceId:
+      type: string
+      enum: [folder, apple, spotify]
+
+    MusicCommandAction:
+      type: string
+      enum:
+        [
+          play,
+          pause,
+          resume,
+          next,
+          previous,
+          setShuffle,
+          setVolume,
+          refresh,
+          scanLibrary,
+          addStation,
+          removeStation,
+          openFolder,
+        ]
+
+    MusicSourceInfo:
+      type: object
+      additionalProperties: false
+      required: [id, available]
+      properties:
+        id:
+          $ref: '#/components/schemas/MusicSourceId'
+        available:
+          type: boolean
+        reason:
+          type: string
+          description: Why the source is unavailable, when it is.
+
+    MusicAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, name, tracks]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          description: The folder name.
+        tracks:
+          type: array
+          items:
+            $ref: '#/components/schemas/MusicTrack'
+
+    MusicTrack:
+      description: An audio file in the music folder, streamed from /api/music/track/<id>.
+      type: object
+      additionalProperties: false
+      required: [id, title, mimeType]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: From the file name, without the track number.
+        trackNumber:
+          type: integer
+        discNumber:
+          type: integer
+        mimeType:
+          type: string
+
+    MusicAppleAlbum:
+      type: object
+      additionalProperties: false
+      required: [id, name, trackCount]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        artist:
+          type: string
+        trackCount:
+          type: integer
+
+    MusicStation:
+      type: object
+      additionalProperties: false
+      required: [id, source, kind, name, url]
+      properties:
+        id:
+          type: string
+        source:
+          $ref: '#/components/schemas/MusicSourceId'
+        kind:
+          $ref: '#/components/schemas/MusicStationKind'
+        name:
+          type: string
+        url:
+          type: string
+          description: The canonical web link (open.spotify.com or music.apple.com).
+
+    MusicStationKind:
+      type: string
+      enum: [album, playlist, track]

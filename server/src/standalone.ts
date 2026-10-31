@@ -40,6 +40,7 @@ import {
   TERMINAL_DISABLED_NO_CLAUDE_REASON,
 } from './constants.js';
 import { FileStateAdapter } from './fileStateAdapter.js';
+import type { MusicService } from './music/musicService.js';
 import { openWithSystem } from './openAppWindow.js';
 import { setEvolutionPreloader } from './pokemon/agentLevel.js';
 import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
@@ -81,6 +82,9 @@ export interface StandaloneOptions {
   sounds?: boolean;
   /** Opens a validated Conductor deep link on the host. Default: the system opener. */
   openExternal?: OpenExternalSideEffect;
+  /** The Jukebox (music folder, Music and Spotify on macOS). Absent: no music
+   *  in this office. Only an office this process serves uses it. */
+  music?: MusicService;
   /** Directory whose Claude Code sessions are scanned. Default: process.cwd(). */
   cwd?: string;
 }
@@ -401,6 +405,7 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
           claude: opts.claude,
           conductor: opts.conductor,
           openExternal: opts.openExternal ?? ((url) => openWithSystem(url)),
+          music: opts.music,
         }),
       opts.port,
     );

@@ -24,6 +24,7 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 - **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a Poké Ball pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
 - **The town.** A new office opens on a small town in a forest. Working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back.
 - **Browser window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
+- **Jukebox.** Background music from albums you own or play in the Music or Spotify app. See [Music](#music).
 
 Turning the Pokémon theme off in Settings brings back the Pixel Agents look. The `--claude` flag adds upstream's Claude Code tracking (local sessions, embedded terminal and **+ Agent**).
 
@@ -206,6 +207,20 @@ Use the names exactly as written. Each file must be an audio file of at most 2 M
 
 **To mute**, turn off **Sounds** in Settings, or one of the three categories. `--no-sounds` (or `POKE_AGENTS_SOUNDS=off`) stops cry downloads and the sound pack; the synthesized effects follow the Settings switch.
 
+## Music
+
+The Jukebox (♪ in the toolbar, or **Jukebox…** under Settings → Sound) plays background music while you watch the office. It plays only music you already have:
+
+- **My music** (any platform): audio files you own in `~/.pixel-agents/music/`, one folder per game or album, for example `~/.pixel-agents/music/Pokémon X & Y/03 - Title.m4a`. MP3, M4A/AAC, OGG/Opus, WAV and FLAC play in the office window; Apple Lossless (ALAC) `.m4a` files and copy-protected `.m4p` files don't. Titles and track numbers come from the file names (`03 - Title`, `1-03 Title`), and a `Disc 2` folder joins its album. **Open folder** creates the folder and opens it. Tracks crossfade for 1.5 seconds. Shuffle all, shuffle one game, or pick a track.
+- **Apple Music** (macOS): **Look in my Music library** finds albums whose album or artist name contains "Pokémon", such as Super Music Collections you bought, and plays them in the Music app, in order or shuffled. To queue an album, the Jukebox fills a playlist named "Poke Agents Jukebox" in your library; delete it whenever you like. A pasted `music.apple.com` album or playlist link opens in Music, where you press play.
+- **Spotify** (macOS, with the Spotify app): paste an `open.spotify.com` or `spotify:` album, playlist or track link, then play or shuffle it in Spotify.
+
+The first time the Jukebox controls Music or Spotify, macOS asks whether your terminal (or the Poke Agents app) may control it. If you chose Don't Allow, turn it on in System Settings › Privacy & Security › Automation.
+
+While music plays, a small pill above the toolbar shows the track and album; click it to open the Jukebox. Each browser remembers its last source, album, shuffle and volume. Browsers don't start audio before you interact with the page, so folder music you were playing comes back on your first click, tap or key press after a reload.
+
+**About Pokémon soundtracks.** The official Pokémon game soundtracks are commercial albums: the Super Music Collections sold on iTunes, the Nintendo Music app, and a few releases on streaming services. There is no free, legal download. Poke Agents doesn't download, stream, bundle or link to soundtrack files, and never will. It plays the files you put in your music folder and the albums in your own Music or Spotify app. Nintendo Music is a phone app, so the Jukebox can't play it.
+
 ## Configuration
 
 | Flag                     | Default      | Effect                                                                                                                                                                                                                                                           |
@@ -248,12 +263,15 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 | `cache/pmd/`            | Downloaded sprites and portraits.                                                                                                                                    |
 | `cache/cries/`          | Downloaded Pokémon cries.                                                                                                                                            |
 | `sounds/`               | Your [sound pack](#sounds), if you add one.                                                                                                                          |
+| `music/`                | Your [Jukebox](#music) albums, if you add some.                                                                                                                      |
+| `music.json`            | The Apple Music and Spotify links you saved in the Jukebox.                                                                                                          |
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, and for cries to `raw.githubusercontent.com`. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, for cries to `raw.githubusercontent.com`, and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
+- Saving a Spotify link asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
 - The office answers only under `localhost`, an IP address, the `--host` address or an `--allowed-host` name. A web page that points its own domain at your computer (DNS rebinding) can't read your sessions, and other sites can't make it download sprites.
 - `--open` and `npm start` open a one-time link, so the token never appears on the browser's command line.
 - There is no telemetry or analytics.

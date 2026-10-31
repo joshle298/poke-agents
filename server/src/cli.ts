@@ -21,6 +21,7 @@ import {
   MIN_PORT,
   WILDCARD_HOSTNAMES,
 } from './constants.js';
+import { MusicService } from './music/musicService.js';
 import {
   BROWSER_IDS,
   type BrowserId,
@@ -229,6 +230,8 @@ async function main(): Promise<void> {
       conductorBudget: args.conductorBudget,
       sprites: args.sprites,
       sounds: args.sounds,
+      // The Jukebox: ~/.pixel-agents/music, plus Music/Spotify on macOS.
+      music: new MusicService(),
     });
   } catch (err) {
     console.error('Failed to start server:', err);

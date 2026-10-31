@@ -57,7 +57,10 @@ export type ServerMessage =
   | TerminalAvailability
   | TerminalSessionOpened
   | TerminalSessionClosed
-  | AgentDiagnostics;
+  | AgentDiagnostics
+  | MusicLibrary
+  | MusicState
+  | MusicActionResult;
 
 export type ClientMessage =
   | WebviewReady
@@ -98,7 +101,9 @@ export type ClientMessage =
   | SetSessionPinned
   | ArchiveSession
   | RestoreSession
-  | RequestSessionHistory;
+  | RequestSessionHistory
+  | RequestMusicLibrary
+  | MusicCommand;
 
 export interface ProviderCapabilities {
   type: 'providerCapabilities';
@@ -623,6 +628,91 @@ export interface AgentDiagnostics {
   agents: Record<string, any>[];
 }
 
+export interface MusicLibrary {
+  type: 'musicLibrary';
+  sources: MusicSourceInfo[];
+  folderPath: string;
+  folderTruncated?: boolean;
+  albums: MusicAlbum[];
+  appleAlbums: MusicAppleAlbum[];
+  appleLibraryScanned: boolean;
+  stations: MusicStation[];
+}
+
+export interface MusicSourceInfo {
+  id: MusicSourceId;
+  available: boolean;
+  reason?: string;
+}
+
+export type MusicSourceId = 'folder' | 'apple' | 'spotify';
+
+export interface MusicAlbum {
+  id: string;
+  name: string;
+  tracks: MusicTrack[];
+}
+
+export interface MusicTrack {
+  id: string;
+  title: string;
+  trackNumber?: number;
+  discNumber?: number;
+  mimeType: string;
+}
+
+export interface MusicAppleAlbum {
+  id: string;
+  name: string;
+  artist?: string;
+  trackCount: number;
+}
+
+export interface MusicStation {
+  id: string;
+  source: MusicSourceId;
+  kind: MusicStationKind;
+  name: string;
+  url: string;
+}
+
+export type MusicStationKind = 'album' | 'playlist' | 'track';
+
+export interface MusicState {
+  type: 'musicState';
+  source: MusicSourceId;
+  running: boolean;
+  playing: boolean;
+  track?: string;
+  album?: string;
+  artist?: string;
+  shuffle?: boolean;
+  volume?: number;
+  error?: string;
+}
+
+export interface MusicActionResult {
+  type: 'musicActionResult';
+  action: MusicCommandAction;
+  source: MusicSourceId;
+  ok: boolean;
+  message?: string;
+}
+
+export type MusicCommandAction =
+  | 'play'
+  | 'pause'
+  | 'resume'
+  | 'next'
+  | 'previous'
+  | 'setShuffle'
+  | 'setVolume'
+  | 'refresh'
+  | 'scanLibrary'
+  | 'addStation'
+  | 'removeStation'
+  | 'openFolder';
+
 export interface WebviewReady {
   type: 'webviewReady';
 }
@@ -826,4 +916,18 @@ export interface RequestSessionHistory {
   type: 'requestSessionHistory';
   id: number;
   before?: string;
+}
+
+export interface RequestMusicLibrary {
+  type: 'requestMusicLibrary';
+}
+
+export interface MusicCommand {
+  type: 'musicCommand';
+  action: MusicCommandAction;
+  source: MusicSourceId;
+  stationId?: string;
+  uri?: string;
+  volume?: number;
+  shuffle?: boolean;
 }

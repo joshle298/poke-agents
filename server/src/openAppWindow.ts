@@ -122,8 +122,9 @@ export async function requestLaunchUrl(
 }
 
 /**
- * Hand a deep link (already validated by the caller) to the app registered
- * for its scheme: `/usr/bin/open <url>` on macOS, `xdg-open <url>` on Linux.
+ * Hand a deep link or an absolute local path (already validated by the
+ * caller) to the app registered for it: `/usr/bin/open <target>` on macOS,
+ * `xdg-open <target>` on Linux.
  */
 export async function openWithSystem(url: string, options: OpenOptions = {}): Promise<void> {
   const platform = options.platform ?? process.platform;
