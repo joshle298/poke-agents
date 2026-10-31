@@ -1,5 +1,5 @@
 // electron-builder afterPack hook: fail the build when the packed app holds
-// anything beyond the bundled main process and the built office. In
+// anything beyond the bundled main process, its preload and the built office. In
 // particular no node_modules (the server is bundled into main.js), no PTY
 // module and no Claude Code hook script: the app never runs agents.
 
@@ -9,7 +9,7 @@ const path = require('node:path');
 const { listPackage } = require('@electron/asar');
 
 /** The only entries app.asar may hold. */
-const ASAR_ALLOWED = new Set(['/dist', '/dist/main.js', '/package.json']);
+const ASAR_ALLOWED = new Set(['/dist', '/dist/main.js', '/dist/preload.js', '/package.json']);
 /** Files the office needs at runtime, relative to Resources/. */
 const OFFICE_REQUIRED = ['office/webview/index.html', 'office/assets'];
 /** Names that must never appear anywhere under Resources/. */

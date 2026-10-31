@@ -7,6 +7,22 @@ export const APP_NAME = 'Poke Agents';
  *  its sign-in steps for the app. */
 export const USER_AGENT_PRODUCT = 'PokeAgentsDesktop';
 
+/** Global the preload exposes to the office (DESKTOP_BRIDGE_GLOBAL in
+ *  webview-ui/src/constants.ts). */
+export const DESKTOP_BRIDGE_GLOBAL = 'pokeAgentsDesktop';
+/** IPC: the office's Reconnect button (renderer → main). */
+export const IPC_RECONNECT_CONDUCTOR = 'poke-agents:reconnect-conductor';
+/** IPC: app commands for the office (main → renderer): open a session's
+ *  Pokédex, open Settings. */
+export const IPC_OFFICE_COMMAND = 'poke-agents:office-command';
+/** Commands the preload keeps for an office that hasn't subscribed yet. */
+export const MAX_EARLY_COMMANDS = 4;
+
+/** Help → Poke Agents Help: the README's Mac app section. */
+export const HELP_URL = 'https://github.com/joshle298/poke-agents#mac-app';
+/** About panel and Info.plist copyright (electron-builder.yml says the same). */
+export const COPYRIGHT = '© 2026 Josh Le. MIT License. A fork of Pixel Agents by Pablo De Lucca.';
+
 /** The office's night-dark background (--color-bg-dark), painted before the
  *  first frame so the window never flashes white. */
 export const WINDOW_BACKGROUND = '#1a1c2c';
@@ -20,6 +36,9 @@ export const MIN_WINDOW_WIDTH = 720;
 export const MIN_WINDOW_HEIGHT = 480;
 /** File in the app's userData folder that remembers the window's frame. */
 export const WINDOW_STATE_FILE = 'window-state.json';
+/** File in the app's userData folder for one-time app events (the
+ *  notifications introduction). */
+export const APP_STATE_FILE = 'app-state.json';
 /** Coalesce move/resize bursts into one write. */
 export const WINDOW_STATE_SAVE_DELAY_MS = 500;
 
@@ -33,9 +52,14 @@ export const ADOPTION_GRACE_MS = 5_000;
 export const RECONNECT_QUIET_MS = 8_000;
 /** The same session and reason notify at most once per this long. */
 export const NOTICE_DEDUPE_MS = 2 * 60_000;
-/** At most this many notifications per window, across all sessions. */
+/** At most this many notifications per window, across all sessions. Those
+ *  over the limit fold into one summary once the window has room. */
 export const NOTICE_RATE_MAX = 3;
 export const NOTICE_RATE_WINDOW_MS = 30_000;
+/** Notification id of that summary (a newer one replaces it). */
+export const SUMMARY_NOTICE_ID = 'summary';
+/** Most sessions a summary names before "and N more". */
+export const SUMMARY_MAX_NAMES = 3;
 /** Notifications kept referenced for their click handler. */
 export const MAX_RETAINED_NOTIFICATIONS = 20;
 /** Longest error text a "fainted" notification shows. */
@@ -62,3 +86,5 @@ export const SMOKE_TIMEOUT_MS = 45_000;
 /** Extra time after it renders, for sessions and sprites to arrive. */
 export const SMOKE_SETTLE_MS = 8_000;
 export const SMOKE_POLL_MS = 500;
+/** Longest wait for the app's answer to the smoke run's Reconnect click. */
+export const SMOKE_RECONNECT_TIMEOUT_MS = 20_000;

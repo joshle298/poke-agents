@@ -95,6 +95,7 @@
     "build:webview": "cd webview-ui && npm run build",
     "build:app": "node esbuild.js --production && npm run build:webview",
     "app:mac": "npm run build:app && cd desktop && npm ci && npm run dist:mac",
+    "app:mac:all": "npm run build:app && cd desktop && npm ci && npm run dist:mac:all",
     "app:dev": "npm run build:app && cd desktop && npm ci && npm start",
     "icons:generate": "node scripts/generate-icons.mjs",
     "start": "node dist/cli.js --open",

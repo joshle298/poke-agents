@@ -12,7 +12,18 @@
  * act on explicit clicks; this process adds no writes of its own.
  */
 
-import { app, BrowserWindow, dialog, Menu, screen, session, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  type IpcMainEvent,
+  Menu,
+  nativeTheme,
+  screen,
+  session,
+  shell,
+} from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -21,25 +32,38 @@ import { parseDesktopArgs } from '../args.js';
 import { AttentionTracker } from '../attention.js';
 import {
   APP_NAME,
+  APP_STATE_FILE,
+  COPYRIGHT,
   DEFAULT_WINDOW_HEIGHT,
   DEFAULT_WINDOW_WIDTH,
   FEED_RETRY_MS,
+  HELP_URL,
+  IPC_OFFICE_COMMAND,
+  IPC_RECONNECT_CONDUCTOR,
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
   POKEMON_THEME_SETTING,
   RECONNECT_QUIET_MS,
   REUSED_SERVER_CHECK_MS,
+  SMOKE_RECONNECT_TIMEOUT_MS,
   STOP_TIMEOUT_MS,
   USER_AGENT_PRODUCT,
   WINDOW_BACKGROUND,
   WINDOW_STATE_FILE,
   WINDOW_STATE_SAVE_DELAY_MS,
 } from '../constants.js';
+import { buildMenuTemplate } from '../menu.js';
 import { classifyNavigation } from '../navigation.js';
-import { feedFromStore, subscribeToOffice } from '../officeFeed.js';
+import { feedFromStore, type OfficeMessage, subscribeToOffice } from '../officeFeed.js';
+import {
+  ATTACHED_RECONNECT,
+  type DialogText,
+  reconnectFeedback,
+  type ReconnectOutcome,
+  reconnectOutcome,
+} from '../reconnect.js';
 import { speciesName } from '../species.js';
 import { parseWindowState, placeWindow, type WindowState } from '../windowState.js';
-import { buildMenuTemplate } from './menu.js';
 import { Notifier } from './notifier.js';
 import { runSmoke } from './smoke.js';
 
@@ -52,12 +76,21 @@ let detachFeed: (() => void) | null = null;
 let restarting: Promise<void> | null = null;
 let quitting = false;
 let stopped = false;
+/** The user asked to reconnect; the next settled Conductor status says how it went. */
+let awaitingReconnect = false;
+/** A smoke run waiting for the app's answer to a reconnect: how it went,
+ *  or 'attached' when only the terminal's office could reconnect. */
+let reconnectWaiter: ((answer: ReconnectOutcome | 'attached') => void) | null = null;
+
+/** What the app sends the office (the webview's DesktopCommand). */
+type OfficeCommand = { type: 'openSession'; agentId: number } | { type: 'openSettings' };
 
 const tracker = new AttentionTracker({ speciesName });
 const notifier = new Notifier(tracker, {
   windowFocused: () => officeWindow?.isFocused() ?? false,
   windowOpen: () => officeWindow !== null,
-  focusOffice: () => showOffice(),
+  focusOffice: () => void showOffice(),
+  openSession: (agentId) => sendOfficeCommand({ type: 'openSession', agentId }),
 });
 
 // ── Paths ─────────────────────────────────────────────────────
@@ -86,6 +119,49 @@ function reportError(title: string, err: unknown): void {
   else dialog.showErrorBox(title, errorText(err));
 }
 
+/** A message over the office window (a sheet on macOS), or a log line in a smoke run. */
+function inform({ message, detail }: DialogText): void {
+  if (args.smoke) {
+    console.log(`[Poke Agents] ${message}: ${detail}`);
+    return;
+  }
+  const options = { type: 'info' as const, message, detail, buttons: ['OK'] };
+  void (officeWindow
+    ? dialog.showMessageBox(officeWindow, options)
+    : dialog.showMessageBox(options));
+}
+
+// ── App state (one-time events) ───────────────────────────────
+
+interface AppState {
+  /** The notifications introduction was shown (and macOS asked for permission). */
+  notificationsIntroduced?: boolean;
+}
+
+function appStatePath(): string {
+  return path.join(app.getPath('userData'), APP_STATE_FILE);
+}
+
+function readAppState(): AppState {
+  try {
+    const raw: unknown = JSON.parse(fs.readFileSync(appStatePath(), 'utf-8'));
+    return raw !== null && typeof raw === 'object' ? (raw as AppState) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAppState(state: AppState): void {
+  const file = appStatePath();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(state));
+    fs.renameSync(`${file}.tmp`, file);
+  } catch (err) {
+    console.warn(`[Poke Agents] Could not save the app state: ${errorText(err)}`);
+  }
+}
+
 // ── The office server ─────────────────────────────────────────
 
 /** Start the office in this process, or attach to a compatible running one,
@@ -111,14 +187,18 @@ function attachFeed(target: StandaloneOffice): void {
     tracker.setThemed(
       target.store.getAdapter()?.getSetting<boolean>(POKEMON_THEME_SETTING, true) !== false,
     );
-    detachFeed = feedFromStore(target.store, (message) => notifier.handle(message));
+    detachFeed = feedFromStore(target.store, onOfficeMessage);
+    // Conductor may have reported before this subscription (no sign-in is
+    // known at once): catch up on its status.
+    const status = target.conductorStatus();
+    if (status) onOfficeMessage(status);
     return;
   }
   // A `poke-agents` CLI serves this office: watch it over a read-only socket,
   // and take over when it stops.
   const subscription = subscribeToOffice({
     url: `ws://${target.host}:${target.port}/ws`,
-    listener: (message) => notifier.handle(message),
+    listener: onOfficeMessage,
     onConnect: () => {
       notifier.reset();
       tracker.quiet(RECONNECT_QUIET_MS);
@@ -132,6 +212,50 @@ function attachFeed(target: StandaloneOffice): void {
     clearInterval(watch);
     subscription.close();
   };
+}
+
+/** Every office message: notifications and the badge, the one-time
+ *  introduction, and how a requested reconnect went. */
+function onOfficeMessage(message: OfficeMessage): void {
+  notifier.handle(message);
+  const outcome = reconnectOutcome(message);
+  if (outcome === null || outcome === 'pending') return;
+  if (outcome === 'signedIn' && !args.smoke) introduceNotificationsOnce();
+  if (awaitingReconnect) {
+    awaitingReconnect = false;
+    const feedback = reconnectFeedback(outcome);
+    if (feedback) inform(feedback);
+    reconnectWaiter?.(outcome);
+    reconnectWaiter = null;
+  }
+}
+
+/** Read from disk once; every poll reports `connected` again. */
+let notificationsIntroduced: boolean | null = null;
+
+/** The first time Conductor connects, ever: the notifications introduction
+ *  (and with it macOS's permission prompt). */
+function introduceNotificationsOnce(): void {
+  const state = notificationsIntroduced === null ? readAppState() : null;
+  notificationsIntroduced ??= state?.notificationsIntroduced === true;
+  if (notificationsIntroduced) return;
+  notificationsIntroduced = true;
+  notifier.introduce();
+  writeAppState({ ...state, notificationsIntroduced: true });
+}
+
+/** Smoke run: the app's answer to the next reconnect, or null after `ms`. */
+function nextReconnectAnswer(ms: number): Promise<ReconnectOutcome | 'attached' | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      reconnectWaiter = null;
+      resolve(null);
+    }, ms);
+    reconnectWaiter = (outcome) => {
+      clearTimeout(timer);
+      resolve(outcome);
+    };
+  });
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -165,21 +289,46 @@ function restartOffice(): Promise<void> {
   return restarting;
 }
 
-/** Menu: re-read the Conductor sign-in (after `conductor auth login`). */
+/** Menu or the office's Reconnect button: re-read the Conductor sign-in
+ *  (after `conductor auth login`) and say if it still fails. */
 function reconnectConductor(): void {
   if (!office) return;
-  if (office.ownsServer) {
-    void restartOffice();
+  if (!office.ownsServer) {
+    inform(ATTACHED_RECONNECT);
+    reconnectWaiter?.('attached');
+    reconnectWaiter = null;
     return;
   }
-  void dialog.showMessageBox({
-    type: 'info',
-    message: 'This office runs in Terminal',
-    detail: `A poke-agents server (PID ${office.pid}) serves this office. Restart it there to reconnect to Conductor.`,
-  });
+  awaitingReconnect = true;
+  void restartOffice();
+}
+
+/** A reconnect request is only taken from the office page in the office window. */
+function isOfficeSender(event: IpcMainEvent): boolean {
+  if (!office || !officeWindow || event.sender !== officeWindow.webContents) return false;
+  try {
+    return new URL(event.senderFrame?.url ?? '').origin === new URL(office.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Ask the office to do something (show a session's Pokédex, open Settings),
+ *  bringing it forward first. A window that is just opening gets the command
+ *  once it has loaded (the preload holds it until the office listens). */
+function sendOfficeCommand(command: OfficeCommand): void {
+  const opened = showOffice();
+  const contents = officeWindow?.webContents;
+  if (!contents) return;
+  if (opened || contents.isLoading()) {
+    contents.once('did-finish-load', () => contents.send(IPC_OFFICE_COMMAND, command));
+  } else {
+    contents.send(IPC_OFFICE_COMMAND, command);
+  }
 }
 
 async function shutdown(): Promise<void> {
+  notifier.dispose();
   const timeout = new Promise((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS));
   // A restart in flight finishes first (it starts nothing once quitting), so
   // the office it stops or starts is the one stopped here.
@@ -251,6 +400,7 @@ function createOfficeWindow(url: string): BrowserWindow {
       nodeIntegration: false,
       spellcheck: false,
       devTools: !app.isPackaged,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -315,16 +465,18 @@ function guardNavigation(window: BrowserWindow): void {
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
-/** Bring the office forward, reopening the window if it was closed. */
-function showOffice(): void {
-  if (!office) return;
+/** Bring the office forward, reopening the window if it was closed. True
+ *  when a new window opened (its page is still loading). */
+function showOffice(): boolean {
+  if (!office) return false;
   if (!officeWindow) {
     officeWindow = createOfficeWindow(office.url);
-    return;
+    return true;
   }
   if (officeWindow.isMinimized()) officeWindow.restore();
   officeWindow.show();
   officeWindow.focus();
+  return false;
 }
 
 /** The office asks for nothing beyond writing to the clipboard. */
@@ -345,8 +497,8 @@ async function main(): Promise<void> {
     app.quit();
     return;
   }
-  app.on('second-instance', () => showOffice());
-  app.on('activate', () => showOffice());
+  app.on('second-instance', () => void showOffice());
+  app.on('activate', () => void showOffice());
   // macOS keeps the app in the Dock with no window; Cmd+Q quits.
   app.on('window-all-closed', () => {
     if (!isMac || args.smoke) app.quit();
@@ -369,11 +521,13 @@ async function main(): Promise<void> {
   process.on('SIGTERM', () => app.quit());
 
   await app.whenReady();
+  // The office is always dark: keep the title bar and dialogs dark to match.
+  nativeTheme.themeSource = 'dark';
   app.userAgentFallback = `${app.userAgentFallback} ${USER_AGENT_PRODUCT}/${app.getVersion()}`;
   app.setAboutPanelOptions({
     applicationName: APP_NAME,
     applicationVersion: app.getVersion(),
-    copyright: 'MIT License. A fork of Pixel Agents by Pablo De Lucca.',
+    copyright: COPYRIGHT,
     credits:
       'Your Conductor cloud sessions as Pokémon. Not affiliated with Nintendo, The Pokémon Company, Creatures or GAME FREAK.',
   });
@@ -382,12 +536,19 @@ async function main(): Promise<void> {
       buildMenuTemplate({
         isMac,
         isPackaged: app.isPackaged,
-        actions: { reconnectConductor },
+        actions: {
+          reconnectConductor,
+          openSettings: () => sendOfficeCommand({ type: 'openSettings' }),
+          openHelp: () => void shell.openExternal(HELP_URL),
+        },
       }),
     ),
   );
   if (isMac && !app.isPackaged) app.dock?.setIcon(devIconPath());
   limitPermissions();
+  ipcMain.on(IPC_RECONNECT_CONDUCTOR, (event) => {
+    if (isOfficeSender(event)) reconnectConductor();
+  });
 
   try {
     office = await startOffice();
@@ -405,7 +566,11 @@ async function main(): Promise<void> {
   console.log(
     `[Poke Agents] smoke: office server at ${office.host}:${office.port} (${office.ownsServer ? 'started in this app' : `reused from PID ${office.pid}`})`,
   );
-  const rendered = await runSmoke(officeWindow, args.smokeOut ?? path.resolve('smoke.png'));
+  const rendered = await runSmoke(officeWindow, args.smokeOut ?? path.resolve('smoke.png'), {
+    reconnect: args.smokeReconnect
+      ? () => nextReconnectAnswer(SMOKE_RECONNECT_TIMEOUT_MS)
+      : undefined,
+  });
   if (rendered) {
     app.quit();
     return;

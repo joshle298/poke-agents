@@ -13,7 +13,8 @@
     "start": "node scripts/build.mjs && electron .",
     "smoke": "node scripts/build.mjs && electron . --smoke",
     "check-types": "tsc --noEmit -p tsconfig.json",
-    "dist:mac": "node scripts/build.mjs --production && electron-builder --mac --config electron-builder.yml"
+    "dist:mac": "node scripts/build.mjs --production && node scripts/dist-mac.mjs",
+    "dist:mac:all": "node scripts/build.mjs --production && node scripts/dist-mac.mjs --all"
   },
   "devDependencies": {
     "electron": "45.2.1",

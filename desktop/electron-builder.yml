@@ -3,7 +3,9 @@
 # ad hoc (identity "-"), which macOS opens normally on that Mac.
 appId: com.joshle298.pokeagents
 productName: Poke Agents
-copyright: Copyright © 2026 Josh Le. MIT License.
+# Also the About panel's (COPYRIGHT in src/constants.ts); electron-builder
+# writes it to Info.plist as NSHumanReadableCopyright.
+copyright: © 2026 Josh Le. MIT License. A fork of Pixel Agents by Pablo De Lucca.
 
 directories:
   output: release
@@ -16,6 +18,7 @@ directories:
 # dependencies (it treats the repo root as the workspace root).
 files:
   - dist/main.js
+  - dist/preload.js
   - package.json
   - '!**/node_modules/**'
 # The built office (webview + assets) is served from disk, outside the asar.
@@ -33,16 +36,14 @@ buildDependenciesFromSource: false
 mac:
   category: public.app-category.developer-tools
   icon: resources/icon.icns
+  # Architectures come from scripts/dist-mac.mjs: this Mac's by default,
+  # both with --all.
   target:
-    - target: dir
-      arch: [arm64, x64]
-    - target: zip
-      arch: [arm64, x64]
+    - dir
+    - zip
   # Ad hoc signature: no Apple Developer ID, no notarization.
   identity: '-'
   hardenedRuntime: false
   gatekeeperAssess: false
   notarize: false
   darkModeSupport: true
-  extendInfo:
-    NSHumanReadableCopyright: MIT License. A fork of Pixel Agents by Pablo De Lucca.
