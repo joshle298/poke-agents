@@ -125,7 +125,7 @@ describe('StreamAgentDriver', () => {
     return {
       sessionId,
       label: `Session ${sessionId}`,
-      directoryName: 'fern',
+      directoryName: 'example-repo',
       details: {
         externalUrl: `conductor://workspace?id=w-${sessionId}&session=${sessionId}`,
         model: 'claude-opus-5-5',
@@ -133,7 +133,7 @@ describe('StreamAgentDriver', () => {
         workspaceId: `w-${sessionId}`,
         workspaceName: 'Workspace',
         workspaceNumber: 12,
-        repo: 'hue-run/fern',
+        repo: 'example-org/example-repo',
       },
       initialStatus: 'waiting',
       ...extra,
@@ -179,7 +179,7 @@ describe('StreamAgentDriver', () => {
         id,
         providerId: 'conductor',
         label: 'Session s1',
-        directoryName: 'fern',
+        directoryName: 'example-repo',
         isExternal: true,
         hooksOnly: true,
         species: 172,
@@ -196,7 +196,7 @@ describe('StreamAgentDriver', () => {
         conductorWorkspaceName: 'Workspace',
         conductorWorkspaceNumber: 12,
         externalUrl: 'conductor://workspace?id=w-s1&session=s1',
-        repo: 'hue-run/fern',
+        repo: 'example-org/example-repo',
         species: 172,
         level: 1,
       });
@@ -314,7 +314,10 @@ describe('StreamAgentDriver', () => {
         expect.objectContaining({ type: 'agentDetails', id, label: 'Renamed' }),
       ]);
       // Absent fields are unknown, not cleared.
-      expect(sent[0]).toMatchObject({ repo: 'hue-run/fern', conductorWorkspaceNumber: 12 });
+      expect(sent[0]).toMatchObject({
+        repo: 'example-org/example-repo',
+        conductorWorkspaceNumber: 12,
+      });
     });
 
     it('recomputes the level when the message count changes', async () => {

@@ -29,7 +29,7 @@ function conductorAgent(overrides: Partial<AgentState> = {}): AgentState {
     hooksOnly: true,
     providerId: 'conductor',
     label: 'Fix the flaky test',
-    directoryName: 'fern',
+    directoryName: 'example-repo',
     palette: 2,
     hueShift: 0,
     species: 25,
@@ -37,7 +37,12 @@ function conductorAgent(overrides: Partial<AgentState> = {}): AgentState {
     level: 12,
     leadAgentId: 3,
     agentName: 'Fix the flaky test',
-    details: { repo: 'hue-run/fern', workspaceId: 'w1', workspaceNumber: 7, messageCount: 40 },
+    details: {
+      repo: 'example-org/example-repo',
+      workspaceId: 'w1',
+      workspaceNumber: 7,
+      messageCount: 40,
+    },
     ...overrides,
   });
 }
@@ -47,7 +52,7 @@ describe('agentCreatedMessage', () => {
     expect(agentCreatedMessage(5, conductorAgent(), 'chair-1')).toEqual({
       type: 'agentCreated',
       id: 5,
-      directoryName: 'fern',
+      directoryName: 'example-repo',
       isExternal: true,
       palette: 2,
       hueShift: 0,
@@ -94,7 +99,7 @@ describe('agentDetailsMessage', () => {
       conductorSessionId: '5d0c',
       conductorWorkspaceId: 'w1',
       conductorWorkspaceNumber: 7,
-      repo: 'hue-run/fern',
+      repo: 'example-org/example-repo',
       messageCount: 40,
       species: 25,
       shiny: true,

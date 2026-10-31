@@ -175,7 +175,7 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
     it('replays agent details and the provider state after the layout', () => {
       sink.setStatus({ state: 'connected', scope: SCOPE });
       sink.sessionsChanged([summary('s1')]);
-      const a = adopt('s1', { details: { repo: 'hue-run/fern' } });
+      const a = adopt('s1', { details: { repo: 'example-org/example-repo' } });
       const b = adopt('s2', { leadSessionId: 's1' });
 
       send({ type: 'webviewReady' });
@@ -185,7 +185,11 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
       expect(types.indexOf('conductorStatus')).toBeGreaterThan(layoutAt);
       expect(types.indexOf('agentLinks')).toBeGreaterThan(layoutAt);
       expect(ofType('agentDetails')).toContainEqual(
-        expect.objectContaining({ id: a, repo: 'hue-run/fern', conductorSessionId: 's1' }),
+        expect.objectContaining({
+          id: a,
+          repo: 'example-org/example-repo',
+          conductorSessionId: 's1',
+        }),
       );
       expect(ofType('conductorSessions')).toEqual([
         {
