@@ -314,6 +314,9 @@ export interface Character {
   /** Species (and shininess) swapped in at the evolution flash's midpoint. */
   nextSpecies?: number;
   nextShiny?: boolean;
+  /** Seconds the evolution flash has held white at its midpoint, waiting for
+   *  the next species' sheets (at most POKEMON_EVOLVE_HOLD_MAX_SEC). */
+  evolveHoldSec?: number;
 
   // -- Town areas (only set in layouts with meadow / center Area roles) --
   /** Where the character is headed this frame (see townBehavior.ts); undefined

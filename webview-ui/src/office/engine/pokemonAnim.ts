@@ -98,6 +98,9 @@ export function pmdDurationSec(durations: readonly number[]): number {
   return totalTicks(durations) / PMD_FPS;
 }
 
+/** What pmdPlayDurations gave each sheet's durations array as a loop. */
+const playedLoops = new WeakMap<readonly number[], readonly number[]>();
+
 /**
  * The durations a frame is timed by. A one-shot plays as authored. A loop
  * whose frames hold for fewer than POKEMON_LOOP_MIN_AVG_TICKS game frames on
@@ -106,10 +109,17 @@ export function pmdDurationSec(durations: readonly number[]): number {
  */
 export function pmdPlayDurations(durations: readonly number[], loop: boolean): readonly number[] {
   if (!loop || durations.length === 0) return durations;
+  // Asked every frame for every Pokémon: work each sheet's timing out once.
+  const cached = playedLoops.get(durations);
+  if (cached) return cached;
   const avg = totalTicks(durations) / durations.length;
-  if (avg <= 0 || avg >= POKEMON_LOOP_MIN_AVG_TICKS) return durations;
   const scale = POKEMON_LOOP_MIN_AVG_TICKS / avg;
-  return durations.map((d) => Math.max(0, d) * scale);
+  const played =
+    avg <= 0 || avg >= POKEMON_LOOP_MIN_AVG_TICKS
+      ? durations
+      : durations.map((d) => Math.max(0, d) * scale);
+  playedLoops.set(durations, played);
+  return played;
 }
 
 /**

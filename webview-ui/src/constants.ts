@@ -704,6 +704,9 @@ export const POKEMON_FAINT_TINT = 'rgba(120, 140, 190, 0.22)';
 export const FRAME_GREY = '#808080';
 /** Evolution: a white-silhouette flash; the species swaps at the midpoint. */
 export const POKEMON_EVOLVE_SEC = 1.2;
+/** The flash holds solid white at its midpoint at most this long while the
+ *  next species' sheets decode, then swaps anyway. */
+export const POKEMON_EVOLVE_HOLD_MAX_SEC = 10;
 /** Flicker rate of the evolution flash (on/off cycles per second). */
 export const POKEMON_EVOLVE_FLICKER_HZ = 5;
 /** The flash is solid white while its envelope (0 → 1 at the swap → 0) is at
@@ -743,6 +746,10 @@ export const CAPSULE_RECALL_EXIT_PX = 40;
  *  at most this long before its spawn ends (it then stays a closed capsule,
  *  holding still, and opens once the sheets are ready). */
 export const CAPSULE_WAIT_MAX_SEC = 10;
+/** A closed capsule seen for less than this before its sheets were ready (a
+ *  reload decoding cached sheets) gives way to its Pokémon without opening;
+ *  one that rested longer opens. */
+export const CAPSULE_OPEN_MIN_WAIT_SEC = 1;
 /** The waiting capsule's gentle bob: one cycle every this many seconds, this
  *  many world px up at the top of it. */
 export const CAPSULE_BOB_PERIOD_SEC = 1.6;

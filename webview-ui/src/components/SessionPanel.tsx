@@ -219,7 +219,7 @@ export function SessionPanel({
   const speciesMap = useConductor((s) => s.species);
   const sessions = useConductor((s) => s.sessions);
   const outcome = useConductor((s) => s.actionOutcomes[agentId]);
-  const now = useSleepClock(CONDUCTOR_UI_TICK_MS);
+  const now = useSleepClock(CONDUCTOR_UI_TICK_MS, true, agentId);
   const pokemonOffice = usePokemonOffice();
 
   const [draft, setDraft] = useState('');

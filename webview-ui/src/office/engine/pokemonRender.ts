@@ -43,16 +43,22 @@ export interface ZDrawable {
   draw: (ctx: CanvasRenderingContext2D) => void;
 }
 
-/** The sheet frame a character drawn as a Pokémon shows this frame, or null. */
-/** Which PMD frame a character drawn as a Pokémon shows now: its anim, the
- *  frame index in it and the sheet row. Null when it isn't drawn as one. */
-export function pokemonFramePick(ch: Character): {
+/** Which PMD frame resolvePokemonFrame picked: its anim, the frame index in
+ *  it and the sheet row (the e2e test hooks ask; the render loop doesn't). */
+export interface PokemonFramePick {
   anim: string;
   situation: PokemonAnimSituation;
   loop: boolean;
   col: number;
   row: number;
-} | null {
+}
+
+/**
+ * The sheet frame a character drawn as a Pokémon shows this frame, or null.
+ * Fills `pick`, when given, with which anim, frame and row that is; the
+ * render loop passes none.
+ */
+export function resolvePokemonFrame(ch: Character, pick?: PokemonFramePick): FrameRef | null {
   if (!isPokemonCharacter(ch) || ch.species === undefined) return null;
   const shiny = ch.shiny === true;
   const anims = getPokemonAnimSource(ch.species, shiny);
@@ -60,24 +66,21 @@ export function pokemonFramePick(ch: Character): {
   const chosen = choosePokemonAnim(ch, anims.has);
   if (!chosen) return null;
   const meta = getPokemonAnimMeta(ch.species, shiny, chosen.anim);
-  if (!meta) return null;
+  const sheet = getPokemonSheet(ch.species, shiny, chosen.anim);
+  if (!meta || !sheet) return null;
   // The clock belongs to the anim OfficeState last advanced; a different
   // choice this frame (theme just toggled, sheet just decoded) starts at 0.
   const t = ch.pmdAnimKey === pokemonAnimKey(chosen) ? (ch.pmdAnimTime ?? 0) : 0;
   const durations = pmdPlayDurations(meta.durations, chosen.loop);
   const col = Math.min(pmdFrameIndex(durations, t, chosen.loop), meta.frames - 1);
   const row = Math.min(pmdRowFor(ch, chosen, meta.directions), meta.directions - 1);
-  return { anim: chosen.anim, situation: chosen.situation, loop: chosen.loop, col, row };
-}
-
-export function resolvePokemonFrame(ch: Character): FrameRef | null {
-  const pick = pokemonFramePick(ch);
-  if (!pick || ch.species === undefined) return null;
-  const shiny = ch.shiny === true;
-  const meta = getPokemonAnimMeta(ch.species, shiny, pick.anim);
-  const sheet = getPokemonSheet(ch.species, shiny, pick.anim);
-  if (!meta || !sheet) return null;
-  const { col, row } = pick;
+  if (pick) {
+    pick.anim = chosen.anim;
+    pick.situation = chosen.situation;
+    pick.loop = chosen.loop;
+    pick.col = col;
+    pick.row = row;
+  }
   return {
     image: sheet.image as CanvasImageSource,
     sx: col * meta.frameWidth,

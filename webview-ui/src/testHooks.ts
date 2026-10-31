@@ -2,7 +2,8 @@ import type { ColorValue } from './components/ui/types.js';
 import { OfficeState } from './office/engine/officeState.js';
 import { isPokemonAsleep } from './office/engine/pokemonAnim.js';
 import { isPokemonPlaceholder } from './office/engine/pokemonCharacter.js';
-import { pokemonFramePick } from './office/engine/pokemonRender.js';
+import type { PokemonFramePick } from './office/engine/pokemonRender.js';
+import { resolvePokemonFrame } from './office/engine/pokemonRender.js';
 import {
   getCharacterDrawStats,
   isGhostHeadlessAgentsEnabled,
@@ -197,16 +198,15 @@ export function installTestHooks(officeStateRef: { current: OfficeState | null }
       asleep: isPokemonAsleep(ch),
       capsule: isPokemonPlaceholder(ch),
       pmd: (() => {
-        const pick = pokemonFramePick(ch);
-        return pick
-          ? {
-              anim: pick.anim,
-              situation: pick.situation,
-              loop: pick.loop,
-              frame: pick.col,
-              row: pick.row,
-            }
-          : null;
+        const pick: PokemonFramePick = { anim: '', situation: 'idle', loop: true, col: 0, row: 0 };
+        if (!resolvePokemonFrame(ch, pick)) return null;
+        return {
+          anim: pick.anim,
+          situation: pick.situation,
+          loop: pick.loop,
+          frame: pick.col,
+          row: pick.row,
+        };
       })(),
       oneShot: ch.pmdAnim ?? null,
     }));

@@ -13,16 +13,25 @@ import assert from 'node:assert/strict';
 
 import { afterAll, afterEach, beforeAll, beforeEach, test, vi } from 'vitest';
 
-import { CAPSULE_SPAWN_SEC, CAPSULE_WAIT_MAX_SEC } from '../src/constants.js';
+import {
+  CAPSULE_OPEN_MIN_WAIT_SEC,
+  CAPSULE_SPAWN_SEC,
+  CAPSULE_WAIT_MAX_SEC,
+  POKEMON_EVOLVE_HOLD_MAX_SEC,
+  POKEMON_EVOLVE_SEC,
+} from '../src/constants.js';
 import { pokemonLabel } from '../src/office/components/pokemonOverlay.js';
 import { CAPSULE_LANDED_SEC, spawnEffectStyle } from '../src/office/engine/matrixEffectState.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
+import { evolutionFlashAlpha } from '../src/office/engine/pokemonAnim.js';
 import {
   drawnBody,
   isPokemonCharacter,
   isPokemonPlaceholder,
   isPokemonSpriteUnavailable,
 } from '../src/office/engine/pokemonCharacter.js';
+import type { PokemonFramePick } from '../src/office/engine/pokemonRender.js';
+import { resolvePokemonFrame } from '../src/office/engine/pokemonRender.js';
 import {
   setPokemonSpritesDelivered,
   setPokemonThemeEnabled,
@@ -48,7 +57,7 @@ import {
 
 // ── A canvas just real enough for the renderer ──────────────────
 
-function fakeContext(draws: unknown[]): CanvasRenderingContext2D {
+function fakeContext(draws: unknown[][]): CanvasRenderingContext2D {
   const noop = () => {};
   return new Proxy(
     { drawImage: (...args: unknown[]) => draws.push(args) },
@@ -201,19 +210,140 @@ test('past CAPSULE_WAIT_MAX_SEC the spawn ends; the capsule stays put until it c
   assert.equal(ch.state, CharacterState.WALK, 'then off to its desk');
 });
 
-test('a restored agent waits as a capsule too, and opens once its sheets decode', async () => {
+test('a capsule whose spawn gave up still opens when its sheets land right after', async () => {
   const msg = speciesMessage(25);
   installFakeLoader([msg]);
   const os = new OfficeState(floorLayout());
-  os.addAgent(1, 0, 0, undefined, true);
+  os.addAgent(1);
   os.setAgentIdentity(1, { species: 25 });
-  os.update(0.1);
-  const ch = os.characters.get(1)!;
-  assert.equal(ch.matrixEffect, null);
-  assert.equal(isPokemonPlaceholder(ch), true);
-  assert.equal(humansDrawn(os), 0);
+  const ch = at(os, 1, 4, 4);
+  for (let t = 0; t < CAPSULE_LANDED_SEC + CAPSULE_WAIT_MAX_SEC + 0.05; t += 0.05) os.update(0.05);
+  assert.equal(ch.matrixEffect, null, 'the spawn gave up waiting');
+  os.update(0.05); // a frame later, the sheets land
   setPokemonSpecies(msg);
   await flushDecodes();
   os.update(0.05);
-  assert.equal(ch.matrixEffect, 'spawn');
+  assert.equal(ch.matrixEffect, 'spawn', 'it waited closed for seconds: it opens');
+});
+
+test('a restored agent waits as a capsule; a reload’s short wait swaps in place, a long one opens', async () => {
+  // A reload decodes cached sheets within a few frames: the agents that
+  // were already here just appear, as before the reload. One whose sheets
+  // take a while (a first launch) rested visibly closed, and opens.
+  const quick = speciesMessage(25);
+  const slow = speciesMessage(26);
+  installFakeLoader([quick, slow]);
+  const os = new OfficeState(floorLayout());
+  os.addAgent(1, 0, 0, undefined, true);
+  os.addAgent(2, 0, 0, undefined, true);
+  os.setAgentIdentity(1, { species: 25 });
+  os.setAgentIdentity(2, { species: 26 });
+  const reloaded = os.characters.get(1)!;
+  const firstLaunch = os.characters.get(2)!;
+  os.update(0.05);
+  assert.equal(reloaded.matrixEffect, null);
+  assert.equal(isPokemonPlaceholder(reloaded), true);
+  assert.equal(humansDrawn(os), 0);
+
+  setPokemonSpecies(quick);
+  await flushDecodes();
+  os.update(0.05);
+  assert.equal(isPokemonCharacter(reloaded), true);
+  assert.equal(reloaded.matrixEffect, null, 'seen closed for a moment: no capsule opening');
+
+  for (let t = 0; t < CAPSULE_OPEN_MIN_WAIT_SEC; t += 0.1) os.update(0.1);
+  setPokemonSpecies(slow);
+  await flushDecodes();
+  os.update(0.05);
+  assert.equal(firstLaunch.matrixEffect, 'spawn', 'rested closed a while: it opens');
+  assert.equal(firstLaunch.effectOrigin, undefined, 'in place');
+  assert.equal(humansDrawn(os), 0);
+});
+
+test('evolving into a species still decoding holds the flash white, never a capsule', async () => {
+  const from = speciesMessage(25);
+  const into = speciesMessage(26);
+  installFakeLoader([from, into]);
+  setPokemonSpecies(from);
+  await flushDecodes();
+  const os = new OfficeState(floorLayout());
+  os.addAgent(1, 0, 0, undefined, true);
+  os.setAgentIdentity(1, { species: 25 });
+  const ch = at(os, 1, 4, 4);
+  os.update(0.05);
+  // agentDetails announces the evolution before 26's sheets have decoded.
+  os.setAgentIdentity(1, { species: 26 }, { evolve: true });
+  for (let t = 0; t < POKEMON_EVOLVE_SEC * 3; t += 0.05) {
+    os.update(0.05);
+    assert.equal(isPokemonPlaceholder(ch), false, `never a capsule (${t.toFixed(2)} s)`);
+    assert.equal(humansDrawn(os), 0);
+  }
+  assert.equal(ch.species, 25, 'not swapped yet');
+  assert.equal(ch.evolveTimer, POKEMON_EVOLVE_SEC / 2, 'held at the midpoint');
+  assert.equal(evolutionFlashAlpha(ch.evolveTimer), 1, 'solid white');
+
+  setPokemonSpecies(into);
+  await flushDecodes();
+  for (let t = 0; t < POKEMON_EVOLVE_SEC; t += 0.05) {
+    os.update(0.05);
+    assert.equal(ch.matrixEffect, null, 'no capsule opening after it');
+    assert.equal(isPokemonCharacter(ch), true);
+  }
+  assert.equal(ch.species, 26);
+  assert.equal(ch.evolveTimer, undefined, 'the flash ended');
+
+  // A species that never decodes: the flash gives up after the hold and swaps.
+  os.setAgentIdentity(1, { species: 27 }, { evolve: true });
+  for (let t = 0; t < POKEMON_EVOLVE_HOLD_MAX_SEC + POKEMON_EVOLVE_SEC; t += 0.1) os.update(0.1);
+  assert.equal(ch.species, 27);
+  assert.equal(ch.evolveTimer, undefined);
+});
+
+test('a sub-agent spawned before its parent’s species arrives, or evolves, follows it', async () => {
+  const parentMsg = speciesMessage(25);
+  const evolvedMsg = speciesMessage(26);
+  installFakeLoader([parentMsg, evolvedMsg]);
+  const os = new OfficeState(floorLayout());
+  os.addAgent(1, 0, 0, undefined, true); // no species yet
+  const early = os.addSubagent(1, 'task-early');
+  const sub = os.characters.get(early)!;
+  assert.equal(sub.species, undefined);
+  os.setAgentIdentity(1, { species: 25 });
+  assert.equal(sub.species, 25, 'took its parent’s species when it arrived');
+  setPokemonSpecies(parentMsg);
+  await flushDecodes();
+  for (let i = 0; i < 40; i++) os.update(0.05);
+  assert.equal(isPokemonCharacter(sub), true);
+
+  // The parent evolves after the sub-agent is out: the sub-agent follows.
+  setPokemonSpecies(evolvedMsg);
+  await flushDecodes();
+  os.setAgentIdentity(1, { species: 26 }, { evolve: true });
+  for (let t = 0; t < POKEMON_EVOLVE_SEC + 0.1; t += 0.05) os.update(0.05);
+  assert.equal(os.characters.get(1)!.species, 26);
+  assert.equal(sub.species, 26, 'the sub-agent evolved with it');
+  assert.equal(humansDrawn(os), 0);
+});
+
+test('walking while its Walk sheet is still out, a Pokémon walks in its Idle pose', async () => {
+  const msg = speciesMessage(25);
+  installFakeLoader([msg], { fail: ['Walk'] });
+  setPokemonSpecies(msg);
+  await flushDecodes();
+  const os = new OfficeState(floorLayout());
+  os.addAgent(1, 0, 0, undefined, true);
+  os.setAgentIdentity(1, { species: 25 });
+  const ch = at(os, 1, 4, 4);
+  os.update(0.05);
+  ch.state = CharacterState.WALK;
+  const pick: PokemonFramePick = { anim: '', situation: 'idle', loop: false, col: 0, row: 0 };
+  assert.ok(resolvePokemonFrame(ch, pick), 'a frame to draw');
+  assert.deepEqual([pick.situation, pick.anim], ['walk', 'Idle']);
+  const draws: unknown[][] = [];
+  renderScene(fakeContext(draws), [], os.getCharacters(), 0, 0, 2, null, null);
+  const sheets = draws.map((d) => (d[0] as { url?: string }).url).filter(Boolean);
+  assert.ok(
+    sheets.some((url) => url!.endsWith('-Idle')),
+    'drawn from its Idle sheet, not as a capsule',
+  );
 });

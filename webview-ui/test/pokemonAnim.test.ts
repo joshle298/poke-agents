@@ -151,6 +151,9 @@ test('walking plays Walk, standing awake plays Idle (Walk when Idle is missing)'
   assert.equal(anim(ch, without('Idle'))?.anim, 'Walk');
   ch.state = CharacterState.WALK;
   assert.deepEqual(anim(ch), { situation: 'walk', anim: 'Walk', loop: true });
+  // Its Walk sheet still decoding (sheets arrive one by one): it walks in
+  // its Idle pose, never without a frame (that would be a capsule mid-walk).
+  assert.deepEqual(anim(ch, without('Walk')), { situation: 'walk', anim: 'Idle', loop: true });
 });
 
 test('working at the desk breathes: Idle whatever the tool, never a shaking loop', () => {
@@ -209,7 +212,7 @@ test('errored: Hurt while the flinch plays, then Faint held; fallbacks when miss
   assert.equal(anim(ch)?.anim, 'Faint', 'fainted beats walking');
 });
 
-test('a species with none of a chain yields null (the upstream character draws)', () => {
+test('a species with none of a chain yields null (the renderer draws its capsule)', () => {
   assert.equal(anim(idleChar(), {}), null);
 });
 
@@ -379,6 +382,7 @@ test('loop guard: a loop under POKEMON_LOOP_MIN_AVG_TICKS is slowed; one-shots p
     slowed,
     charge.map(() => POKEMON_LOOP_MIN_AVG_TICKS),
   );
+  assert.equal(pmdPlayDurations(charge, true), slowed, 'worked out once per sheet, not per frame');
   assert.equal(pmdPlayDurations(charge, false), charge, 'a one-shot keeps its timing');
   const walk = [4, 4, 4, 4, 6, 2, 2]; // average 3.7: slowed, in proportion
   const w = pmdPlayDurations(walk, true);

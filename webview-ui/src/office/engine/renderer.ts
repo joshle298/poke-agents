@@ -549,21 +549,12 @@ export function floorForegroundDrawables(
 /** What tall grass may cover of a character: a Pokémon keeps the top
  *  (1 − FLOOR_FOREGROUND_MAX_COVER) of its body in view; others, no limit. */
 function foregroundEntityOf(ch: Character): ForegroundEntity {
-  if (isPokemonPlaceholder(ch)) {
-    // The closed capsule: grass covers at most part of it.
-    const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
-    const height = CAPSULE_CLOSED_SPRITE.length + POKEMON_FEET_BELOW_GROUND_PX;
-    return {
-      tileCol: ch.tileCol,
-      tileRow: ch.tileRow,
-      path: ch.path,
-      coverTopY: feetY - height * FLOOR_FOREGROUND_MAX_COVER,
-    };
-  }
   const g = pokemonGeometryOf(ch);
-  if (!g) return ch;
+  // The closed capsule standing in for a Pokémon: grass covers at most part of it.
+  const rise = g ? g.headRise : isPokemonPlaceholder(ch) ? CAPSULE_CLOSED_SPRITE.length : null;
+  if (rise === null) return ch;
   const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
-  const height = g.headRise + POKEMON_FEET_BELOW_GROUND_PX;
+  const height = rise + POKEMON_FEET_BELOW_GROUND_PX;
   return {
     tileCol: ch.tileCol,
     tileRow: ch.tileRow,

@@ -6,6 +6,7 @@ import {
   AMBIENT_ANIM_INTERVAL_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
+  CAPSULE_OPEN_MIN_WAIT_SEC,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
   CHARACTER_SITTING_OFFSET_PX,
@@ -20,6 +21,7 @@ import {
   MESSAGE_PREVIEW_SEC,
   PET_HIT_HALF_WIDTH,
   PET_HIT_HEIGHT,
+  POKEMON_EVOLVE_HOLD_MAX_SEC,
   POKEMON_EVOLVE_SEC,
   POKEMON_SHEET_SWEEP_SEC,
   PROJECTILE_MAX_IN_FLIGHT,
@@ -32,7 +34,6 @@ import {
   TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
-import type { SleepFacts } from '../asleep.js';
 import { isAsleep, isDrowsy } from '../asleep.js';
 import { foregroundSprite } from '../floorForeground.js';
 import { floorPatternHasForeground } from '../floorTiles.js';
@@ -56,6 +57,7 @@ import {
 import { findPath, getWalkableTiles, isWalkable } from '../layout/tileMap.js';
 import { getPetCount, getPetName } from '../sprites/petSpriteData.js';
 import {
+  isPokemonReady,
   pokemonSpeciesKey,
   retainPokemonSpecies,
   sweepPokemonSheets,
@@ -83,6 +85,7 @@ import { createPet, updatePet } from './petEntity.js';
 import {
   advancePokemonAnim,
   isOneShotPlaying,
+  isPokemonAsleep,
   pmdRowToward,
   startPokemonOneShot,
   toolOneShot,
@@ -237,16 +240,19 @@ export class OfficeState {
   /** Simulated seconds since the last sweep of unused Pokémon sheets. */
   private speciesSweepTimer = 0;
   private nextOverlayId = 1;
-  /** Each agent's sleep facts, the very ones the party bar reads (App installs
-   *  conductorStore's, see conductor/party.ts sleepFactsOf). Null: never asleep. */
-  private sleepFacts: (id: number) => SleepFacts | null = () => null;
+  /** Ms until each agent falls asleep (0 = asleep, null = it can't), from
+   *  the very facts the party bar reads (App installs conductorStore's, see
+   *  conductor/party.ts agentMsUntilAsleep). Unset: nobody sleeps. */
+  private msUntilAsleep: (id: number, now: number) => number | null = () => null;
   /** Wall clock (epoch ms) the asleep rule runs on; tests pin it. */
   wallClock: () => number = Date.now;
 
-  /** Read sleep facts from `source` (the party's), so the office's sleeping
-   *  Pokémon and the party's SLP come from one rule and one set of facts. */
-  setSleepFacts(source: (id: number) => SleepFacts | null): void {
-    this.sleepFacts = source;
+  /** Read when each agent falls asleep from `source` (the party's), so the
+   *  office's sleeping Pokémon and the party's SLP come from one rule and one
+   *  set of facts. Asked for every character on every frame: it returns a
+   *  number, never an object. */
+  setSleepClock(source: (id: number, now: number) => number | null): void {
+    this.msUntilAsleep = source;
   }
 
   setAreaMappings(mappings: Record<string, string[]>): void {
@@ -1358,8 +1364,8 @@ export class OfficeState {
     const ch = this.characters.get(id);
     if (ch) {
       if (active) {
-        // A sleeping Pokémon wakes (Wake, then its desk) on the next update,
-        // once the sleep facts say it is active.
+        // A sleeping Pokémon wakes (Wake, then its desk) on the next update:
+        // an active agent is never asleep.
         ch.awaitingInput = false;
         if (ch.isErrored) this.clearError(ch);
       }
@@ -1501,6 +1507,7 @@ export class OfficeState {
       ch.nextSpecies = species;
       ch.nextShiny = shiny;
       ch.evolveTimer = 0;
+      ch.evolveHoldSec = undefined;
       return;
     }
     ch.species = species;
@@ -1508,6 +1515,7 @@ export class OfficeState {
     ch.nextSpecies = undefined;
     ch.nextShiny = undefined;
     ch.evolveTimer = undefined;
+    ch.evolveHoldSec = undefined;
     ch.pmdAnimKey = undefined;
     this.shareSpeciesWithSubagents(ch);
   }
@@ -1544,15 +1552,33 @@ export class OfficeState {
     sweepPokemonSheets(inUse, nowMs);
   }
 
-  /** The species swaps at the flash's midpoint; the flash ends at its end. */
+  /**
+   * The species swaps at the flash's midpoint; the flash ends at its end.
+   * When the next species can't be drawn yet (agentDetails can arrive while
+   * its sheets still decode), the flash holds solid white at its midpoint
+   * until it can, at most POKEMON_EVOLVE_HOLD_MAX_SEC: an evolution never
+   * turns into a closed capsule halfway, then opens as if just sent out.
+   */
   private advanceEvolution(ch: Character, dt: number): void {
     if (ch.evolveTimer === undefined) return;
+    const midpoint = POKEMON_EVOLVE_SEC / 2;
+    const next = ch.nextSpecies;
+    if (
+      next !== undefined &&
+      ch.evolveTimer + dt >= midpoint &&
+      !isPokemonReady(next, ch.nextShiny === true)
+    ) {
+      ch.evolveTimer = Math.max(ch.evolveTimer, midpoint);
+      ch.evolveHoldSec = (ch.evolveHoldSec ?? 0) + dt;
+      if (ch.evolveHoldSec < POKEMON_EVOLVE_HOLD_MAX_SEC) return;
+    }
     ch.evolveTimer += dt;
-    if (ch.nextSpecies !== undefined && ch.evolveTimer >= POKEMON_EVOLVE_SEC / 2) {
-      ch.species = ch.nextSpecies;
+    if (next !== undefined && ch.evolveTimer >= midpoint) {
+      ch.species = next;
       ch.shiny = ch.nextShiny;
       ch.nextSpecies = undefined;
       ch.nextShiny = undefined;
+      ch.evolveHoldSec = undefined;
       ch.pmdAnimKey = undefined;
       this.shareSpeciesWithSubagents(ch);
     }
@@ -2007,30 +2033,35 @@ export class OfficeState {
       }
 
       // A Pokémon office never draws an upstream character: until its sheets
-      // are ready a Pokémon is a closed capsule that holds still, and the
-      // capsule opens in place the moment they are.
+      // are ready a Pokémon is a closed capsule that holds still. Once they
+      // are, a capsule that rested a while opens in place; one seen only for
+      // a moment (a reload decoding cached sheets) just gives way to its
+      // Pokémon, as it was before the reload.
       const pokemon = isPokemonCharacter(ch);
       const placeholder = !pokemon && isPokemonPlaceholder(ch);
       if (placeholder) {
         ch.capsuleWaitSec = (ch.capsuleWaitSec ?? 0) + dt;
       } else if (ch.capsuleWaitSec !== undefined) {
+        const waited = ch.capsuleWaitSec;
         ch.capsuleWaitSec = undefined;
-        if (pokemon) {
+        if (pokemon && waited >= CAPSULE_OPEN_MIN_WAIT_SEC) {
           startCapsuleOpen(ch);
           continue;
         }
       }
 
-      // Asleep: the party bar's facts through the shared rule (asleep.ts).
-      // Waking (a turn, a tool, a message, a question) plays Wake first.
-      const facts = this.sleepFacts(ch.id);
+      // Asleep: the party bar's facts through the shared rule (asleep.ts),
+      // never while working or fainted (isPokemonAsleep reads ch.asleep the
+      // same way). Waking (a turn, a tool, a message, a question) plays Wake
+      // first.
+      const msLeft = this.msUntilAsleep(ch.id, now);
       const wasAsleep = ch.asleep === true;
-      ch.asleep = isAsleep(facts, now);
+      ch.asleep = isAsleep(msLeft) && !ch.isActive && !ch.isErrored;
       if (wasAsleep && !ch.asleep && pokemon) this.playOneShot(ch, 'wake', { force: true });
-      const asleep = pokemon && ch.asleep;
+      const asleep = pokemon && isPokemonAsleep(ch);
       // About to fall asleep: no new strolls (the town may still walk it to
       // the Meadow to nap), so it is standing still when it does.
-      const drowsy = pokemon && !asleep && isDrowsy(facts, now);
+      const drowsy = pokemon && !asleep && !ch.isActive && !ch.isErrored && isDrowsy(msLeft);
       if (asleep && ch.state === CharacterState.WALK) {
         // Fell asleep mid-step: it stops right there and never moves again
         // until it wakes.

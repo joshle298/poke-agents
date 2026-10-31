@@ -10,8 +10,7 @@ import {
   POKEMON_MAX_DEX,
   POKEMON_PORTRAIT_ROUTE_PREFIX,
 } from '../constants.js';
-import type { SleepFacts } from '../office/asleep.js';
-import { isAsleep } from '../office/asleep.js';
+import { isAsleep, msUntilAsleep } from '../office/asleep.js';
 import type { ConductorAgent, ConductorState, SpeciesRef } from './conductorStore.js';
 import { agentNickname, currentActivity, findSpecies, isStreamProvider } from './conductorStore.js';
 
@@ -65,23 +64,54 @@ export function partyOrder(
 /** What a party slot shows for an agent. */
 export type PartyCondition = 'working' | 'needsYou' | 'done' | 'asleep' | 'error';
 
+/** Done or idle, as the asleep rule (office/asleep.ts) means it: its turn is
+ *  over (status waiting) with no question, permission or open tool. */
+function isResting(agent: ConductorAgent): boolean {
+  return (
+    agent.status === 'waiting' &&
+    !agent.awaitingInput &&
+    !agent.permission &&
+    currentActivity(agent) === null
+  );
+}
+
 /**
- * What the asleep rule (office/asleep.ts) reads about an agent: resting when
- * its turn is over (status waiting) with no question, permission or open tool;
- * its last activity the newer of what the provider observed and what this
- * client saw live. The office reads these same facts for its characters, so
- * the party's SLP and the office's sleeping Pokémon always agree.
+ * Ms until the agent falls asleep (0 = asleep now), or null when it can't:
+ * the asleep rule (office/asleep.ts) on the agent's own fields. Its last
+ * activity is the newer of what the provider observed and what this client
+ * saw live; with neither (a Claude Code agent replayed after a reload: no
+ * provider time, and the resend is silent), when this client first saw it.
+ * The office asks this for every character on every frame (App installs it
+ * with OfficeState.setSleepClock), so the party's SLP and the office's
+ * sleeping Pokémon always agree; it reads fields and allocates nothing.
  */
-export function sleepFactsOf(agent: ConductorAgent | undefined): SleepFacts | null {
+export function agentMsUntilAsleep(agent: ConductorAgent | undefined, now: number): number | null {
   if (!agent) return null;
-  return {
-    resting:
-      agent.status === 'waiting' &&
-      !agent.awaitingInput &&
-      !agent.permission &&
-      currentActivity(agent) === null,
-    lastActivityAt: Math.max(agent.lastActiveAt ?? 0, agent.lastActivityAt ?? 0),
-  };
+  const seen = Math.max(agent.lastActiveAt ?? 0, agent.lastActivityAt ?? 0);
+  return msUntilAsleep(isResting(agent), seen > 0 ? seen : agent.seenAt, now);
+}
+
+/**
+ * Epoch ms at which the next agent falls asleep after `now` (only `onlyId`
+ * when given), or null when none will. The party bar and the Pokédex
+ * re-render then, so their SLP lands with the office's.
+ */
+export function nextAgentSleepAt(
+  state: Pick<ConductorState, 'agents'>,
+  now: number,
+  onlyId?: number,
+): number | null {
+  if (onlyId !== undefined) {
+    const left = agentMsUntilAsleep(state.agents[onlyId], now);
+    return left === null || left === 0 ? null : now + left;
+  }
+  let next: number | null = null;
+  for (const key in state.agents) {
+    const left = agentMsUntilAsleep(state.agents[Number(key)], now);
+    if (left === null || left === 0) continue;
+    if (next === null || now + left < next) next = now + left;
+  }
+  return next;
 }
 
 /** The agent's condition, or null before it has shown any activity. */
@@ -94,7 +124,7 @@ export function agentCondition(
   if (agent.permission || (agent.status === 'waiting' && agent.awaitingInput)) return 'needsYou';
   if (agent.status === 'active' || currentActivity(agent) !== null) return 'working';
   if (agent.status !== 'waiting') return null;
-  return isAsleep(sleepFactsOf(agent), now) ? 'asleep' : 'done';
+  return isAsleep(agentMsUntilAsleep(agent, now)) ? 'asleep' : 'done';
 }
 
 /** True when the agent needs the user (its slot blinks). */

@@ -22,7 +22,7 @@ import {
   POKEMON_GROUND_OFFSET_PX,
   SLEEP_AFTER_MS,
 } from '../src/constants.js';
-import type { SleepFacts } from '../src/office/asleep.js';
+import { msUntilAsleep } from '../src/office/asleep.js';
 import { reconcileExistingAgents } from '../src/office/engine/existingAgents.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { characterChest, isPokemonCharacter } from '../src/office/engine/pokemonCharacter.js';
@@ -387,11 +387,19 @@ test('an error faints the Pokémon (Hurt first) until the agent turns active', a
   assert.equal(ch.errorMessage, undefined);
 });
 
-/** Sleep facts for one agent, settable from the test (the party's in the app). */
+interface SleepFacts {
+  resting: boolean;
+  lastActivityAt: number;
+}
+
+/** Sleep facts per agent, settable from the test (the party's in the app). */
 function sleepClock(os: OfficeState, start = 1_000_000) {
   const clock = { now: start, facts: new Map<number, SleepFacts>() };
   os.wallClock = () => clock.now;
-  os.setSleepFacts((id) => clock.facts.get(id) ?? null);
+  os.setSleepClock((id, now) => {
+    const facts = clock.facts.get(id);
+    return facts ? msUntilAsleep(facts.resting, facts.lastActivityAt, now) : null;
+  });
   return clock;
 }
 
@@ -512,6 +520,34 @@ test('a message, a question or a tool wakes a sleeper too (whatever ends its res
     assert.equal(ch.pmdAnim, 'wake');
     os.update(1);
   }
+});
+
+test('an active Pokémon is never asleep: lagging facts never freeze it mid-walk', async () => {
+  // One rule (isPokemonAsleep): if the party's facts still say asleep while
+  // the agent works, the office neither holds it still nor shows SLP.
+  await loadSpecies(25);
+  const os = new OfficeState(floorLayout());
+  const clock = sleepClock(os);
+  const ch = placeAgent(os, 1, 6, 6);
+  os.setAgentIdentity(1, { species: 25 });
+  os.seats.set('desk', { uid: 'desk', seatCol: 1, seatRow: 1, facingDir: 0, assigned: true });
+  ch.seatId = 'desk';
+  clock.facts.set(1, { resting: true, lastActivityAt: clock.now - SLEEP_AFTER_MS - 1_000 });
+  os.update(0.05);
+  assert.equal(ch.asleep, true);
+
+  os.setAgentActive(1, true); // the facts still say asleep
+  os.update(0.05);
+  assert.equal(ch.asleep, false);
+  assert.equal(ch.pmdAnim, 'wake');
+  os.update(0.25);
+  const moved: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    os.update(0.05);
+    assert.equal(ch.asleep, false, `awake while working (${i})`);
+    moved.push(`${ch.x},${ch.y}`);
+  }
+  assert.ok(new Set(moved).size > 10, 'it walks to its desk');
 });
 
 test('one-shots only start on characters drawn as Pokémon', () => {

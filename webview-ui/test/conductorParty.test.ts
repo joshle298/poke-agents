@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConductorAgent } from '../src/conductor/conductorStore.js';
 import {
   agentCondition,
+  agentMsUntilAsleep,
   buildPartySlot,
   conditionBadge,
   hpFraction,
@@ -13,7 +14,6 @@ import {
   pcBoxSpecies,
   pickPortrait,
   portraitEmotion,
-  sleepFactsOf,
 } from '../src/conductor/party.js';
 import { PARTY_MAX_NEST_DEPTH, SLEEP_AFTER_MS } from '../src/constants.js';
 
@@ -93,6 +93,16 @@ describe('agentCondition', () => {
     expect(agentCondition(providerActive, now)).toBe('done');
     // No timing known: done, not asleep.
     expect(agentCondition(agent({ status: 'waiting' }), now)).toBe('done');
+    // Nothing but when this client first saw it (a hook agent after a reload).
+    const seenLongAgo = agent({ status: 'waiting', seenAt: now - SLEEP_AFTER_MS });
+    expect(agentCondition(seenLongAgo, now)).toBe('asleep');
+    // Any real activity time wins over when it was seen.
+    const seenButActive = agent({
+      status: 'waiting',
+      seenAt: now - SLEEP_AFTER_MS,
+      lastActivityAt: now - 1_000,
+    });
+    expect(agentCondition(seenButActive, now)).toBe('done');
     // A background tool still open: working, never asleep.
     const openTool = agent({
       status: 'waiting',
@@ -100,7 +110,7 @@ describe('agentCondition', () => {
       tools: [{ toolId: 'bg', status: 'Subtask: watch', done: false }],
     });
     expect(agentCondition(openTool, now)).toBe('working');
-    expect(sleepFactsOf(openTool)?.resting).toBe(false);
+    expect(agentMsUntilAsleep(openTool, now)).toBeNull();
   });
 
   it('blinks only for needs-you', () => {

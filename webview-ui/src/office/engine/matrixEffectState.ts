@@ -62,6 +62,7 @@ export function startMatrixEffect(ch: Character, kind: 'spawn' | 'despawn'): voi
   ch.matrixEffectTimer = 0;
   ch.matrixEffectSeeds = matrixEffectSeeds();
   ch.spawnHoldSec = undefined;
+  ch.capsuleWaitSec = undefined;
 }
 
 /** What one frame of `advanceMatrixEffect` did.
@@ -93,6 +94,9 @@ export function advanceMatrixEffect(ch: Character, dt: number): MatrixEffectTick
     ch.matrixEffectTimer = Math.max(ch.matrixEffectTimer, CAPSULE_LANDED_SEC);
     ch.spawnHoldSec = (ch.spawnHoldSec ?? 0) + dt;
     if (ch.spawnHoldSec < CAPSULE_WAIT_MAX_SEC) return 'running';
+    // It goes on resting closed: its wait (and bob) carries on from here,
+    // so it opens rather than pops once the sheets arrive.
+    ch.capsuleWaitSec = ch.spawnHoldSec;
   } else {
     ch.matrixEffectTimer += dt;
     if (ch.matrixEffectTimer < matrixEffectDurationSec(ch)) return 'running';

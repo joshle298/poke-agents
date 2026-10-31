@@ -24,7 +24,7 @@ import {
   TOWN_SPREAD_TILES,
   TOWN_USER_WALK_HOLD_SEC,
 } from '../src/constants.js';
-import type { SleepFacts } from '../src/office/asleep.js';
+import { msUntilAsleep } from '../src/office/asleep.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { choosePokemonAnim } from '../src/office/engine/pokemonAnim.js';
 import {
@@ -279,9 +279,16 @@ test('an agent without a seat appears in the Meadow', () => {
 
 /** The office's sleep facts for agent 1 on a test clock that `run` advances. */
 function sleepClock(os: OfficeState) {
-  const clock = { now: 5_000_000, facts: null as SleepFacts | null };
+  const clock = {
+    now: 5_000_000,
+    facts: null as { resting: boolean; lastActivityAt: number } | null,
+  };
   os.wallClock = () => clock.now;
-  os.setSleepFacts((id) => (id === 1 ? clock.facts : null));
+  os.setSleepClock((id, now) =>
+    id === 1 && clock.facts
+      ? msUntilAsleep(clock.facts.resting, clock.facts.lastActivityAt, now)
+      : null,
+  );
   return clock;
 }
 
