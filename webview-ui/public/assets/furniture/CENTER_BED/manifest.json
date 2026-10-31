@@ -13,9 +13,9 @@
       "type": "asset",
       "id": "CENTER_BED_FRONT",
       "file": "CENTER_BED_FRONT.png",
-      "width": 32,
+      "width": 48,
       "height": 32,
-      "footprintW": 2,
+      "footprintW": 3,
       "footprintH": 2,
       "orientation": "front"
     },
@@ -23,9 +23,9 @@
       "type": "asset",
       "id": "CENTER_BED_SIDE",
       "file": "CENTER_BED_SIDE.png",
-      "width": 32,
+      "width": 48,
       "height": 32,
-      "footprintW": 2,
+      "footprintW": 3,
       "footprintH": 2,
       "orientation": "side"
     }

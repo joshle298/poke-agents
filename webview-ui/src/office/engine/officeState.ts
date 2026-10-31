@@ -87,10 +87,10 @@ import {
 } from './pokemonAnim.js';
 import {
   characterChest,
+  drawnBody,
   isPokemonCharacter,
   pokemonAnimSourceOf,
   pokemonGeometryOf,
-  pokemonHitBox,
   pokemonRestPose,
 } from './pokemonCharacter.js';
 import { isPokemonThemeEnabled } from './pokemonTheme.js';
@@ -2095,8 +2095,8 @@ export class OfficeState {
     for (const ch of chars) {
       // Skip characters that are despawning
       if (ch.matrixEffect === 'despawn') continue;
-      // A Pokémon is hit on its measured body.
-      const box = pokemonHitBox(ch);
+      // A Pokémon, or anyone lying in a bed, is hit on its body as drawn.
+      const box = drawnBody(ch);
       if (box) {
         if (
           worldX >= box.left &&

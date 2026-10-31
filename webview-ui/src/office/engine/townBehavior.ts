@@ -163,8 +163,8 @@ export function pickTieredTile(
 /**
  * The Center's beds, from the placed items that can be one. The pillow is at
  * the end nearer the Center's side wall (beds stand with their head to a
- * wall), the sleeper stands at the other end of the bottom row and is drawn
- * centred on the bed. Pure (Node-tested).
+ * wall), the sleeper stands at the other end of the bottom row and lies on
+ * the bed with its head on the pillow (bedLie.ts). Pure (Node-tested).
  */
 export function townBeds(
   placements: readonly BedPlacement[],
@@ -191,6 +191,10 @@ export function townBeds(
     beds.push({
       pillow,
       midX,
+      x: p.col * TILE_SIZE,
+      y: p.row * TILE_SIZE,
+      w: p.w * TILE_SIZE,
+      h: p.h * TILE_SIZE,
       blanket: p.blanket,
       rest: { col: pillow === 'left' ? last : first, row },
       tiles,
@@ -293,7 +297,8 @@ function restsHere(ch: Character, world: TownWorld, fit: RestFit): boolean {
   return (world.centerClearance.get(here) ?? 0) >= Math.min(townRoomNeeded(fit.halfW), widest);
 }
 
-/** Lie down in `bed`: centred on it, the head toward the pillow. */
+/** Lie down in `bed`: `x` at its middle, facing the pillow (bedLie.ts draws
+ *  the body on the mattress, its head on the pillow). */
 function lieDown(ch: Character, bed: TownBed): void {
   ch.bedRest = bed;
   ch.x = bed.midX;

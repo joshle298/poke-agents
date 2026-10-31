@@ -5,10 +5,12 @@
  *   node scripts/generate-world-assets.mjs
  *
  * Writes, under webview-ui/public/assets/:
- *   floors/floor_9.png .. floor_18.png    grass, speckled grass, tall grass (three
- *                                         variants: 11, 15, 16; a patch's top row:
- *                                         17), dirt, cobbles, the Pokémon Center's
- *                                         tiles (14), grass in a patch's shadow (18)
+ *   floors/floor_9.png .. floor_22.png    grass, speckled grass, tall grass (three
+ *                                         variants: 11, 15, 16; a patch's top row 17,
+ *                                         its left and right sides 19, 20, its top
+ *                                         corners 21, 22), dirt, cobbles, the Pokémon
+ *                                         Center's tiles (14), grass in a patch's
+ *                                         shadow (18)
  *   carpets/carpet_3.png                  an auto-tiled dirt path
  *   furniture/<ID>/                       outdoor items, the Center's and the Lab's furniture
  *   layouts/pokemon-town.json             the town (the standalone default layout)
@@ -48,8 +50,18 @@ const floors = [
   ['floor_14.png', art.centerTileFloor()],
   ['floor_15.png', art.tallGrassFloor(1)],
   ['floor_16.png', art.tallGrassFloor(2)],
-  ['floor_17.png', art.tallGrassTopFloor(COLOR.tallGrass, COLOR.grass)],
+  ['floor_17.png', art.tallGrassEdgeFloor(COLOR.tallGrass, COLOR.grass, { top: true })],
   ['floor_18.png', art.grassShadowFloor()],
+  ['floor_19.png', art.tallGrassEdgeFloor(COLOR.tallGrass, COLOR.grass, { side: 'left' })],
+  ['floor_20.png', art.tallGrassEdgeFloor(COLOR.tallGrass, COLOR.grass, { side: 'right' })],
+  [
+    'floor_21.png',
+    art.tallGrassEdgeFloor(COLOR.tallGrass, COLOR.grass, { top: true, side: 'left' }),
+  ],
+  [
+    'floor_22.png',
+    art.tallGrassEdgeFloor(COLOR.tallGrass, COLOR.grass, { top: true, side: 'right' }),
+  ],
 ];
 for (const [file, canvas] of floors) write(`floors/${file}`, canvas.png());
 
@@ -157,7 +169,7 @@ rotationPair(
   'Bed',
   'decor',
   [art.centerBed('left'), art.centerBed('right')],
-  2,
+  3,
   2,
   2,
 );

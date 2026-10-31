@@ -1,5 +1,6 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
+import { splitNameTail } from '../conductor/format.js';
 import type { PartyCondition, PartySlot } from '../conductor/party.js';
 import { conditionBadge, needsAttention } from '../conductor/party.js';
 import { PARTY_CHILD_INDENT_PX, PORTRAIT_SOURCE_PX } from '../constants.js';
@@ -52,6 +53,18 @@ const CONDITION_LABEL: Record<PartyCondition, string> = {
   asleep: 'Asleep',
   error: 'Fainted',
 };
+
+/** A slot's name, cut in the middle when it doesn't fit (the end stays in
+ *  view: sessions often share a prefix). */
+function SlotName({ name }: { name: string }) {
+  const { head, tail } = splitNameTail(name);
+  return (
+    <span className="flex text-sm leading-none min-w-0 whitespace-pre">
+      <span className="truncate min-w-0">{head}</span>
+      {tail && <span className="shrink-0">{tail}</span>}
+    </span>
+  );
+}
 
 const BADGE_CLASS: Record<string, string> = {
   SLP: 'text-text-muted',
@@ -214,7 +227,7 @@ export function AgentCard({
               ↳
             </span>
           )}
-          <span className="text-sm leading-none truncate min-w-0">{slot.nickname}</span>
+          <SlotName name={slot.nickname} />
         </div>
         <div className="flex items-center gap-4 text-2xs leading-none text-text-muted">
           {slot.level !== undefined && <span className="shrink-0">Lv{slot.level}</span>}

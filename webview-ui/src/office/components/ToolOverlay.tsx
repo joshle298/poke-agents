@@ -37,10 +37,17 @@ import {
   TOWN_FAINT_CHIP_GAP_PX,
   TOWN_FAINT_CHIP_PAD_MIN_PX,
   TOWN_FAINT_CHIP_PAD_PER_FONT,
+  TOWN_FAINT_DOT_MIN_PX,
+  TOWN_FAINT_DOT_PER_FONT,
 } from '../../constants.js';
 import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js';
 import type { OfficeState } from '../engine/officeState.js';
-import { bodyTopY, isPokemonCharacter, overlayAnchorY } from '../engine/pokemonCharacter.js';
+import {
+  bodyTopY,
+  isPokemonCharacter,
+  overlayAnchorX,
+  overlayAnchorY,
+} from '../engine/pokemonCharacter.js';
 import type { OverlayProjection } from '../projection.js';
 import { overlayProjection } from '../projection.js';
 import { BUBBLE_ALERT_SPRITE, BUBBLE_SLEEP_SPRITE } from '../sprites/pokemonUiSprites.js';
@@ -159,11 +166,55 @@ function textWidth(text: string, fontPx: number): number {
   return width;
 }
 
+/** Side of the fainted dot shown theme off (the party bar's status dot), at
+ *  this chip font size. */
+function faintDotPx(fontPx: number): number {
+  return Math.max(TOWN_FAINT_DOT_MIN_PX, Math.round(fontPx * TOWN_FAINT_DOT_PER_FONT));
+}
+
+/** Screen size of a fainted character's chip: the FNT chip themed, the red
+ *  status dot otherwise. */
+function faintChipSize(themed: boolean, fontPx: number): { w: number; h: number } {
+  if (!themed) return { w: faintDotPx(fontPx), h: faintDotPx(fontPx) };
+  return {
+    w: textWidth(CONDITION_BADGE.fainted, fontPx) + 2 * faintChipPadPx(fontPx),
+    h: fontPx,
+  };
+}
+
 /** A fainted character resting in the town's Pokémon Center: a FNT chip just
  *  over the body as it is drawn (lying down), scaled with the zoom, so it
- *  reads without hovering (theme on or off). (left, top) is its bottom
- *  centre. */
-function FaintChip({ left, top, fontPx }: { left: number; top: number; fontPx: number }) {
+ *  reads without hovering; theme off, the party bar's red status dot instead.
+ *  (left, top) is its bottom centre. */
+function FaintChip({
+  left,
+  top,
+  fontPx,
+  themed,
+}: {
+  left: number;
+  top: number;
+  fontPx: number;
+  themed: boolean;
+}) {
+  if (!themed) {
+    const side = faintDotPx(fontPx);
+    return (
+      <div
+        className="absolute pointer-events-none bg-status-error"
+        role="img"
+        aria-label="Fainted"
+        style={{
+          left,
+          top,
+          width: side,
+          height: side,
+          transform: 'translate(-50%, -100%)',
+          zIndex: OVERLAY_LABEL_Z_INDEX,
+        }}
+      />
+    );
+  }
   const pad = faintChipPadPx(fontPx);
   return (
     <div
@@ -429,7 +480,7 @@ function SpeechBubbles({
             key={`preview-${m.id}`}
             className="absolute pixel-panel px-6 py-2 text-2xs leading-tight whitespace-normal break-words pointer-events-none"
             style={bubbleStyle(
-              project.toScreenX(ch.x) + SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
+              project.toScreenX(overlayAnchorX(ch)) + SPEECH_BUBBLE_PREVIEW_OFFSET_X_PX,
               project.toScreenY(overlayAnchorY(ch, 'bubble')) - lift,
               m.timer,
               false,
@@ -448,7 +499,7 @@ function SpeechBubbles({
             className="absolute pixel-panel px-6 py-2 text-2xs leading-tight whitespace-normal break-words pointer-events-none"
             style={{
               ...bubbleStyle(
-                project.toScreenX(ch.x),
+                project.toScreenX(overlayAnchorX(ch)),
                 project.toScreenY(overlayAnchorY(ch, 'bubble')) - lift,
                 notice.timer,
                 true,
@@ -519,10 +570,9 @@ export function ToolOverlay({
       if (!showsFaintChip(ch)) continue;
       boxes.push({
         id,
-        cx: project.toScreenX(ch.x),
+        cx: project.toScreenX(overlayAnchorX(ch)),
         bottom: project.toScreenY(bodyTopY(ch)) - TOWN_FAINT_CHIP_GAP_PX,
-        w: textWidth(CONDITION_BADGE.fainted, chipFontPx) + 2 * faintChipPadPx(chipFontPx),
-        h: chipFontPx,
+        ...faintChipSize(isThemedOverlay(ch), chipFontPx),
       });
       continue;
     }
@@ -530,7 +580,7 @@ export function ToolOverlay({
     if (focused || isDone || !compact || !isThemedOverlay(ch)) continue;
     boxes.push({
       id,
-      cx: project.toScreenX(ch.x),
+      cx: project.toScreenX(overlayAnchorX(ch)),
       bottom: project.toScreenY(overlayAnchorY(ch, 'label')),
       ...compactLabelSize(ch),
     });
@@ -564,7 +614,7 @@ export function ToolOverlay({
             <div
               className="absolute -translate-x-1/2 pointer-events-none"
               style={{
-                left: project.toScreenX(ch.x),
+                left: project.toScreenX(overlayAnchorX(ch)),
                 // Bubble bottom sits one sprite pixel above the character's
                 // anchor: project the anchor, then lift by the bubble's own
                 // device-pixel height plus one zoomed pixel, in CSS px.
@@ -586,9 +636,10 @@ export function ToolOverlay({
         if (!alwaysShowOverlay && !isSelected && !isHovered) {
           const faintChip = showsFaintChip(ch) ? (
             <FaintChip
-              left={project.toScreenX(ch.x)}
+              left={project.toScreenX(overlayAnchorX(ch))}
               top={project.toScreenY(bodyTopY(ch)) - TOWN_FAINT_CHIP_GAP_PX - lifted(id)}
               fontPx={chipFontPx}
+              themed={themed}
             />
           ) : null;
           if (!bubbleNode && !faintChip) return null;
@@ -601,7 +652,7 @@ export function ToolOverlay({
         }
 
         // Position above character
-        const screenX = project.toScreenX(ch.x);
+        const screenX = project.toScreenX(overlayAnchorX(ch));
         const screenY = project.toScreenY(overlayAnchorY(ch, 'label'));
 
         // A "Done" agent (finished turn: waiting bubble without awaitingInput)

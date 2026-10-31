@@ -235,31 +235,61 @@ test('the pond garden is fenced: a gate on the street, an opening by the signpos
   assert.deepEqual([sign.col, sign.row + 1], [25, 18], 'the signpost stands beside it');
 });
 
-test('tall-grass patches have a ragged top row and a shadow under their bottom row', () => {
+test('tall-grass patches have ragged edges, coloured like the grass, and a shadow below', () => {
   const TALL = [12, 16, 17]; // floor_11, floor_15, floor_16
   const TOP = 18; // floor_17
   const SHADOW = 19; // floor_18
+  const LEFT = 20; // floor_19
+  const RIGHT = 21; // floor_20
+  const TOP_LEFT = 22; // floor_21
+  const TOP_RIGHT = 23; // floor_22
+  const EDGES = [TOP, LEFT, RIGHT, TOP_LEFT, TOP_RIGHT];
   const PLAIN_GRASS = [10, 11]; // floor_9, floor_10
   const tile = (c: number, r: number): number => town.tiles[r * town.cols + c];
-  const tall = (c: number, r: number) => r >= 0 && [...TALL, TOP].includes(tile(c, r));
-  let tops = 0;
+  const tall = (c: number, r: number) => r >= 0 && [...TALL, ...EDGES].includes(tile(c, r));
+  const lawn = town.tileColors![16 * town.cols + 5]!; // under the main street, plain grass
+  const counts = new Map<number, number>();
   let shadows = 0;
   for (let r = 0; r < town.rows; r++) {
     for (let c = 0; c < town.cols; c++) {
       if (tall(c, r)) {
-        assert.equal(tile(c, r) === TOP, !tall(c, r - 1), `(${c},${r}): top row ⇔ TOP`);
-        if (tile(c, r) === TOP) tops++;
+        const top = !tall(c, r - 1);
+        const side = !tall(c - 1, r) ? 'left' : !tall(c + 1, r) ? 'right' : null;
+        const want = top
+          ? side === 'left'
+            ? TOP_LEFT
+            : side === 'right'
+              ? TOP_RIGHT
+              : TOP
+          : side === 'left'
+            ? LEFT
+            : side === 'right'
+              ? RIGHT
+              : null;
+        if (want === null) assert.ok(TALL.includes(tile(c, r)), `(${c},${r}) inside a patch`);
+        else assert.equal(tile(c, r), want, `(${c},${r}) on the patch's edge`);
+        if (want !== null) {
+          counts.set(want, (counts.get(want) ?? 0) + 1);
+          const color = town.tileColors![r * town.cols + c];
+          assert.deepEqual(color, lawn, `(${c},${r}): an edge tile is coloured like the grass`);
+        }
       } else if (tall(c, r - 1) && town.carpetTiles?.[r * town.cols + c] === null) {
         assert.ok(!PLAIN_GRASS.includes(tile(c, r)), `(${c},${r}) under a patch is shadowed`);
         if (tile(c, r) === SHADOW) shadows++;
       }
     }
   }
-  assert.ok(tops >= 10, `${tops} top-row tiles`);
+  for (const edge of EDGES) assert.ok((counts.get(edge) ?? 0) > 0, `edge tile ${edge} is used`);
+  assert.ok((counts.get(TOP) ?? 0) >= 6, `${counts.get(TOP)} top-row tiles`);
   assert.ok(shadows >= 4, `${shadows} shadowed tiles`);
+  // The patch and the grass share a hue: an edge tile can match both.
+  const patch = town.tileColors![18 * town.cols + 5]!;
+  assert.ok(TALL.includes(tile(5, 18)), 'inside the patch');
+  assert.notDeepEqual(patch, lawn);
+  assert.deepEqual([patch.h, patch.s], [lawn.h, lawn.s]);
 });
 
-test('the Center has its own back wall and four beds, each two tiles square', () => {
+test('the Center has its own back wall and four beds, each three tiles by two', () => {
   const at = (type: string) => town.furniture.filter((f) => f.type === type);
   assert.equal(at('WALL_WINDOW').length, 4, 'two pairs of windows');
   assert.equal(at('CENTER_POSTER').length, 1, 'a poster');
@@ -267,7 +297,7 @@ test('the Center has its own back wall and four beds, each two tiles square', ()
   assert.deepEqual(wainscot, [26, 27, 28, 29, 30, 31, 32, 33], 'a wainscot the width of the room');
   for (const bed of town.furniture.filter((f) => f.type.startsWith('CENTER_BED_'))) {
     const entry = getCatalogEntry(bed.type)!;
-    assert.deepEqual([entry.footprintW, entry.footprintH, entry.backgroundTiles], [2, 2, 2]);
+    assert.deepEqual([entry.footprintW, entry.footprintH, entry.backgroundTiles], [3, 2, 2]);
   }
   for (const type of ['SPECIMEN_CABINET', 'MICROSCOPE', 'PAPER_STACK']) {
     assert.ok(at(type).length > 0, `the Lab has a ${type}`);

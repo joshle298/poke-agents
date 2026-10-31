@@ -1,15 +1,17 @@
 /**
- * Where a character drawn as a Pokémon actually is: its ground point, hit
- * box and head height. DOM-free, shared by OfficeState (hit-testing), the
- * renderer and the DOM overlays, so all three agree on one set of numbers.
+ * Where a character drawn as a Pokémon, or lying in a bed, actually is: its
+ * ground point, hit box and head height. DOM-free, shared by OfficeState
+ * (hit-testing), the renderer and the DOM overlays, so all three agree on
+ * one set of numbers.
  *
  * A character is drawn as a Pokémon only when the theme is on, it has a
- * species, and that species' sheets are decoded and measured. Every helper
- * here returns null otherwise and the caller keeps its upstream geometry.
+ * species, and that species' sheets are decoded and measured. A character in
+ * a bed lies there either way (theme off, as its sprite turned on its side).
+ * Otherwise these helpers return null and the caller keeps its upstream
+ * geometry.
  */
 
 import {
-  BED_SLEEPER_LIFT_PX,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
   CHARACTER_SITTING_OFFSET_PX,
@@ -30,8 +32,11 @@ import {
   getPokemonSpeciesInfo,
   isPokemonReady,
 } from '../sprites/pokemonSprites.js';
+import { getCharacterSprites } from '../sprites/spriteData.js';
 import type { Character } from '../types.js';
-import { CharacterState, TILE_SIZE } from '../types.js';
+import { CharacterState, Direction } from '../types.js';
+import type { BedLie, PoseBox, QuarterTurn } from './bedLie.js';
+import { lieInBed, spritePoseBox } from './bedLie.js';
 import type { PokemonAnimSource } from './pokemonAnim.js';
 import { choosePokemonAnim, pmdRow } from './pokemonAnim.js';
 import { isPokemonThemeEnabled } from './pokemonTheme.js';
@@ -79,10 +84,54 @@ export function pokemonAnimSourceOf(ch: Character): PokemonAnimSource | null {
   return getPokemonAnimSource(ch.species, ch.shiny === true);
 }
 
-/** World y where a Pokémon's ground point is drawn. */
-export function pokemonGroundY(ch: Character): number {
+/** The upright ground point's y (no bed): the tile's centre, lower when seated. */
+function standingGroundY(ch: Character): number {
   const sit = ch.state === CharacterState.TYPE ? POKEMON_SITTING_OFFSET_PX : 0;
   return ch.y + sit + POKEMON_GROUND_OFFSET_PX;
+}
+
+/**
+ * The reach of a lying Pokémon's body as it shows in bed: the frame its faint
+ * holds (or frame 0 of a looping one), in the row it lies in. Null when not
+ * drawn as a Pokémon or the frame isn't decoded.
+ */
+function pokemonBedPose(ch: Character): PoseBox | null {
+  if (!isPokemonCharacter(ch) || ch.species === undefined) return null;
+  const shiny = ch.shiny === true;
+  const anims = getPokemonAnimSource(ch.species, shiny);
+  const chosen = anims ? choosePokemonAnim(ch, anims.has) : null;
+  const meta = chosen ? getPokemonAnimMeta(ch.species, shiny, chosen.anim) : undefined;
+  if (!chosen || !meta) return null;
+  const frame = chosen.loop ? 0 : meta.frames - 1;
+  return getPokemonPose(ch.species, shiny, chosen.anim, pmdRow(ch, meta.directions), frame);
+}
+
+/**
+ * Where a character lying in a bed is drawn (bedLie.ts): a Pokémon's lying
+ * pose, or theme off its upstream sprite turned on its side. Null when it
+ * isn't in a bed (or is opening or closing its capsule).
+ */
+export function bedLieOf(ch: Character): BedLie | null {
+  if (!ch.bedRest || ch.matrixEffect) return null;
+  if (isPokemonCharacter(ch)) {
+    const pose = pokemonBedPose(ch);
+    return pose ? lieInBed(pose, ch.bedRest) : null;
+  }
+  const sprite = getCharacterSprites(ch.palette, ch.hueShift).walk[Direction.DOWN][1];
+  return lieInBed(spritePoseBox(sprite), ch.bedRest);
+}
+
+/** World y where a Pokémon's ground point is drawn (in bed, where it lies). */
+export function pokemonGroundY(ch: Character): number {
+  return bedLieOf(ch)?.y ?? standingGroundY(ch);
+}
+
+/** Where the renderer draws a Pokémon's frame: its ground point (world px)
+ *  and the quarter turn (in bed, a tall pose lies on its side). */
+export function pokemonDrawPlace(ch: Character): { x: number; y: number; turn: QuarterTurn } {
+  const lie = bedLieOf(ch);
+  if (lie) return { x: lie.x, y: lie.y, turn: lie.turn };
+  return { x: ch.x, y: standingGroundY(ch), turn: 0 };
 }
 
 /**
@@ -111,13 +160,27 @@ function drawnPose(ch: Character): { halfW: number; rise: number } | null {
   return { halfW: g.bodyHalfW, rise: g.headRise };
 }
 
-/** Click box in world px for a character drawn as a Pokémon, else null. */
-export function pokemonHitBox(
+/**
+ * A body as drawn now, in world px: its box (also its click box). Lying in a
+ * bed (a Pokémon, or theme off a human), or a Pokémon standing, sitting or
+ * lying on the floor; null for an upright human, which keeps the upstream
+ * click box and overlay offsets.
+ */
+export function drawnBody(
   ch: Character,
 ): { left: number; right: number; top: number; bottom: number } | null {
+  const lie = bedLieOf(ch);
+  if (lie) {
+    return {
+      left: lie.x - lie.box.left,
+      right: lie.x + lie.box.right,
+      top: lie.y - lie.box.rise,
+      bottom: lie.y + lie.box.drop,
+    };
+  }
   const pose = drawnPose(ch);
   if (!pose) return null;
-  const groundY = pokemonGroundY(ch);
+  const groundY = standingGroundY(ch);
   return {
     left: ch.x - pose.halfW,
     right: ch.x + pose.halfW,
@@ -127,43 +190,55 @@ export function pokemonHitBox(
 }
 
 /**
- * World y of the top of a character's body as it is drawn now: a Pokémon's
- * measured pose (lying down while fainted), or a human lying in bed (theme
- * off: the sprite turned on its side). Null for an upright human, whose
- * overlays keep the upstream offsets.
- */
-function drawnTopY(ch: Character): number | null {
-  const pose = drawnPose(ch);
-  if (pose) return pokemonGroundY(ch) - pose.rise;
-  if (ch.bedRest) return ch.y - BED_SLEEPER_LIFT_PX - TILE_SIZE / 2;
-  return null;
-}
-
-/**
  * World y an overlay hangs from: the status label (`label`) or the speech
  * bubble (`bubble`). Pokémon use their measured body as drawn (lying down
  * when fainted); a human lying in bed its turned sprite; everyone else keeps
  * the upstream offsets, so the theme-off overlay is unchanged.
  */
 export function overlayAnchorY(ch: Character, kind: 'label' | 'bubble'): number {
-  const top = drawnTopY(ch);
-  if (top !== null) return top - (kind === 'label' ? POKEMON_LABEL_GAP_PX : POKEMON_BUBBLE_GAP_PX);
+  const body = drawnBody(ch);
+  if (body) return body.top - (kind === 'label' ? POKEMON_LABEL_GAP_PX : POKEMON_BUBBLE_GAP_PX);
   const seated = ch.state === CharacterState.TYPE;
   return kind === 'label'
     ? ch.y + (seated ? CHARACTER_SITTING_OFFSET_PX : 0) - TOOL_OVERLAY_VERTICAL_OFFSET
     : ch.y + (seated ? BUBBLE_SITTING_OFFSET_PX : 0) - BUBBLE_VERTICAL_OFFSET_PX;
 }
 
+/** World x overlays centre on: the middle of a body lying in a bed (its head
+ *  is on the pillow, off the bed's middle), else the character's x. */
+export function overlayAnchorX(ch: Character): number {
+  const lie = bedLieOf(ch);
+  return lie ? lie.x + (lie.box.right - lie.box.left) / 2 : ch.x;
+}
+
 /** World y of the top of a character's body as drawn now (for an upright
  *  human, its bubble anchor). */
 export function bodyTopY(ch: Character): number {
-  return drawnTopY(ch) ?? overlayAnchorY(ch, 'bubble');
+  return drawnBody(ch)?.top ?? overlayAnchorY(ch, 'bubble');
 }
 
-/** World point at a character's chest: where links and projectiles attach. */
+/** World point at a character's chest, the middle of its body as drawn:
+ *  where projectiles attach. */
 export function characterChest(ch: Character): { x: number; y: number } {
-  const pose = drawnPose(ch);
-  if (pose) return { x: ch.x, y: pokemonGroundY(ch) - Math.round(pose.rise / 2) };
+  const body = drawnBody(ch);
+  if (body) {
+    return {
+      x: Math.round((body.left + body.right) / 2),
+      y: Math.round((body.top + body.bottom) / 2),
+    };
+  }
   const seated = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0;
   return { x: ch.x, y: ch.y + seated - Math.round(BUBBLE_VERTICAL_OFFSET_PX / 2) };
+}
+
+/**
+ * World point a link on the floor ends at: where the character stands, or,
+ * when it is drawn away from its tile's centre (a Pokémon seated at a desk,
+ * anyone lying in a bed), the middle of its body, so the line reaches the
+ * sprite and not the empty chair under it.
+ */
+export function linkEnd(ch: Character): { x: number; y: number } {
+  const seatedPokemon = ch.state === CharacterState.TYPE && pokemonGeometryOf(ch) !== null;
+  if (seatedPokemon || bedLieOf(ch)) return characterChest(ch);
+  return { x: ch.x, y: ch.y };
 }

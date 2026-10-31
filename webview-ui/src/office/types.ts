@@ -314,8 +314,9 @@ export interface Character {
   /** Seconds left in which a status that sends it to the Meadow or the Center
    *  places it there directly (just created); undefined once over. */
   townSpawnGrace?: number;
-  /** The bed a fainted character lies in (centred on it, head on the pillow,
-   *  `x` moved to the bed's middle); undefined when it isn't lying in one. */
+  /** The bed a fainted character lies in (head on the pillow, `x` moved to
+   *  the bed's middle; see bedLie.ts for where it is drawn); undefined when it
+   *  isn't lying in one. */
   bedRest?: BedRest;
 }
 
@@ -326,8 +327,13 @@ export type TownGoal = 'meadow' | 'center' | 'stay';
 export interface BedRest {
   /** The end the pillow is at: the sleeper's head points there. */
   pillow: 'left' | 'right';
-  /** World x of the bed's middle, where the sleeper is centred. */
+  /** World x of the bed's middle (the sleeper's `x` while it lies there). */
   midX: number;
+  /** The bed's box, world px (its sprite's top-left and size). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
   /** The bed's blanket (its foreground pixels, opaque) and where it is drawn
    *  (world px, top-left), laid over the sleeper; null when it has none. */
   blanket: { sprite: SpriteData; x: number; y: number } | null;

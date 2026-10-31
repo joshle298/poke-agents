@@ -3,8 +3,10 @@
  * owns the data).
  *
  * Links lie on the floor under everyone: pixel-art dashes between two
- * characters' tiles, marching from sender to receiver — spawned as dashes,
- * messaged as dots, watched faint — each lit pixel over a dark casing pixel.
+ * characters (where each stands, or the middle of a body drawn off its tile:
+ * a Pokémon seated at a desk, anyone lying in a bed), marching from sender
+ * to receiver — spawned as dashes, messaged as dots, watched faint — each
+ * lit pixel over a dark casing pixel.
  * Projectiles fly above everyone on an arc from chest to chest: a capsule
  * while themed, an envelope otherwise.
  */
@@ -21,7 +23,7 @@ import { CAPSULE_CLOSED_SPRITE, ENVELOPE_SPRITE } from '../sprites/pokemonUiSpri
 import type { Character, LinkSegment, Projectile } from '../types.js';
 import { drawCenteredSprite } from './capsuleEffect.js';
 import { forEachLinePixel, isDashLit } from './pixelLine.js';
-import { characterChest } from './pokemonCharacter.js';
+import { characterChest, linkEnd } from './pokemonCharacter.js';
 
 /** What renderFrame needs to draw connections this frame. */
 export interface ConnectionsRenderState {
@@ -45,7 +47,10 @@ export function renderLinks(
 ): void {
   const march = time * LINK_MARCH_PX_PER_SEC;
   ctx.save();
-  for (const { from, to, kind, dim } of links) {
+  for (const link of links) {
+    const { kind, dim } = link;
+    const from = linkEnd(link.from);
+    const to = linkEnd(link.to);
     const { period, on } = LINK_PATTERNS[kind];
     ctx.globalAlpha = dim ? LINK_DIM_ALPHA : 1;
     // A dark casing one pixel under every lit pixel first, so the line reads

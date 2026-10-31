@@ -9,7 +9,6 @@ import {
   AREA_LABEL_SHADOW_COLOR,
   AREA_OVERLAY_ALPHA,
   BED_BLANKET_Z_OFFSET,
-  BED_SLEEPER_LIFT_PX,
   BUBBLE_FADE_DURATION_SEC,
   BUTTON_ICON_COLOR,
   BUTTON_ICON_SIZE_FACTOR,
@@ -87,6 +86,7 @@ import {
   hasWallSprites,
   wallColorToHex,
 } from '../wallTiles.js';
+import type { BedLie } from './bedLie.js';
 import { renderCapsuleEffect } from './capsuleEffect.js';
 import { getCharacterSprite } from './characters.js';
 import type { ConnectionsRenderState } from './connectionsRender.js';
@@ -95,7 +95,7 @@ import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { spawnEffectStyle } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
-import { pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
+import { bedLieOf, pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
 import type { ZDrawable } from './pokemonRender.js';
 import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
 
@@ -605,36 +605,41 @@ function pushBlanket(
 
 /**
  * A human lying in bed (theme off): its front-facing sprite turned on its
- * side, the head toward the pillow, centred on the bed's mattress. A quarter
- * turn of an even-sized sprite about a whole device pixel stays on the grid.
+ * side, the head toward the pillow, lying on the mattress (bedLie.ts). A
+ * quarter turn about a whole device pixel stays on the grid.
  */
 function pushLyingHuman(
   drawables: ZDrawable[],
   ch: Character,
   sprite: SpriteData,
+  lie: BedLie,
   offsetX: number,
   offsetY: number,
   zoom: number,
   { alpha, outline }: { alpha: number; outline: number },
 ): void {
-  const pillow = ch.bedRest?.pillow ?? 'left';
-  const angle = pillow === 'left' ? -Math.PI / 2 : Math.PI / 2;
-  const cx = Math.round(offsetX + ch.x * zoom);
-  const cy = Math.round(offsetY + (ch.y - BED_SLEEPER_LIFT_PX) * zoom);
+  const gx = Math.round(offsetX + lie.x * zoom);
+  const gy = Math.round(offsetY + lie.y * zoom);
   const zY = characterZ(ch);
-  const turned = (cached: HTMLCanvasElement, a: number) => (c: CanvasRenderingContext2D) => {
-    c.save();
-    c.globalAlpha = a;
-    c.translate(cx, cy);
-    c.rotate(angle);
-    c.drawImage(cached, -cached.width / 2, -cached.height / 2);
-    c.restore();
+  // Anchored at the sprite's bottom centre, like a standing character; the
+  // outline ring is one sprite pixel larger on every side.
+  const turned = (cached: HTMLCanvasElement, a: number, ring: number) => {
+    const x = -Math.round(cached.width / 2);
+    const y = -cached.height + ring;
+    return (c: CanvasRenderingContext2D) => {
+      c.save();
+      c.globalAlpha = a;
+      c.translate(gx, gy);
+      c.rotate((lie.turn * Math.PI) / 2);
+      c.drawImage(cached, x, y);
+      c.restore();
+    };
   };
   if (outline > 0) {
     const ring = getCachedSprite(getOutlineSprite(sprite), zoom);
-    drawables.push({ zY: zY - OUTLINE_Z_SORT_OFFSET, draw: turned(ring, outline) });
+    drawables.push({ zY: zY - OUTLINE_Z_SORT_OFFSET, draw: turned(ring, outline, zoom) });
   }
-  drawables.push({ zY, draw: turned(getCachedSprite(sprite, zoom), alpha) });
+  drawables.push({ zY, draw: turned(getCachedSprite(sprite, zoom), alpha, 0) });
 }
 
 /** @internal */
@@ -689,8 +694,9 @@ export function renderScene(
     }
 
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
-    if (ch.bedRest && !ch.matrixEffect) {
-      pushLyingHuman(drawables, ch, sprites.walk[Direction.DOWN][1], offsetX, offsetY, zoom, {
+    const lie = bedLieOf(ch);
+    if (lie) {
+      pushLyingHuman(drawables, ch, sprites.walk[Direction.DOWN][1], lie, offsetX, offsetY, zoom, {
         alpha,
         outline: isSelected ? SELECTED_OUTLINE_ALPHA : isHovered ? HOVERED_OUTLINE_ALPHA : 0,
       });

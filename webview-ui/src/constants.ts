@@ -41,9 +41,20 @@ export const TOWN_SPREAD_TILES = 2;
 /** World px a sleeper's body may reach over the bottom edge of the bed above
  *  it before that bed counts as covered (the blanket's front drape). */
 export const TOWN_BED_OVERLAP_PX = 4;
-/** World px above its tile's centre that a human lying in bed (theme off) is
- *  centred: the middle of the mattress. */
-export const BED_SLEEPER_LIFT_PX = 7;
+/** A bed's shape as a sleeper lies on it (world px, mirroring the bed art in
+ *  scripts/world/art.mjs): the boards at each end are this thick, the
+ *  mattress runs between them. */
+export const BED_BOARD_PX = 5;
+/** The sleeper's head end lies this far in from the bed's pillow end (on the
+ *  pillow), unless its body is too long for the mattress. */
+export const BED_PILLOW_INSET_PX = 6;
+/** The sleeper's lowest pixel lies this far above the bed's bottom edge (the
+ *  mattress's near edge; the tucked blanket covers its lower body). */
+export const BED_SLEEPER_BASE_PX = 9;
+/** A sleeper taller than the mattress sinks toward the front instead of
+ *  reaching above the bed's top edge, but never lower than this far above the
+ *  bed's bottom edge. */
+export const BED_SLEEPER_SINK_LIMIT_PX = 5;
 /** A bed's blanket sorts this far after its sleeper (and before anything on
  *  the next row). */
 export const BED_BLANKET_Z_OFFSET = 0.1;
@@ -728,7 +739,7 @@ export const LINK_COLORS = {
   watched: 'rgba(255, 255, 255, 0.3)',
 } as const;
 /** Opacity of a faint link (the town's, unless its family is hovered or selected). */
-export const LINK_DIM_ALPHA = 0.55;
+export const LINK_DIM_ALPHA = 0.7;
 /** Drawn one pixel under every lit link pixel, so links read on light ground. */
 export const LINK_CASING_COLOR = 'rgba(48, 30, 12, 0.5)';
 /** localStorage key of the local "Show connections" setting (default on). */
@@ -800,6 +811,10 @@ export const TOWN_FAINT_CHIP_FONT_MAX_PX = 32;
 /** A FNT chip's side padding: this share of its font size, at least the minimum. */
 export const TOWN_FAINT_CHIP_PAD_PER_FONT = 1 / 7;
 export const TOWN_FAINT_CHIP_PAD_MIN_PX = 2;
+/** Theme off, a fainted character in the town shows the party bar's red
+ *  status dot instead of a FNT chip: its side, per px of chip font. */
+export const TOWN_FAINT_DOT_PER_FONT = 0.5;
+export const TOWN_FAINT_DOT_MIN_PX = 6;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',
@@ -819,6 +834,13 @@ export const PARTY_BAR_WIDE_WIDTH_PX = 200;
 export const PARTY_BAR_COMPACT_WIDTH_PX = 72;
 /** Indent per nesting level for a Lead's children in the wide party bar. */
 export const PARTY_CHILD_INDENT_PX = 10;
+/** A party slot's name that may not fit keeps its end in view (sessions often
+ *  share a prefix): an identifier-like name longer than this... */
+export const PARTY_NAME_SPLIT_MIN_CHARS = 14;
+/** ...keeps up to this many of its last characters (whole segments between
+ *  `-`, `_`, `.` or `/` where they fit, else the last PARTY_NAME_TAIL_CHARS). */
+export const PARTY_NAME_TAIL_MAX_CHARS = 10;
+export const PARTY_NAME_TAIL_CHARS = 6;
 /** Deepest nesting the party bar indents (children of children stop here). */
 export const PARTY_MAX_NEST_DEPTH = 2;
 /** A done agent whose last activity is older than this shows as asleep. */

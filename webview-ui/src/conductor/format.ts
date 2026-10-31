@@ -7,7 +7,30 @@ import {
   CONDUCTOR_DEEP_LINK_HOST,
   CONDUCTOR_DEEP_LINK_PROTOCOL,
   CONDUCTOR_SCOPE_ALL_LABEL,
+  PARTY_NAME_SPLIT_MIN_CHARS,
+  PARTY_NAME_TAIL_CHARS,
+  PARTY_NAME_TAIL_MAX_CHARS,
 } from '../constants.js';
+
+/**
+ * A name split for an ellipsis in its middle: the `head` is cut when it
+ * doesn't fit, the `tail` always shows, so "recorder-platform-review-1" and
+ * "recorder-platform-review-2" stay apart as "recorder-pl…review-1". Only
+ * identifier-like names (no spaces) longer than PARTY_NAME_SPLIT_MIN_CHARS
+ * are split; titles keep their start (tail empty).
+ */
+export function splitNameTail(name: string): { head: string; tail: string } {
+  if (name.length <= PARTY_NAME_SPLIT_MIN_CHARS || /\s/.test(name)) return { head: name, tail: '' };
+  const segments = name.split(/(?<=[-_./])/);
+  let tail = '';
+  for (let i = segments.length - 1; i > 0; i--) {
+    const next = segments[i] + tail;
+    if (next.length > PARTY_NAME_TAIL_MAX_CHARS) break;
+    tail = next;
+  }
+  if (!tail) tail = name.slice(-PARTY_NAME_TAIL_CHARS);
+  return { head: name.slice(0, name.length - tail.length), tail };
+}
 
 /** Compact age: "now", "42s", "5m", "3h", "2d". */
 export function shortAge(at: number, now: number): string {

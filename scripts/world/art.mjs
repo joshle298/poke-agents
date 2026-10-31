@@ -50,34 +50,47 @@ function fg(color) {
 }
 
 /**
- * The Pokémon Center's emblem, our own: a pink heart with a green leaf on
- * its right shoulder, lit from the top left. 'large' is
- * 11×10 (the sign and the poster), 'small' 7×7 (the healing machine's plate);
- * (x, y) is the top-left of the emblem's box.
+ * The Pokémon Center's emblem, our own: a plain pink heart, lit from the top
+ * left, outlined only along its outside edge. 'large' is 11×9 (the sign),
+ * 'small' 9×8 (the healing machine's plate and the poster), drawn lighter so
+ * it still reads as a heart at the office's smallest zoom; (x, y) is the
+ * top-left of the emblem's box.
  */
 function heartEmblem(c, x, y, size = 'large') {
-  const large = size === 'large';
-  const heart = large
-    ? [
-        '.ddd...ddd.',
-        'dLLpd.dpppd',
-        'dLpppdppppd',
-        'dppppppppPd',
-        '.dppppppPd.',
-        '..dppppPd..',
-        '...dppPd...',
-        '....dPd....',
-      ]
-    : ['.dd.dd.', 'dLpdppd', 'dpppppd', '.dpppd.', '..dpd..', '...d...'];
-  c.pattern(x, y + (large ? 1 : 1), heart, { d: PINK[0], L: PINK[4], p: PINK[2], P: PINK[1] });
-  // the leaf on the right lobe's shoulder, pointing up and out
-  const sprout = large ? ['..GGl', '.gGG.', 's....'] : ['.Gl', 's..'];
-  c.pattern(x + (large ? 7 : 4), y - (large ? 1 : 0), sprout, {
-    s: LEAF[1],
-    g: LEAF[2],
-    G: LEAF[3],
-    l: LEAF[4],
-  });
+  if (size === 'large') {
+    c.pattern(
+      x,
+      y,
+      [
+        '.ooo...ooo.',
+        'oLhpo.opppo',
+        'ohpppoppPso',
+        'ohppppppPso',
+        '.opppppPso.',
+        '..opppPso..',
+        '...oPPso...',
+        '....oso....',
+        '.....o.....',
+      ],
+      { o: PINK[0], L: PINK[4], h: PINK[3], p: PINK[2], P: PINK[2], s: PINK[1] },
+    );
+    return;
+  }
+  c.pattern(
+    x,
+    y,
+    [
+      '.oo...oo.',
+      'oLho.ohpo',
+      'ohhpohhso',
+      'ohhhhhpso',
+      '.ohhhpso.',
+      '..ohpso..',
+      '...oso...',
+      '....o....',
+    ],
+    { o: PINK[1], L: PINK[4], h: PINK[3], p: PINK[3], s: PINK[2] },
+  );
 }
 
 // ── Floors (16×16 grayscale, seamless) ───────────────────────
@@ -202,6 +215,14 @@ const TALL_GRASS_TOP = {
 };
 
 /**
+ * Where the patch's ground starts on a side edge, per row (px from the outer
+ * edge): ragged, so the patch's side against the lawn is not a straight cut.
+ * Blades rooted closer to the edge than SIDE_CLEAR are left out.
+ */
+const SIDE_GROUND = [4, 3, 3, 4, 5, 4, 3, 2, 3, 4, 4, 3, 2, 2, 3, 4];
+const SIDE_CLEAR = 4;
+
+/**
  * Tall grass: pointed, shaded blades in two staggered courses, lit from the
  * top left, with a dark line only along the upper sides and tips (the bases
  * melt into the shade between blades). Variants move the blades sideways; the
@@ -212,25 +233,40 @@ const TALL_GRASS_TOP = {
  * character standing here (feet sit at about row 7); the blades of rows
  * 12-15 cover the next few pixels of whoever stands on the tile below.
  *
- * `top` draws a patch's top row instead: plain grass above short, ragged
- * blades, for a tile coloured like the grass around it. `level` maps the
- * blades' gray levels onto that colour (see tallGrassTopFloor).
+ * The patch's edge tiles are drawn over plain grass, for a tile coloured like
+ * the grass around it: `top` has short, ragged blades under a strip of grass;
+ * `side` ('left' or 'right') leaves out the blades nearest that side and
+ * starts the ground a ragged few pixels in. `level` maps the blades' gray
+ * levels onto the grass's colour (see tallGrassEdgeFloor).
  */
-function drawTallGrass(blades, { top = false, level = (v) => v } = {}) {
+function drawTallGrass(blades, { top = false, side = null, level = (v) => v } = {}) {
   const shade = (v) => gray(Math.max(0, Math.min(255, Math.round(level(v)))));
-  const c = top ? grassFloor() : new Canvas(16, 16).rect(0, 0, 16, 16, shade(100));
+  const edge = top || side !== null;
+  const c = edge ? grassFloor() : new Canvas(16, 16).rect(0, 0, 16, 16, shade(100));
+  /** Distance of x from the side edge (Infinity without one). */
+  const fromSide = (x) => (side === 'left' ? x : side === 'right' ? 15 - x : Infinity);
   const blade = new Set();
+  const ground = new Set();
   const put = (x, y, v) => {
     if (x < 0 || x > 15 || y < 0 || y > 15) return;
     c.set(x, y, shade(v));
     blade.add(`${x},${y}`);
   };
-  // A top row's ground between its short blades: the dark base, from just
-  // under their tips down.
+  // An edge tile's ground: from just under a top row's blade tips down, and
+  // on a side tile only inward of the ragged line.
   const fillTop = top ? Math.max(...blades.upper.map(([, ty]) => ty)) + 2 : 0;
-  if (top) c.rect(0, fillTop, 16, 16 - fillTop, shade(100));
+  if (edge) {
+    for (let y = fillTop; y < 16; y++) {
+      for (let x = 0; x < 16; x++) {
+        if (fromSide(x) < SIDE_GROUND[y]) continue;
+        c.set(x, y, shade(100));
+        ground.add(`${x},${y}`);
+      }
+    }
+  }
   const course = (list, baseY) => {
     for (const [cx, ty] of list) {
+      if (fromSide(cx) < SIDE_CLEAR) continue;
       // a dark tip cap and dark upper sides
       put(cx, ty - 1, 64);
       for (let y = ty; y <= baseY; y++) {
@@ -250,11 +286,11 @@ function drawTallGrass(blades, { top = false, level = (v) => v } = {}) {
   };
   course(blades.upper, 8);
   course(blades.lower, 15);
-  const ownFrom = top ? fillTop : 2;
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
-      const own = y >= ownFrom && y < FOREGROUND_BELOW_ROW;
-      if (!own && !blade.has(`${x},${y}`)) continue;
+      const key = `${x},${y}`;
+      const own = y >= 2 && y < FOREGROUND_BELOW_ROW && (!edge || ground.has(key));
+      if (!own && !blade.has(key)) continue;
       const px = c.get(x, y);
       c.set(x, y, [px[0], px[1], px[2], FOREGROUND_ALPHA]);
     }
@@ -267,20 +303,26 @@ export function tallGrassFloor(variant = 0) {
 }
 
 /**
- * A tall-grass patch's top row, for a tile coloured like the grass (so the
- * grass above its blades matches the tiles around it exactly). Its blades
- * must still look like the patch's, which is coloured `tall`: each gray level
- * v is re-expressed so that, colorized with `grass`, it lands on the
- * lightness v gets under `tall` (the office's colorize: contrast c stretches
- * around the middle, brightness b shifts by b/200).
+ * A tall-grass patch's edge tile (its `top` row, a `side` column, or a top
+ * corner), for a tile coloured like the grass, so the grass beside its blades
+ * matches the tiles around it exactly. Its blades must still look like the
+ * patch's, which is coloured `tall`: each gray level v is re-expressed so
+ * that, colorized with `grass`, it lands on the lightness v gets under `tall`
+ * (the office's colorize: contrast c stretches around the middle, brightness
+ * b shifts by b/200). Only lightness can be matched that way, so the two
+ * colours must share their hue and saturation.
  */
-export function tallGrassTopFloor(tall, grass) {
+export function tallGrassEdgeFloor(tall, grass, { top = false, side = null } = {}) {
+  if (tall.h !== grass.h || tall.s !== grass.s) {
+    throw new Error('tall grass and grass must share hue and saturation');
+  }
   const lightness = (v, color) => 0.5 + (v / 255 - 0.5) * ((100 + color.c) / 100) + color.b / 200;
   const level = (v) => {
     const want = lightness(v, tall);
     return 255 * (0.5 + (want - grass.b / 200 - 0.5) / ((100 + grass.c) / 100));
   };
-  return drawTallGrass(TALL_GRASS_TOP, { top: true, level });
+  const blades = top ? TALL_GRASS_TOP : TALL_GRASS_VARIANTS[side === 'left' ? 2 : 0];
+  return drawTallGrass(blades, { top, side, level });
 }
 
 /** Grass under a tall-grass patch's bottom row: the patch's soft shadow along
@@ -971,87 +1013,112 @@ export function centerTileFloor() {
   return c;
 }
 
-/** Rows of the bed (32×32) a resting sleeper's lower body hides under: the
- *  blanket and the turned-down sheet from here down are foreground. */
-const BED_TUCK_Y = 17;
+/**
+ * The bed's shape, bed-local px (the pillow at the left; mirrored for the
+ * right). Mirrors BED_* in webview-ui/src/constants.ts, which places the
+ * sleeper: it lies on the mattress between the boards, its head on the
+ * pillow and its lowest pixel on BED_SLEEPER_BASE_Y.
+ */
+const BED = {
+  w: 48,
+  board: 5, // headboard and footboard thickness: the mattress runs between them
+  pillow: [6, 14], // the pillow's x span
+  fold: [15, 17], // the sheet turned down over the blanket
+  top: 12, // the mattress's top surface: rows 12..23
+  front: 24, // its front side: rows 24..25, then the rail 26..27
+};
+/** Rows of the bed from which the blanket is foreground (drawn again over the
+ *  sleeper, which lies tucked in): its fold arches up to one row higher in
+ *  the middle. */
+const BED_TUCK_Y = 20;
 
 /**
- * A Pokémon Center bed, 2×2 tiles, all walkable: a fainted Pokémon lies on
- * it, centred, with its head on the pillow. A tall headboard at the pillow
- * end and a lower footboard, a mattress seen from above with its front side,
- * a rail and legs; a white pillow, the sheet turned down over a pink quilted
- * blanket that drapes over the front. The lower part of the blanket is
- * foreground (alpha 254): drawn again over the sleeper, so it lies tucked in.
- * Lit from the top left whichever end the pillow is at; `pillow` is that end.
+ * A Pokémon Center bed, 3×2 tiles, all walkable: a fainted Pokémon lies on
+ * it, its head on the pillow. A tall headboard at the pillow end and a lower
+ * footboard, a mattress seen from above with its front side, a rail and legs;
+ * a white pillow, the sheet turned down over a pink quilted blanket that
+ * drapes over the front. The blanket from BED_TUCK_Y down is foreground
+ * (alpha 254), under a lit fold that arches over the sleeper. Lit from the
+ * top left whichever end the pillow is at; `pillow` is that end.
  */
 export function centerBed(pillow = 'left') {
   const right = pillow === 'right';
+  const W = BED.w;
+  const last = W - 1;
   /** Mirror an x range for the right-hand pillow: [x0, x1] → its left..right. */
-  const span = (x0, x1) => (right ? [31 - x1, 31 - x0] : [x0, x1]);
-  const b = new Canvas(32, 32);
+  const span = (x0, x1) => (right ? [last - x1, last - x0] : [x0, x1]);
+  const b = new Canvas(W, 32);
   const box = (x0, y0, x1, y1, fill, { light, shade, top } = {}) => {
     const [l, r] = span(x0, x1);
     b.rect(l, y0, r - l + 1, y1 - y0 + 1, fill);
     if (top) b.hline(l, r, y0, top);
+    // light and shade stay on the lit (left) and shaded (right) sides
     if (light) b.vline(l, y0 + (top ? 1 : 0), y1, light);
     if (shade) b.vline(r, y0 + (top ? 1 : 0), y1, shade);
   };
+  const dot = (x, y, color) => b.set(span(x, x)[0], y, color);
+  const footIn = last - BED.board; // the mattress's last column
   // the rail along the front and the legs under it
-  box(5, 26, 26, 27, WOOD[2], { top: WOOD[3] });
-  for (const x of [6, 24]) box(x, 28, x + 1, 30, WOOD[1], { light: WOOD[2] });
+  box(BED.board, 26, footIn, 27, WOOD[2], { top: WOOD[3] });
+  for (const x of [7, footIn - 3]) box(x, 28, x + 1, 30, WOOD[1], { light: WOOD[2] });
   // headboard (tall, rounded top) and footboard (lower), down to the floor
-  box(0, 5, 4, 30, WOOD[3], { light: WOOD[4], shade: WOOD[1], top: WOOD[4] });
-  box(1, 4, 3, 4, WOOD[4]);
-  box(2, 8, 2, 24, WOOD[2]);
-  box(27, 13, 31, 30, WOOD[3], { light: WOOD[4], shade: WOOD[1], top: WOOD[4] });
-  box(29, 16, 29, 25, WOOD[2]);
+  box(0, 4, BED.board - 1, 30, WOOD[3], { light: WOOD[4], shade: WOOD[1], top: WOOD[4] });
+  box(1, 3, BED.board - 2, 3, WOOD[4]);
+  box(2, 7, 2, 24, WOOD[2]);
+  box(footIn + 1, 13, last, 30, WOOD[3], { light: WOOD[4], shade: WOOD[1], top: WOOD[4] });
+  box(footIn + 3, 16, footIn + 3, 25, WOOD[2]);
   // the mattress: its top seen from above, its front side below
-  box(5, 12, 26, 23, CREAM[3]);
-  box(5, 24, 26, 25, CREAM[1], { top: CREAM[2] });
+  box(BED.board, BED.top, footIn, BED.front - 1, CREAM[3]);
+  box(BED.board, BED.front, footIn, BED.front + 1, CREAM[1], { top: CREAM[2] });
   // the pillow: soft corners, shade along its lower and far edges, a dent
-  box(6, 13, 12, 21, WHITE, { shade: CREAM[2] });
-  box(6, 21, 12, 21, CREAM[2]);
-  box(8, 16, 10, 17, CREAM[3]);
+  const [p0, p1] = BED.pillow;
+  box(p0, 13, p1, 21, WHITE, { shade: CREAM[2] });
+  box(p0, 21, p1, 21, CREAM[2]);
+  box(p0 + 3, 16, p1 - 3, 17, CREAM[3]);
   for (const [x, y] of [
-    [6, 13],
-    [12, 13],
-    [6, 21],
-    [12, 21],
+    [p0, 13],
+    [p1, 13],
+    [p0, 21],
+    [p1, 21],
   ]) {
-    const [px] = span(x, x);
-    b.set(px, y, CREAM[3]);
+    dot(x, y, CREAM[3]);
   }
   // the sheet turned down over the blanket's top edge
-  box(13, 12, 15, 25, CREAM[3], { light: WHITE, shade: CREAM[1] });
+  const [f0, f1] = BED.fold;
+  box(f0, BED.top, f1, BED.front + 1, CREAM[3], { light: WHITE, shade: CREAM[1] });
   // the blanket: quilted top, a lit top edge, a darker drape over the front
-  box(16, 12, 26, 23, PINK[2], { top: PINK[3] });
-  for (const x of [20, 24]) box(x, 13, x, 22, PINK[1]);
-  box(16, 18, 26, 18, PINK[1]);
-  for (const [x, y] of [
-    [18, 15],
-    [22, 15],
-    [18, 21],
-    [22, 21],
-  ]) {
-    const [px] = span(x, x);
-    b.set(px, y, PINK[3]);
+  box(f1 + 1, BED.top, footIn, BED.front - 1, PINK[2], { top: PINK[3] });
+  for (let x = f1 + 7; x < footIn; x += 6) box(x, BED.top + 1, x, BED.front - 2, PINK[1]);
+  box(f1 + 1, 16, footIn, 16, PINK[1]);
+  for (let x = f1 + 4; x < footIn; x += 6) {
+    dot(x, 14, PINK[3]);
+    dot(x, 19, PINK[3]);
   }
-  box(13, 24, 26, 27, PINK[1], { top: PINK[2] });
-  for (const x of [15, 19, 23]) {
-    const [px] = span(x, x);
-    b.set(px, 27, PINK[0]);
-  }
+  box(f0, BED.front, footIn, 27, PINK[1], { top: PINK[2] });
+  for (let x = f0 + 2; x < footIn; x += 4) dot(x, 27, PINK[0]);
   b.outline(INK);
-  // The tuck: the blanket and the sheet's fold from BED_TUCK_Y down.
-  const [t0, t1] = span(13, 26);
-  for (let y = BED_TUCK_Y; y <= 27; y++) {
-    for (let x = t0; x <= t1; x++) {
-      const px = b.get(x, y);
-      if (px) b.set(x, y, fg(px));
+  // The tuck: the blanket and the sheet's fold from the arched fold line
+  // down, foreground. The fold's top row is lit (fabric catching the light),
+  // the row under it a step darker, so it reads as an edge over the sleeper.
+  const tuckTop = (x) => {
+    const t = (x - f0) / (footIn - f0); // 0..1 along the blanket
+    return BED_TUCK_Y - Math.round(Math.sin(Math.PI * t) * 1.4);
+  };
+  for (let x = f0; x <= footIn; x++) {
+    const [px] = span(x, x);
+    const y0 = tuckTop(x);
+    const onBlanket = x > f1;
+    if (onBlanket && y0 < BED.front) {
+      b.set(px, y0, PINK[3]);
+      b.set(px, y0 + 1, PINK[2]);
+    }
+    for (let y = y0; y <= 27; y++) {
+      const c = b.get(px, y);
+      if (c) b.set(px, y, fg(c));
     }
   }
-  const c = new Canvas(32, 32);
-  c.rect(1, 31, 30, 1, SHADOW_SOFT);
+  const c = new Canvas(W, 32);
+  c.rect(1, 31, W - 2, 1, SHADOW_SOFT);
   c.blit(b, 0, 0);
   return c;
 }
@@ -1121,13 +1188,14 @@ export function counter() {
   return c;
 }
 
-/** The healing machine, 2×2 tiles, stands on the counter. */
+/** The healing machine, 2×2 tiles, stands on the counter: three capsule
+ *  bays, a status strip, and the Center's heart on a plate on top. */
 export function healingMachine() {
   const c = new Canvas(32, 32);
   const body = new Canvas(32, 32);
   // housing
-  body.rect(3, 6, 26, 15, CREAM[2]);
-  body.hline(3, 28, 6, CREAM[3]);
+  body.rect(3, 7, 26, 14, CREAM[2]);
+  body.hline(3, 28, 7, CREAM[3]);
   body.rect(3, 18, 26, 3, CREAM[1]);
   // three capsule bays
   for (const [x, glass] of [
@@ -1135,18 +1203,18 @@ export function healingMachine() {
     [16, TEAL],
     [23, RED],
   ]) {
-    body.disc(x, 12, 3.2, METAL[2]);
-    body.disc(x, 12, 2.3, glass[3]);
-    body.set(x - 1, 11, WHITE);
+    body.disc(x, 14, 3.2, METAL[2]);
+    body.disc(x, 14, 2.3, glass[3]);
+    body.set(x - 1, 13, WHITE);
   }
   // status strip
   body.rect(6, 17, 20, 2, TEAL[0]);
   body.hline(8, 15, 17, TEAL[4]);
-  // the Center's heart emblem on a little plate on top
-  body.rect(11, 0, 10, 7, CREAM[3]);
-  body.hline(11, 20, 6, CREAM[1]);
+  // the plate on top, tall enough to keep the heart's tip inside it
+  body.rect(11, 1, 11, 10, CREAM[3]);
+  body.hline(11, 21, 10, CREAM[1]);
   body.outline(INK);
-  heartEmblem(body, 13, 0, 'small');
+  heartEmblem(body, 12, 2, 'small');
   c.blit(body, 0, 0);
   return c;
 }
@@ -1196,11 +1264,11 @@ export function centerPoster() {
   c.hline(5, 26, 11, PINK[3]);
   heartEmblem(c, 6, 13, 'small');
   for (const [y, len] of [
-    [15, 10],
-    [17, 8],
-    [19, 11],
+    [15, 8],
+    [17, 6],
+    [19, 9],
   ]) {
-    c.hline(15, 14 + len, y, CREAM[0]);
+    c.hline(17, 16 + len, y, CREAM[0]);
   }
   c.outline(INK);
   return c;

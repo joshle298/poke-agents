@@ -15,7 +15,8 @@ import { afterEach, beforeAll, beforeEach, test, vi } from 'vitest';
 import type { AgentLink } from '../../core/src/messages.js';
 import {
   AREA_DEFAULT_COLORS,
-  BED_SLEEPER_LIFT_PX,
+  BED_BOARD_PX,
+  BED_PILLOW_INSET_PX,
   POKEMON_SLEEP_AFTER_SEC,
   TOWN_MEADOW_DELAY_SEC,
   TOWN_SPAWN_GRACE_SEC,
@@ -24,7 +25,14 @@ import {
 } from '../src/constants.js';
 import { OfficeState } from '../src/office/engine/officeState.js';
 import { choosePokemonAnim } from '../src/office/engine/pokemonAnim.js';
-import { bodyTopY, pokemonGroundY, pokemonHitBox } from '../src/office/engine/pokemonCharacter.js';
+import {
+  bedLieOf,
+  bodyTopY,
+  drawnBody,
+  linkEnd,
+  pokemonDrawPlace,
+  pokemonGroundY,
+} from '../src/office/engine/pokemonCharacter.js';
 import { setPokemonThemeEnabled } from '../src/office/engine/pokemonTheme.js';
 import type { RestFit, TownBed } from '../src/office/engine/townBehavior.js';
 import {
@@ -364,16 +372,18 @@ test('a session that is working as it is created stays at its desk', () => {
   assert.equal(at(ch), tileKey(seat.seatCol, seat.seatRow), 'no jump once settled');
 });
 
-test('the Center has beds; a fainted agent lies in one, centred, its head on the pillow', () => {
+test('the Center has beds; a fainted agent lies in one, its head on the pillow', () => {
   const os = new OfficeState(town);
   const world = os.town!;
   assert.equal(world.beds.length, 4, 'four beds');
   for (const bed of world.beds) {
     // The pillow is at the wall end; the sleeper stands at the other end.
     const clear = (col: number) => world.centerClearance.get(tileKey(col, bed.rest.row))!;
-    const other = bed.pillow === 'left' ? bed.rest.col - 1 : bed.rest.col + 1;
-    assert.equal(clear(other), 0, 'the pillow end is against a side wall');
-    assert.equal(clear(bed.rest.col), 1, 'the sleeper stands one tile in');
+    const pillowCol = bed.pillow === 'left' ? bed.rest.col - 2 : bed.rest.col + 2;
+    assert.equal(clear(pillowCol), 0, 'the pillow end is against a side wall');
+    assert.equal(clear(bed.rest.col), 2, 'the sleeper stands at the foot, two tiles in');
+    assert.deepEqual([bed.w, bed.h], [48, 32], 'three tiles long, two deep');
+    assert.equal(bed.midX, bed.x + bed.w / 2);
     assert.ok(bed.blanket, 'a blanket to tuck it in');
   }
   const tiers = centerRestTiers(world);
@@ -385,8 +395,7 @@ test('the Center has beds; a fainted agent lies in one, centred, its head on the
   const bed = world.beds.find((b) => tileKey(b.rest.col, b.rest.row) === at(ch));
   assert.ok(bed, `rests on a bed (at ${at(ch)})`);
   assert.equal(ch.bedRest, bed, 'lies in it');
-  assert.equal(ch.x, bed.midX, 'centred on the bed, not on its tile');
-  assert.equal(bed.midX, (bed.rest.col + (bed.pillow === 'left' ? 0 : 1)) * 16);
+  assert.equal(ch.x, bed.midX, 'on the bed, not on its tile');
   assert.equal(ch.dir, bed.pillow === 'left' ? Direction.LEFT : Direction.RIGHT, 'head to pillow');
   // Revived, it gets out of bed and walks back to work from its tile.
   os.setAgentActive(1, true);
@@ -532,8 +541,67 @@ test("a sleeper's FNT chip hangs just over its lying pose, in the row it lies in
   const ground = pokemonGroundY(ch);
   assert.equal(bodyTopY(ch), ground - 6, 'the top of the lying pose');
   assert.notEqual(bodyTopY(ch), ground - 12, 'not the standing head a row above');
-  const box = pokemonHitBox(ch)!;
+  const box = drawnBody(ch)!;
   assert.equal(box.right - box.left, 40, 'the click box is the lying pose too');
+  // A wide pose lies as drawn. 40 px is longer than the mattress between the
+  // boards (38 px): it lies centred, over both boards alike.
+  const bed = ch.bedRest;
+  assert.equal(pokemonDrawPlace(ch).turn, 0, 'not turned');
+  assert.equal(bed.w - 2 * BED_BOARD_PX, 38);
+  assert.equal(box.left - bed.x, bed.x + bed.w - box.right, 'centred');
+  assert.ok(box.top >= bed.y && box.bottom <= bed.y + bed.h, 'within the bed, top to bottom');
+});
+
+test('a Pokémon whose faint is an upright frame lies on its side in bed, head to the pillow', async () => {
+  setPokemonThemeEnabled(true);
+  // No Faint: the faint falls back to Sleep, held on its last frame: an
+  // upright coil 16 wide and 28 tall (32×40 frames, ground point 24 px down:
+  // it rises 22 px and drops 6).
+  const anims = Object.fromEntries(Object.entries(DEFAULT_ANIMS).filter(([n]) => n !== 'Faint'));
+  const coil = speciesMessage(148, { anims });
+  installFakeLoader([coil], { boxes: { Sleep: { x0: 32 + 8, y0: 2, x1: 32 + 23, y1: 29 } } });
+  setPokemonSpecies(coil);
+  await flushDecodes();
+  const os = new OfficeState(town);
+  const ch = seatedAgent(os, 1);
+  os.setAgentIdentity(1, { species: 148 });
+  os.setAgentActive(1, false);
+  os.setAgentError(1);
+  run(os, 30);
+  const bed = ch.bedRest;
+  assert.ok(bed, `in bed (at ${at(ch)})`);
+  ch.pmdAnim = null;
+  const lie = bedLieOf(ch)!;
+  assert.equal(lie.turn, bed.pillow === 'left' ? -1 : 1, 'turned, its top to the pillow');
+  assert.equal(pokemonDrawPlace(ch).turn, lie.turn, 'drawn turned');
+  const box = drawnBody(ch)!;
+  assert.equal(box.right - box.left, 28, 'lying, it is as long as it stood tall');
+  assert.equal(box.bottom - box.top, 16, 'and as deep as it was wide');
+  assert.ok(box.left >= bed.x + BED_BOARD_PX, 'inside the head board');
+  assert.ok(box.right <= bed.x + bed.w - BED_BOARD_PX, 'inside the foot board');
+  assert.ok(box.top >= bed.y, 'not over the head board');
+  const head = bed.pillow === 'left' ? box.left : box.right;
+  const pillowEdge =
+    bed.pillow === 'left' ? bed.x + BED_PILLOW_INSET_PX : bed.x + bed.w - BED_PILLOW_INSET_PX;
+  assert.equal(head, pillowEdge, 'its head on the pillow');
+});
+
+test('a link ends on a seated Pokémon’s body, not on the chair under it', async () => {
+  setPokemonThemeEnabled(true);
+  installFakeLoader([speciesMessage(25)]);
+  setPokemonSpecies(speciesMessage(25));
+  await flushDecodes();
+  const os = new OfficeState(town);
+  const ch = seatedAgent(os, 1);
+  os.setAgentIdentity(1, { species: 25 });
+  assert.equal(ch.state, CharacterState.TYPE, 'seated');
+  const end = linkEnd(ch);
+  assert.equal(end.x, ch.x);
+  assert.ok(end.y < ch.y, `on the body (${end.y}), above the chair's centre (${ch.y})`);
+  assert.ok(end.y > bodyTopY(ch), 'below the top of its head');
+  // Theme off, a seated human sits over its own tile: the link ends there.
+  setPokemonThemeEnabled(false);
+  assert.deepEqual(linkEnd(ch), { x: ch.x, y: ch.y });
 });
 
 test("an asleep Pokémon's bubble sits on its sleeping pose, not its standing head", async () => {
@@ -552,16 +620,26 @@ test("an asleep Pokémon's bubble sits on its sleeping pose, not its standing he
   assert.equal(bodyTopY(ch), pokemonGroundY(ch) - 6);
 });
 
-test('theme off, a fainted human lies in bed too', () => {
+test('theme off, a fainted human lies in bed too, on the mattress, head on the pillow', () => {
   const os = new OfficeState(town);
   const ch = seatedAgent(os, 1);
   os.setAgentActive(1, false);
   os.setAgentError(1);
   run(os, 30);
-  assert.ok(ch.bedRest, `in bed (at ${at(ch)})`);
-  assert.equal(ch.x, ch.bedRest.midX);
-  // Turned on its side, its top is half a tile over the mattress's middle.
-  assert.equal(bodyTopY(ch), ch.y - BED_SLEEPER_LIFT_PX - 8);
+  const bed = ch.bedRest;
+  assert.ok(bed, `in bed (at ${at(ch)})`);
+  assert.equal(ch.x, bed.midX);
+  // Turned on its side: longer than deep, between the boards, its head on the
+  // pillow and its feet clear of the foot board.
+  const lie = bedLieOf(ch)!;
+  assert.equal(lie.turn, bed.pillow === 'left' ? -1 : 1);
+  const box = drawnBody(ch)!;
+  assert.ok(box.right - box.left > box.bottom - box.top, 'lying down');
+  assert.ok(box.left >= bed.x + BED_BOARD_PX && box.right <= bed.x + bed.w - BED_BOARD_PX);
+  assert.ok(box.top >= bed.y, 'its hair under the top of the head board');
+  if (bed.pillow === 'left') assert.equal(box.left, bed.x + BED_PILLOW_INSET_PX);
+  else assert.equal(box.right, bed.x + bed.w - BED_PILLOW_INSET_PX);
+  assert.equal(bodyTopY(ch), box.top, 'its overlays hang over the lying body');
 });
 
 test('town walks keep out from under the forest: into the garden by its opening', () => {

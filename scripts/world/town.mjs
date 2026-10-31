@@ -30,6 +30,10 @@ export const FLOOR = {
   tallGrass: [12, 16, 17], // floor_11.png, floor_15.png, floor_16.png (variants)
   tallGrassTop: 18, // floor_17.png: a patch's top row (shorter, ragged blades)
   grassShadowed: 19, // floor_18.png: grass with the shadow of the patch above
+  tallGrassLeft: 20, // floor_19.png: a patch's left side (a ragged edge)
+  tallGrassRight: 21, // floor_20.png: its right side
+  tallGrassTopLeft: 22, // floor_21.png: its top-left corner
+  tallGrassTopRight: 23, // floor_22.png: its top-right corner
   dirt: 13, // floor_12.png
   cobble: 14, // floor_13.png
   centerTiles: 15, // floor_14.png: large soft tiles
@@ -40,7 +44,9 @@ export const CARPET = { rug: 0, path: 3 };
 
 export const COLOR = {
   grass: { h: 98, s: 50, b: 4, c: 0 },
-  tallGrass: { h: 112, s: 52, b: -2, c: 12 },
+  // The same hue and saturation as the grass: a patch's edge tiles are
+  // coloured like the grass and match the patch by lightness alone.
+  tallGrass: { h: 98, s: 50, b: -10, c: 14 },
   cobble: { h: 32, s: 14, b: 8, c: -10 },
   labFloor: { h: 200, s: 18, b: 26, c: -58 },
   labWall: { h: 212, s: 24, b: -26, c: -50 },
@@ -217,8 +223,8 @@ export function buildTown() {
   // Beds along the side walls, pillows to the wall: fainted Pokémon rest here.
   place('CENTER_BED_FRONT', 26, 7);
   place('CENTER_BED_FRONT', 26, 10);
-  place('CENTER_BED_SIDE', 32, 7);
-  place('CENTER_BED_SIDE', 32, 10);
+  place('CENTER_BED_SIDE', 31, 7);
+  place('CENTER_BED_SIDE', 31, 10);
   place('DOORMAT', 29, 13);
   for (let r = 7; r <= 12; r++) {
     for (const c of [29, 30]) {
@@ -252,22 +258,28 @@ export function buildTown() {
   tallGrass(4, 21, 7, 22);
   tallGrass(14, 18, 19, 22);
   tallGrass(13, 19, 13, 21);
-  // Patch edges: shorter, ragged blades along each patch's top row, and the
-  // patch's shadow on the grass under its bottom row.
+  // Patch edges, coloured like the grass around them: shorter, ragged blades
+  // along each patch's top row, a ragged side where it meets the lawn on the
+  // left or right, and the patch's shadow on the grass under its bottom row.
   const isTall = (c, r) => FLOOR.tallGrass.includes(tiles[at(c, r)]);
   const isGrass = (c, r) =>
     tiles[at(c, r)] === FLOOR.grass || tiles[at(c, r)] === FLOOR.grassSpeckled;
-  const tops = [];
+  const edges = [];
   const shadows = [];
-  for (let r = 1; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (isTall(c, r) && !isTall(c, r - 1)) tops.push(at(c, r));
+  for (let r = 1; r < rows - 1; r++) {
+    for (let c = 1; c < cols - 1; c++) {
+      if (isTall(c, r)) {
+        const top = !isTall(c, r - 1);
+        const side = !isTall(c - 1, r) ? 'Left' : !isTall(c + 1, r) ? 'Right' : '';
+        const key = `tallGrass${top ? 'Top' : ''}${side}`;
+        if (key !== 'tallGrass') edges.push([at(c, r), FLOOR[key]]);
+      }
       if (isGrass(c, r) && isTall(c, r - 1) && carpetTiles[at(c, r)] === null)
         shadows.push(at(c, r));
     }
   }
-  for (const i of tops) {
-    tiles[i] = FLOOR.tallGrassTop;
+  for (const [i, tile] of edges) {
+    tiles[i] = tile;
     tileColors[i] = { ...COLOR.grass };
   }
   for (const i of shadows) tiles[i] = FLOOR.grassShadowed;

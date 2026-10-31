@@ -32,6 +32,7 @@ import {
   POKEMON_ALPHA_THRESHOLD,
   POKEMON_ANIM_FALLBACKS,
   POKEMON_DECODE_ORDER,
+  POKEMON_FEET_BELOW_GROUND_PX,
   POKEMON_GEOMETRY_ANIMS,
   POKEMON_SHEET_RELEASE_AFTER_MS,
 } from '../../constants.js';
@@ -436,10 +437,44 @@ export function isPokemonReady(dex: number, shiny: boolean): boolean {
   return getPokemonGeometry(dex, shiny) !== null;
 }
 
-/** How far a pose reaches from its ground point, in its own pixels. */
+/** How far a pose reaches from its ground point, in its own pixels: its
+ *  widest side (`halfW`), each side, up (`rise`) and down (`drop`). */
 export interface PokemonRestPose {
   halfW: number;
   rise: number;
+  left: number;
+  right: number;
+  drop: number;
+}
+
+/** A frame's opaque box from its ground point (see computePokemonGeometry). */
+function measurePose(
+  rgba: ArrayLike<number>,
+  frameWidth: number,
+  frameHeight: number,
+): PokemonRestPose {
+  const g = computePokemonGeometry(rgba, frameWidth, frameHeight);
+  let minX = frameWidth;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < frameHeight; y++) {
+    for (let x = 0; x < frameWidth; x++) {
+      if ((rgba[(y * frameWidth + x) * 4 + 3] ?? 0) < POKEMON_ALPHA_THRESHOLD) continue;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if (maxX < 0) {
+    return { halfW: g.bodyHalfW, rise: g.headRise, left: g.anchorX, right: g.anchorX, drop: 0 };
+  }
+  return {
+    halfW: g.bodyHalfW,
+    rise: g.headRise,
+    left: Math.max(g.anchorX - minX, 0),
+    right: Math.max(maxX + 1 - g.anchorX, 0),
+    drop: maxY + 1 - g.anchorY,
+  };
 }
 
 /** Sheet rows a lying Pokémon is drawn in: down, and the two sides a bed's
@@ -477,8 +512,7 @@ export function getPokemonPose(
     meta.frameHeight,
   );
   if (!rgba) return null;
-  const g = computePokemonGeometry(rgba, meta.frameWidth, meta.frameHeight);
-  const pose = { halfW: g.bodyHalfW, rise: g.headRise };
+  const pose = measurePose(rgba, meta.frameWidth, meta.frameHeight);
   entry.poses.set(key, pose);
   return pose;
 }
@@ -497,16 +531,27 @@ export function getPokemonRestPose(
 ): PokemonRestPose | null {
   const entry = entries.get(pokemonSpeciesKey(dex, shiny));
   if (!entry?.geometry) return null;
-  const standing = { halfW: entry.geometry.bodyHalfW, rise: entry.geometry.headRise };
+  const g = entry.geometry;
+  const standing = {
+    halfW: g.bodyHalfW,
+    rise: g.headRise,
+    left: g.bodyHalfW,
+    right: g.bodyHalfW,
+    drop: POKEMON_FEET_BELOW_GROUND_PX,
+  };
   const name = POKEMON_ANIM_FALLBACKS.faint.find((n) => entry.sheets.has(n));
   const meta = name ? entry.info.anims[name] : undefined;
   if (!name || !meta) return standing;
   const held = (r: number) => getPokemonPose(dex, shiny, name, r, meta.frames - 1) ?? standing;
   if (row !== undefined) return held(row);
   const poses = REST_ROWS.map(held);
+  const most = (k: keyof PokemonRestPose) => Math.max(...poses.map((p) => p[k]));
   return {
-    halfW: Math.max(...poses.map((p) => p.halfW)),
-    rise: Math.max(...poses.map((p) => p.rise)),
+    halfW: most('halfW'),
+    rise: most('rise'),
+    left: most('left'),
+    right: most('right'),
+    drop: most('drop'),
   };
 }
 
