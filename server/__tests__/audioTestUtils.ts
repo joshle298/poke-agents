@@ -23,6 +23,11 @@ export function syntheticMp3(): Buffer {
   return Buffer.concat([Buffer.from('ID3', 'latin1'), Buffer.from([0x04, 0, 0]), Buffer.alloc(32)]);
 }
 
+/** MPEG audio without a tag: the frame sync bytes (as Pikachu's cry starts). */
+export function syntheticMp3Frame(): Buffer {
+  return Buffer.concat([Buffer.from([0xff, 0xfb, 0x94, 0x64]), Buffer.alloc(28, 0x55)]);
+}
+
 export function syntheticWav(): Buffer {
   const header = Buffer.alloc(44);
   header.write('RIFF', 0, 'latin1');

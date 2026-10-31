@@ -115,13 +115,16 @@ describe('needs you', () => {
     expect(send(status(1, 'error', { silent: true }))).toEqual([]);
   });
 
-  it('upstream agents keep the chime: no status sounds here', () => {
+  it('upstream agents keep the chime: nothing sounds for them here', () => {
     liveOffice();
-    send(created(7, { providerId: undefined }));
-    now += SOUND_LEVEL_SETTLE_MS;
+    expect(send(created(7, { providerId: undefined }))).toEqual([]);
+    now += SOUND_LEVEL_SETTLE_MS + 1;
+    send(details(7, { level: 5, messageCount: 100 }));
     expect(send(status(7, 'waiting', { awaitingInput: true }))).toEqual([]);
     expect(send({ type: 'agentToolPermission', id: 7 })).toEqual([]);
     expect(send(status(7, 'error'))).toEqual([]);
+    expect(send(details(7, { level: 6 }))).toEqual([]);
+    expect(send({ type: 'agentClosed', id: 7 })).toEqual([]);
   });
 });
 

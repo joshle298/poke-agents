@@ -1,7 +1,8 @@
 /**
  * Same-origin sound files for the standalone office:
  *
- *   GET /api/pokemon/cry/:dex4    the species' cry (audio/ogg), cached on first request
+ *   GET /api/pokemon/cry/:dex4    the species' cry (audio/ogg, or audio/mpeg for the few MP3
+ *                                 ones), cached on first request
  *   GET /api/sounds               the sound pack overrides present: { overrides: [...] }
  *   GET /api/sounds/:event        one override (audio/ogg, audio/mpeg or audio/wav)
  *
@@ -19,6 +20,7 @@ import type { AgentStateStore } from '../agentStateStore.js';
 import { parseDex4 } from '../pokemon/pmdCache.js';
 import { pokemonDeliveryEnabled } from '../pokemon/pokemonAssets.js';
 import { normalizeHostname } from '../wsAuth.js';
+import { AUDIO_CONTENT_TYPES, AUDIO_SIGNATURE_BYTES, sniffAudioFormat } from './audioSignature.js';
 import {
   CRY_ROUTE_CACHE_CONTROL,
   CRY_ROUTE_PREFIX,
@@ -72,12 +74,28 @@ async function serveCry(
   if (dex === null || !isCryAllowed(dex, options.store)) return reply.code(404).send();
 
   const abs = await (options.cryCache ?? getCryCache()).ensureCry(dex);
-  if (!abs) return reply.code(404).send();
+  const format = abs ? sniffAudioFormat(await readHead(abs)) : null;
+  if (!abs || (format !== 'ogg' && format !== 'mp3')) return reply.code(404).send();
   return reply
     .header('cache-control', CRY_ROUTE_CACHE_CONTROL)
     .header('x-content-type-options', 'nosniff')
-    .type('audio/ogg')
+    .type(AUDIO_CONTENT_TYPES[format])
     .send(fs.createReadStream(abs));
+}
+
+/** The file's first bytes (empty when unreadable). */
+async function readHead(abs: string): Promise<Buffer> {
+  let handle: fs.promises.FileHandle | null = null;
+  try {
+    handle = await fs.promises.open(abs, 'r');
+    const head = Buffer.alloc(AUDIO_SIGNATURE_BYTES);
+    const { bytesRead } = await handle.read(head, 0, AUDIO_SIGNATURE_BYTES, 0);
+    return head.subarray(0, bytesRead);
+  } catch {
+    return Buffer.alloc(0);
+  } finally {
+    await handle?.close().catch(() => undefined);
+  }
 }
 
 async function serveSoundPackList(

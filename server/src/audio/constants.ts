@@ -25,8 +25,6 @@ export const CRY_FETCH_TIMEOUT_MS = 10_000;
 /** Cries are 5-30 KB; anything near this is not a cry. */
 export const CRY_MAX_BYTES = 1024 * 1024;
 export const CRY_FETCH_CONCURRENCY = 2;
-/** First bytes of every Ogg page. */
-export const OGG_SIGNATURE = 'OggS';
 
 // ── Routes ──────────────────────────────────────────────────────
 export const CRY_ROUTE_PREFIX = '/api/pokemon/cry';
@@ -53,8 +51,4 @@ export const SOUND_PACK_EVENTS = [
   'blip',
 ] as const;
 /** Formats in preference order when one event has several files. */
-export const SOUND_PACK_FORMATS = [
-  { ext: 'ogg', contentType: 'audio/ogg' },
-  { ext: 'mp3', contentType: 'audio/mpeg' },
-  { ext: 'wav', contentType: 'audio/wav' },
-] as const;
+export const SOUND_PACK_FORMATS = ['ogg', 'mp3', 'wav'] as const;

@@ -10,8 +10,9 @@
  *
  * The same rules as the sprite cache (pokemon/pmdCache.ts): paths are built
  * only from a validated dex, fetches are single-flight per dex, at most
- * CRY_FETCH_CONCURRENCY at once, time-limited, size-capped and checked (the
- * Ogg signature). Writes are atomic. A cry older than CRY_REVALIDATE_MS is
+ * CRY_FETCH_CONCURRENCY at once, time-limited, size-capped and checked (an
+ * Ogg or MP3 signature: a few cries, like Pikachu's, are MP3 under the same
+ * name; an error page never is). Writes are atomic. A cry older than CRY_REVALIDATE_MS is
  * revalidated with its ETag; a failure serves the stale copy and backs off
  * (doubling per consecutive failure); a 404 from every variant deletes the
  * cached copy (honours takedowns).
@@ -31,6 +32,7 @@ import {
   touch,
   writeAtomic,
 } from '../pokemon/pmdCache.js';
+import { type AudioFormat, sniffAudioFormat } from './audioSignature.js';
 import {
   CRY_CACHE_SUBDIR,
   CRY_FAILURE_BACKOFF_MAX_MS,
@@ -42,7 +44,6 @@ import {
   CRY_REVALIDATE_MS,
   CRY_UPSTREAM_BASE,
   CRY_VARIANTS,
-  OGG_SIGNATURE,
 } from './constants.js';
 
 const ETAG_SUFFIX = '.etag';
@@ -84,9 +85,11 @@ type Download =
   | { kind: 'missing' }
   | { kind: 'failed' };
 
-/** True when `bytes` start like an Ogg stream. */
-export function hasOggSignature(bytes: Buffer): boolean {
-  return bytes.length >= 4 && bytes.toString('latin1', 0, 4) === OGG_SIGNATURE;
+/** The cry formats the cache keeps; anything else (an HTML error page, a
+ *  truncated body) is refused. */
+export function cryFormat(bytes: Buffer): Extract<AudioFormat, 'ogg' | 'mp3'> | null {
+  const format = sniffAudioFormat(bytes);
+  return format === 'ogg' || format === 'mp3' ? format : null;
 }
 
 export function defaultCryCacheRoot(): string {
@@ -246,7 +249,7 @@ export class CryCache {
           return { kind: 'failed' };
         }
         const bytes = await readCapped(res, this.maxBytes);
-        if (!bytes || !hasOggSignature(bytes)) return { kind: 'failed' };
+        if (!bytes || cryFormat(bytes) === null) return { kind: 'failed' };
         const tag = res.headers.get('etag');
         return {
           kind: 'fresh',

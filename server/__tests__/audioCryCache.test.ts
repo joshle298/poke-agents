@@ -4,8 +4,15 @@ import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CRY_REVALIDATE_MS } from '../src/audio/constants.js';
-import { CryCache, hasOggSignature } from '../src/audio/cryCache.js';
-import { CRY_BASE, FakeCryUpstream, syntheticOgg } from './audioTestUtils.js';
+import { CryCache, cryFormat } from '../src/audio/cryCache.js';
+import {
+  CRY_BASE,
+  FakeCryUpstream,
+  syntheticMp3,
+  syntheticMp3Frame,
+  syntheticOgg,
+  syntheticWav,
+} from './audioTestUtils.js';
 
 const MINUTE_MS = 60 * 1000;
 
@@ -34,12 +41,15 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe('hasOggSignature', () => {
-  it('accepts the OggS capture pattern and nothing else', () => {
-    expect(hasOggSignature(syntheticOgg())).toBe(true);
-    expect(hasOggSignature(Buffer.from('<!DOCTYPE html>'))).toBe(false);
-    expect(hasOggSignature(Buffer.from('Ogg'))).toBe(false);
-    expect(hasOggSignature(Buffer.alloc(0))).toBe(false);
+describe('cryFormat', () => {
+  it('keeps Ogg and MP3 (some cries are MP3 under a .ogg name), nothing else', () => {
+    expect(cryFormat(syntheticOgg())).toBe('ogg');
+    expect(cryFormat(syntheticMp3())).toBe('mp3');
+    expect(cryFormat(syntheticMp3Frame())).toBe('mp3');
+    expect(cryFormat(syntheticWav())).toBeNull();
+    expect(cryFormat(Buffer.from('<!DOCTYPE html>'))).toBeNull();
+    expect(cryFormat(Buffer.from('Ogg'))).toBeNull();
+    expect(cryFormat(Buffer.alloc(0))).toBeNull();
   });
 });
 
@@ -58,6 +68,13 @@ describe('CryCache', () => {
 
     expect(await cache.ensureCry(25)).toBe(abs);
     expect(upstream.calls).toHaveLength(1);
+  });
+
+  it('keeps a cry upstream serves as MP3 under its .ogg name', async () => {
+    upstream.set('latest', 25, syntheticMp3Frame());
+    const abs = await makeCache().ensureCry(25);
+    expect(fs.readFileSync(abs!)).toEqual(syntheticMp3Frame());
+    expect(upstream.callsFor('legacy', 25)).toBe(0);
   });
 
   it('falls back to the legacy cry when latest has none', async () => {

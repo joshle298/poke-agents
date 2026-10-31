@@ -21,9 +21,9 @@
  * | the selected or a pinned session finished    | done        | soft two-note                  |
  * | you open its Pokédex                         | pokedex     | its cry (user)                 |
  *
- * Status sounds (needsYou, faint, revived, done) are for stream agents
- * (Conductor sessions) only: upstream agents keep the office's chime
- * (notificationSound.ts, chimePolicy.ts). Nothing sounds for a `silent`
+ * Every sound is for stream agents (Conductor sessions) only: upstream
+ * agents keep the office's chime (notificationSound.ts, chimePolicy.ts) and
+ * VS Code sounds as it always did. Nothing sounds for a `silent`
  * status, for SOUND_QUIET_AFTER_CONNECT_MS after the socket connects or the
  * server replays the office, or for the arrivals and level fills of the
  * initial load. With the Pokémon theme off only the alert sounds remain.
@@ -104,11 +104,6 @@ export class SoundDirector {
     this.startQuiet(now);
   }
 
-  /** The Pokémon theme as the server last reported it. */
-  get themeOn(): boolean {
-    return this.theme;
-  }
-
   /** The species an agent shows, if known. */
   speciesOf(agentId: number): number | undefined {
     return this.agents.get(agentId)?.species;
@@ -167,7 +162,9 @@ export class SoundDirector {
       case 'agentCreated':
         return this.onCreated(msg, now);
       case 'agentClosed': {
-        if (!this.agents.delete(msg.id) || this.isQuiet(now)) return [];
+        const mem = this.agents.get(msg.id);
+        this.agents.delete(msg.id);
+        if (!mem?.stream || this.isQuiet(now)) return [];
         return [{ name: 'recall', agentId: msg.id, cues: [sfx('recall')] }];
       }
       case 'agentDetails':
@@ -223,7 +220,7 @@ export class SoundDirector {
       this.arrivalChainUntil = Math.max(this.arrivalChainUntil, now + this.arrivalChainMs);
       return [];
     }
-    if (known) return [];
+    if (known || !mem.stream) return [];
     mem.arrivalSoundAt = now;
     const species = mem.species;
     if (msg.parentAgentId !== undefined) {
@@ -258,7 +255,7 @@ export class SoundDirector {
     if (msg.level !== undefined) mem.level = msg.level;
     mem.speciesLevel ??= mem.level;
 
-    if (!known || this.isQuiet(now)) return [];
+    if (!known || !mem.stream || this.isQuiet(now)) return [];
     // A level that jumps, arrives with the first message count, or changes
     // right after the agent arrived is being filled in, not earned.
     const fill =

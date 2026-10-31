@@ -14,6 +14,12 @@ import * as path from 'path';
 
 import { LAYOUT_FILE_DIR } from '../constants.js';
 import {
+  AUDIO_CONTENT_TYPES,
+  AUDIO_SIGNATURE_BYTES,
+  type AudioFormat,
+  sniffAudioFormat,
+} from './audioSignature.js';
+import {
   SOUND_PACK_DIR_NAME,
   SOUND_PACK_EVENTS,
   SOUND_PACK_FORMATS,
@@ -21,7 +27,7 @@ import {
 } from './constants.js';
 
 export type SoundPackEvent = (typeof SOUND_PACK_EVENTS)[number];
-export type SoundPackFormat = (typeof SOUND_PACK_FORMATS)[number]['ext'];
+export type SoundPackFormat = (typeof SOUND_PACK_FORMATS)[number];
 
 /** One override, as listed to the office. */
 export interface SoundPackOverride {
@@ -39,7 +45,6 @@ export interface OpenSoundPackFile extends SoundPackOverride {
 }
 
 const EVENT_SET: ReadonlySet<string> = new Set(SOUND_PACK_EVENTS);
-const HEAD_BYTES = 12;
 /** O_NOFOLLOW where the platform has it (not Windows), so a file swapped
  *  for a symlink after the directory check still isn't followed. */
 const OPEN_FLAGS = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0);
@@ -53,23 +58,8 @@ export function isSoundPackEvent(name: string): name is SoundPackEvent {
 }
 
 /** True when `head` (the file's first bytes) starts like `format`. */
-export function hasAudioSignature(format: SoundPackFormat, head: Buffer): boolean {
-  switch (format) {
-    case 'ogg':
-      return head.length >= 4 && head.toString('latin1', 0, 4) === 'OggS';
-    case 'mp3':
-      // An ID3v2 tag, or an MPEG audio frame sync (11 set bits).
-      return (
-        (head.length >= 3 && head.toString('latin1', 0, 3) === 'ID3') ||
-        (head.length >= 2 && head[0] === 0xff && (head[1] & 0xe0) === 0xe0)
-      );
-    case 'wav':
-      return (
-        head.length >= 12 &&
-        head.toString('latin1', 0, 4) === 'RIFF' &&
-        head.toString('latin1', 8, 12) === 'WAVE'
-      );
-  }
+export function hasAudioSignature(format: AudioFormat, head: Buffer): boolean {
+  return sniffAudioFormat(head) === format;
 }
 
 /**
@@ -83,7 +73,7 @@ export async function openSoundPackFile(
 ): Promise<OpenSoundPackFile | null> {
   if (!isSoundPackEvent(event)) return null;
   const root = path.resolve(dir);
-  for (const { ext, contentType } of SOUND_PACK_FORMATS) {
+  for (const ext of SOUND_PACK_FORMATS) {
     const abs = path.resolve(root, `${event}.${ext}`);
     if (path.dirname(abs) !== root) continue;
     let handle: fs.promises.FileHandle;
@@ -97,13 +87,13 @@ export async function openSoundPackFile(
     try {
       const stat = await handle.stat();
       if (stat.isFile() && stat.size > 0 && stat.size <= SOUND_PACK_MAX_BYTES) {
-        const head = Buffer.alloc(HEAD_BYTES);
-        const { bytesRead } = await handle.read(head, 0, HEAD_BYTES, 0);
+        const head = Buffer.alloc(AUDIO_SIGNATURE_BYTES);
+        const { bytesRead } = await handle.read(head, 0, AUDIO_SIGNATURE_BYTES, 0);
         if (hasAudioSignature(ext, head.subarray(0, bytesRead))) {
           return {
             event,
             format: ext,
-            contentType,
+            contentType: AUDIO_CONTENT_TYPES[ext],
             size: stat.size,
             version: `${stat.size}-${Math.floor(stat.mtimeMs)}`,
             handle,

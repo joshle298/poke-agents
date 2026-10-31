@@ -73,7 +73,11 @@ export function testCryDex(): number | undefined {
   return species !== undefined && audioEngine.hasCry(species) ? species : audioEngine.anyCryDex();
 }
 
-/** Play a UI blip (a Pokédex tab, a panel), if effects are on. */
+/**
+ * Play a UI blip (a Pokédex tab, a panel), if effects are on. For the
+ * Pokédex tabs, which live outside this module.
+ * @public
+ */
 export function playUiBlip(): void {
   dispatch([{ name: 'uiBlip', cues: [{ kind: 'sfx', name: 'blip', delayMs: 0 }], user: true }]);
 }

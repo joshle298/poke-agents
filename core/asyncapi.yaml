@@ -1292,8 +1292,9 @@ components:
         cry:
           type: string
           description: |
-            Same-origin URL of the species' cry (Ogg Vorbis), fetched by the
-            local server from the PokéAPI cries project on first request.
+            Same-origin URL of the species' cry (Ogg Vorbis, or MP3 for a few
+            species), fetched by the local server from the PokéAPI cries
+            project on first request.
             Absent while sounds are off on the server (--no-sounds,
             POKE_AGENTS_SOUNDS=off).
 

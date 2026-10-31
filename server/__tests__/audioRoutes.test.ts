@@ -22,6 +22,7 @@ import {
   CRY_BASE,
   FakeCryUpstream,
   syntheticMp3,
+  syntheticMp3Frame,
   syntheticOgg,
   syntheticWav,
 } from './audioTestUtils.js';
@@ -118,6 +119,14 @@ describe('GET /api/pokemon/cry/:dex4', () => {
 
     expect((await get('/api/pokemon/cry/0025')).statusCode).toBe(200);
     expect(cries.calls).toHaveLength(1);
+  });
+
+  it('serves an MP3 cry (stored under its upstream .ogg name) as audio/mpeg', async () => {
+    cries.set('latest', 4, syntheticMp3Frame());
+    const res = await get('/api/pokemon/cry/0004');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('audio/mpeg');
+    expect(res.rawPayload).toEqual(syntheticMp3Frame());
   });
 
   it('leaves the sprite route working beside it', async () => {
