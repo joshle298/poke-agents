@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CRY_REVALIDATE_MS } from '../src/audio/constants.js';
 import { CryCache, cryFormat } from '../src/audio/cryCache.js';
@@ -49,6 +49,13 @@ describe('cryFormat', () => {
     expect(cryFormat(syntheticWav())).toBeNull();
     expect(cryFormat(Buffer.from('<!DOCTYPE html>'))).toBeNull();
     expect(cryFormat(Buffer.from('Ogg'))).toBeNull();
+    // Frame-sync look-alikes: a UTF-16LE byte-order mark, 0xFF filler, Layer I.
+    expect(cryFormat(Buffer.from([0xff, 0xfe, 0x61, 0x00, 0x62, 0x00]))).toBeNull();
+    expect(cryFormat(Buffer.alloc(16, 0xff))).toBeNull();
+    expect(cryFormat(Buffer.from([0xff, 0xfb, 0xf4, 0x64]))).toBeNull();
+    expect(cryFormat(Buffer.from([0xff, 0xfb, 0x9c, 0x64]))).toBeNull();
+    expect(cryFormat(Buffer.from([0xff, 0xff, 0x94, 0x64]))).toBeNull();
+    expect(cryFormat(Buffer.from([0xff, 0xf3, 0x84, 0x64]))).toBe('mp3');
     expect(cryFormat(Buffer.alloc(0))).toBeNull();
   });
 });
@@ -179,6 +186,28 @@ describe('CryCache', () => {
     expect(new Set(results).size).toBe(1);
     expect(results[0]).toBe(path.join(root, '0150.ogg'));
     expect(upstream.calls).toHaveLength(1);
+  });
+
+  it('downloads at most two cries at once; the rest wait their turn', async () => {
+    const dexes = [1, 4, 7, 25];
+    for (const dex of dexes) upstream.set('latest', dex, syntheticOgg(String(dex)));
+    upstream.hold = true;
+    const cache = makeCache();
+    const pending = dexes.map((dex) => cache.ensureCry(dex));
+    await vi.waitFor(() => expect(upstream.calls).toHaveLength(2));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(upstream.calls.map((c) => c.url)).toEqual([
+      `${CRY_BASE}/latest/1.ogg`,
+      `${CRY_BASE}/latest/4.ogg`,
+    ]);
+    upstream.releaseAll();
+    await vi.waitFor(() => expect(upstream.calls).toHaveLength(4));
+    upstream.hold = false;
+    upstream.releaseAll();
+    const results = await Promise.all(pending);
+    expect(results).toEqual(
+      dexes.map((dex) => path.join(root, `${String(dex).padStart(4, '0')}.ogg`)),
+    );
   });
 
   it('never builds a path or a request from an invalid dex', async () => {

@@ -246,8 +246,14 @@ describe('sound pack routes', () => {
       path.join(packDir, 'done.wav'),
       Buffer.concat([syntheticWav(), Buffer.alloc(2 * 1024 * 1024)]),
     );
+    // UTF-16LE text: its FF FE byte-order mark looks like an MPEG frame sync.
+    fs.writeFileSync(
+      path.join(packDir, 'recall.mp3'),
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('not audio', 'utf16le')]),
+    );
     expect((await get('/api/sounds/alert')).statusCode).toBe(404);
     expect((await get('/api/sounds/done')).statusCode).toBe(404);
+    expect((await get('/api/sounds/recall')).statusCode).toBe(404);
     expect((await get('/api/sounds')).json()).toEqual({ overrides: [] });
   });
 
