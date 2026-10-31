@@ -8,6 +8,7 @@ import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
+  OpenExternalSideEffect,
   ReloadAssetsSideEffect,
   SetHooksEnabledSideEffect,
 } from './clientMessageHandler.js';
@@ -18,6 +19,7 @@ import {
   SERVERS_DIR,
 } from './constants.js';
 import { createHttpServer } from './httpServer.js';
+import { hookProviders } from './providers/index.js';
 import type { ServerConfig, StandaloneAccess } from './serverConfig.js';
 import { isServerConfig, isServerTarget, sameStandaloneAccess } from './serverConfig.js';
 import { loadOrCreateStandaloneToken } from './serverToken.js';
@@ -79,6 +81,13 @@ export class PixelAgentsServer {
      *  the old one. Refused while another standalone server is running: it
      *  would keep honouring the old token until it restarts. */
     rotateToken?: boolean;
+    /** Standalone providers, recorded so reuse never crosses modes. Claude Code
+     *  tracking defaults on (upstream behavior); off sends no hooks status or
+     *  consent ask. Conductor defaults off here: the CLI attaches it. */
+    claude?: boolean;
+    conductor?: boolean;
+    /** Opens a validated Conductor deep link on the host (standalone). */
+    openExternal?: OpenExternalSideEffect;
   }): Promise<ServerConfig> {
     const embedded = options?.embedded ?? true;
     const wantsSpa = !embedded;
@@ -89,6 +98,8 @@ export class PixelAgentsServer {
           terminal: options?.ptyManager?.enabled ?? false,
           host,
           allowedHosts: normalizedAllowedHosts(options?.allowedHosts ?? []),
+          conductor: options?.conductor ?? false,
+          claude: options?.claude ?? true,
         };
 
     // Capability-based reuse: an embedded (VS Code) caller only reuses another
@@ -144,6 +155,8 @@ export class PixelAgentsServer {
       onReloadAssets: options?.onReloadAssets,
       ptyManager: options?.ptyManager,
       allowedHosts: standalone?.allowedHosts,
+      hookProviders: options?.claude === false ? [] : hookProviders,
+      openExternal: options?.openExternal,
     });
 
     this.app = app;

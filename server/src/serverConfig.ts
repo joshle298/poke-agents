@@ -23,6 +23,12 @@ export interface StandaloneAccess {
   host: string;
   /** Normalized, sorted `--allowed-host` names. */
   allowedHosts: string[];
+  /** Whether the server polls Conductor. Absent on entries written before the
+   *  field existed: those servers never did (false). */
+  conductor?: boolean;
+  /** Whether the server tracks Claude Code (hooks, scanners, terminal). Absent
+   *  on entries written before the field existed: those always did (true). */
+  claude?: boolean;
 }
 
 /** Complete per-server discovery record stored in the multi-server registry. */
@@ -48,6 +54,8 @@ export function sameStandaloneAccess(
   return (
     running.terminal === wanted.terminal &&
     running.host === wanted.host &&
+    (running.conductor ?? false) === (wanted.conductor ?? false) &&
+    (running.claude ?? true) === (wanted.claude ?? true) &&
     running.allowedHosts.length === wanted.allowedHosts.length &&
     running.allowedHosts.every((h, i) => h === wanted.allowedHosts[i])
   );
@@ -59,7 +67,9 @@ function isStandaloneAccess(value: unknown): value is StandaloneAccess {
     typeof value.terminal === 'boolean' &&
     typeof value.host === 'string' &&
     Array.isArray(value.allowedHosts) &&
-    value.allowedHosts.every((h) => typeof h === 'string')
+    value.allowedHosts.every((h) => typeof h === 'string') &&
+    (value.conductor === undefined || typeof value.conductor === 'boolean') &&
+    (value.claude === undefined || typeof value.claude === 'boolean')
   );
 }
 

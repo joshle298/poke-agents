@@ -261,7 +261,28 @@ describe('PixelAgentsServer', () => {
       terminal: true,
       host: '127.0.0.1',
       allowedHosts: ['a.example', 'b.example'],
+      conductor: false,
+      claude: true,
     });
+  });
+
+  it('never reuses a server running other providers', async () => {
+    const conductorOnly = await server.start({ embedded: false, conductor: true, claude: false });
+    const sameMode = new PixelAgentsServer();
+    expect((await sameMode.start({ embedded: false, conductor: true, claude: false })).port).toBe(
+      conductorOnly.port,
+    );
+    const withClaude = new PixelAgentsServer();
+    expect(
+      (await withClaude.start({ embedded: false, conductor: true, claude: true })).port,
+    ).not.toBe(conductorOnly.port);
+    const withoutConductor = new PixelAgentsServer();
+    expect(
+      (await withoutConductor.start({ embedded: false, conductor: false, claude: false })).port,
+    ).not.toBe(conductorOnly.port);
+    sameMode.stop();
+    withClaude.stop();
+    withoutConductor.stop();
   });
 
   it('reuses only when the allowed hosts match (order and case aside)', async () => {

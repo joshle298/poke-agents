@@ -18,6 +18,9 @@ export interface AdapterSettings {
   /** Whether the host's own Directories (VS Code's workspace folders, standalone's
    *  start directory) are listed in the launch drawer. Off by default. */
   showHostDirectories: boolean;
+  /** Whether the office uses the Pokémon theme (Pokémon characters, themed
+   *  panels). On by default; off is the upstream Pixel Agents look. */
+  pokemonTheme: boolean;
 }
 
 /** All keys in AdapterSettings. Used by adapters to map `pixel-agents.foo` → `foo`.
@@ -35,6 +38,7 @@ export const ADAPTER_SETTING_KEYS = [
   'areaMappings',
   'bypassPermissions',
   'showHostDirectories',
+  'pokemonTheme',
 ] as const;
 
 export type AdapterSettingKey = (typeof ADAPTER_SETTING_KEYS)[number];
@@ -84,6 +88,7 @@ const DEFAULT_ADAPTER_SETTINGS: AdapterSettings = {
   areaMappings: {},
   bypassPermissions: false,
   showHostDirectories: false,
+  pokemonTheme: true,
 };
 
 function getConfigFilePath(): string {
@@ -197,6 +202,10 @@ function parseAdapterSettings(raw: unknown): AdapterSettings {
       typeof obj.showHostDirectories === 'boolean'
         ? obj.showHostDirectories
         : DEFAULT_ADAPTER_SETTINGS.showHostDirectories,
+    pokemonTheme:
+      typeof obj.pokemonTheme === 'boolean'
+        ? obj.pokemonTheme
+        : DEFAULT_ADAPTER_SETTINGS.pokemonTheme,
   };
 }
 

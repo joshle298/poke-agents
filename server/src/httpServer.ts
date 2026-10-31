@@ -4,10 +4,13 @@ import fastifyWebsocket from '@fastify/websocket';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import Fastify from 'fastify';
 
+import type { HookProvider } from '../../core/src/provider.js';
+import { agentCreatedMessage } from './agentMessages.js';
 import type { AgentRuntime } from './agentRuntime.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import type {
   AssetCache,
+  OpenExternalSideEffect,
   ReloadAssetsSideEffect,
   SetHooksEnabledSideEffect,
 } from './clientMessageHandler.js';
@@ -60,6 +63,11 @@ export interface HttpServerOptions {
    *  privileged standalone handshake may arrive under -- e.g. a reverse proxy's
    *  public name. See wsAuth.privilegedHostnames. */
   allowedHosts?: readonly string[];
+  /** Hook providers this office runs (ClientMessageContext.hookProviders).
+   *  Absent = every bundled one; empty when Claude Code tracking is off. */
+  hookProviders?: readonly HookProvider[];
+  /** Opens a validated Conductor deep link on the host (standalone). */
+  openExternal?: OpenExternalSideEffect;
 }
 
 /** Result of createHttpServer(). */
@@ -117,7 +125,14 @@ export async function createHttpServer(options: HttpServerOptions): Promise<Http
 
   // ── Listen ──────────────────────────────────────────────────
 
-  await app.listen({ host, port: options.port ?? 0 });
+  try {
+    await app.listen({ host, port: options.port ?? 0 });
+  } catch (err) {
+    // A failed listen (EADDRINUSE on the default port) must not leave a
+    // half-started instance behind: the CLI retries on another port.
+    await app.close().catch(() => undefined);
+    throw err;
+  }
   const address = app.server.address();
   const port = typeof address === 'object' ? (address?.port ?? 0) : 0;
 
@@ -220,19 +235,8 @@ function registerWebSocketRoute(
 
     // Pipe store events to WebSocket client
     const onAgentAdded = (id: number, agent: AgentState) => {
-      safeSend(socket, {
-        type: 'agentCreated',
-        id,
-        directoryName: agent.directoryName,
-        isExternal: agent.isExternal || undefined,
-        isTeammate: agent.leadAgentId !== undefined || undefined,
-        teammateName: agent.agentName,
-        parentAgentId: agent.leadAgentId,
-        teamName: agent.teamName,
-        hooksOnly: agent.hooksOnly || undefined,
-        palette: agent.palette,
-        hueShift: agent.hueShift,
-      });
+      const seatId = store.getAdapter()?.loadSeats()[String(id)]?.seatId;
+      safeSend(socket, { ...agentCreatedMessage(id, agent, seatId) });
     };
 
     const onAgentRemoved = (id: number) => {
@@ -262,6 +266,8 @@ function registerWebSocketRoute(
           onReloadAssets: options.onReloadAssets,
           privileged,
           ptyManager: options.ptyManager,
+          hookProviders: options.hookProviders,
+          openExternal: options.openExternal,
         });
       } catch {
         // Malformed JSON, ignore

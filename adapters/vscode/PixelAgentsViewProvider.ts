@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { StateAdapter } from '../../core/src/adapter.js';
 import type { HookProvider } from '../../core/src/provider.js';
 import { buildAgentDiagnostics } from '../../server/src/agentDiagnostics.js';
+import { agentCreatedMessage } from '../../server/src/agentMessages.js';
 import { AgentRuntime } from '../../server/src/agentRuntime.js';
 import { AgentStateStore } from '../../server/src/agentStateStore.js';
 import type {
@@ -137,19 +138,8 @@ export class PixelAgentsViewProvider implements vscode.WebviewViewProvider {
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.sendDirectories()),
     );
     this.store.on('agentAdded', (id, agent) => {
-      this.sendOrBuffer({
-        type: 'agentCreated',
-        id,
-        directoryName: agent.directoryName,
-        isExternal: agent.isExternal || undefined,
-        isTeammate: agent.leadAgentId !== undefined || undefined,
-        teammateName: agent.agentName,
-        parentAgentId: agent.leadAgentId,
-        teamName: agent.teamName,
-        hooksOnly: agent.hooksOnly || undefined,
-        palette: agent.palette,
-        hueShift: agent.hueShift,
-      });
+      const seatId = this.adapter.loadSeats()[String(id)]?.seatId;
+      this.sendOrBuffer({ ...agentCreatedMessage(id, agent, seatId) });
     });
     this.store.on('agentRemoved', (id) => {
       this.sendOrBuffer({ type: 'agentClosed', id });

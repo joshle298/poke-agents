@@ -1,3 +1,4 @@
+import { agentDetailsMessage } from './agentMessages.js';
 import type { AgentStateStore } from './agentStateStore.js';
 import { hasPromotedBackgroundAgent } from './teamUtils.js';
 
@@ -6,9 +7,10 @@ import { hasPromotedBackgroundAgent } from './teamUtils.js';
  *
  * Order matters:
  * 1. Team info first — webview needs team context before tool messages
+ *    1b. Provider details (label, deep link, Pokémon) — agentDetails
  * 2. Regular tools
  * 3. Background tools with runInBackground + isTeammateSpawn flags, skipping promoted spawns
- * 4. Waiting status
+ * 4. Error or waiting status, silent (a replay, not news: no chime, no checkmark)
  * 5. Context usage
  */
 export function resendAgentActivity(
@@ -30,6 +32,10 @@ export function resendAgentActivity(
         teamUsesTmux: agent.teamUsesTmux,
       });
     }
+
+    // 1b. Provider details: the label, deep link and Pokémon live only here.
+    const details = agentDetailsMessage(id, agent);
+    if (details) send({ ...details });
 
     // 2. Regular (non-background) tools
     for (const [toolId, status] of agent.activeToolStatuses) {
@@ -66,12 +72,21 @@ export function resendAgentActivity(
       });
     }
 
-    // 4. Waiting status
-    if (agent.isWaiting) {
+    // 4. Status. Silent: the client already heard the chime when it happened.
+    if (agent.isErrored) {
+      send({
+        type: 'agentStatus',
+        id,
+        status: 'error',
+        errorMessage: agent.errorMessage,
+        silent: true,
+      });
+    } else if (agent.isWaiting) {
       send({
         type: 'agentStatus',
         id,
         status: 'waiting',
+        silent: true,
       });
     }
 

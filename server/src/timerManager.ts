@@ -75,6 +75,9 @@ export function startWaitingTimer(
   agents: AgentStateStore,
   waitingTimers: Map<number, ReturnType<typeof setTimeout>>,
 ): void {
+  // Hooks-only agents get every transition as an event; a silence heuristic
+  // would only invent turn ends during long cloud tool calls.
+  if (agents.get(agentId)?.hooksOnly) return;
   cancelWaitingTimer(agentId, waitingTimers);
   const timer = setTimeout(() => {
     waitingTimers.delete(agentId);
@@ -111,6 +114,8 @@ export function startPermissionTimer(
   permissionTimers: Map<number, ReturnType<typeof setTimeout>>,
   permissionExemptTools: ReadonlySet<string>,
 ): void {
+  // Hooks-only agents report permission requests as events (see startWaitingTimer).
+  if (agents.get(agentId)?.hooksOnly) return;
   cancelPermissionTimer(agentId, permissionTimers);
   const timer = setTimeout(() => {
     permissionTimers.delete(agentId);

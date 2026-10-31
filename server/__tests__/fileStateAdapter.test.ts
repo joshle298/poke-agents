@@ -172,4 +172,66 @@ describe('FileStateAdapter', () => {
     expect(adapter.loadSeats()).toEqual({ '1': { palette: 3 } });
     expect(adapter.loadAgents()).toHaveLength(1);
   });
+
+  it('defaults pokemonTheme on and round-trips it per namespace', () => {
+    const vscode = new FileStateAdapter({ namespace: 'vscode' });
+    const standalone = new FileStateAdapter({ namespace: 'standalone' });
+    expect(standalone.getSetting('pixel-agents.pokemonTheme', false)).toBe(true);
+    standalone.setSetting('pixel-agents.pokemonTheme', false);
+    expect(standalone.getSetting('pixel-agents.pokemonTheme', true)).toBe(false);
+    expect(vscode.getSetting('pixel-agents.pokemonTheme', false)).toBe(true);
+  });
+
+  // ── Stream sessions (StreamAgentMemory) ─────────────────────
+
+  it('remembers stream sessions across the agent list being rewritten', () => {
+    const adapter = new FileStateAdapter({ namespace: 'standalone' });
+    adapter.saveStreamAgent('conductor:a', { agentId: 4, pokemonLine: 'eevee', species: 133 });
+    // persist() rewrites agents to live ones only, and seats come from the
+    // webview: neither may take the stream memory with it.
+    adapter.saveAgents([]);
+    adapter.saveSeats({});
+    expect(new FileStateAdapter({ namespace: 'standalone' }).loadStreamAgents()).toEqual(
+      new Map([['conductor:a', { agentId: 4, pokemonLine: 'eevee', species: 133 }]]),
+    );
+    expect(new FileStateAdapter({ namespace: 'vscode' }).loadStreamAgents().size).toBe(0);
+  });
+
+  it('drops malformed stream entries from a hand-edited file', () => {
+    const file = path.join(tempHome, '.pixel-agents', 'standalone-state.json');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        agents: [],
+        seats: {},
+        streamAgents: {
+          'conductor:ok': { agentId: 2, shiny: true, species: 'pikachu' },
+          'conductor:noId': { species: 25 },
+          'conductor:badId': { agentId: -1 },
+          'conductor:junk': 'x',
+        },
+      }),
+    );
+    const adapter = new FileStateAdapter({ namespace: 'standalone' });
+    expect([...adapter.loadStreamAgents()]).toEqual([
+      ['conductor:ok', { agentId: 2, shiny: true, pokemonLine: undefined, species: undefined }],
+    ]);
+  });
+
+  it('keeps the most recently saved stream sessions when over the cap', async () => {
+    const { STREAM_AGENT_MEMORY_MAX } = await import('../src/constants.js');
+    const adapter = new FileStateAdapter({ namespace: 'standalone' });
+    for (let i = 0; i <= STREAM_AGENT_MEMORY_MAX; i++) {
+      adapter.saveStreamAgent(`conductor:${i}`, { agentId: i + 1 });
+    }
+    // Re-saving an old entry makes it recent again.
+    adapter.saveStreamAgent('conductor:1', { agentId: 2 });
+    adapter.saveStreamAgent('conductor:new', { agentId: 99_999 });
+    const keys = [...adapter.loadStreamAgents().keys()];
+    expect(keys).toHaveLength(STREAM_AGENT_MEMORY_MAX);
+    expect(keys).not.toContain('conductor:0');
+    expect(keys).not.toContain('conductor:2');
+    expect(keys.slice(-2)).toEqual(['conductor:1', 'conductor:new']);
+  });
 });
