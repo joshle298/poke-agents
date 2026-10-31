@@ -76,7 +76,10 @@ const ducker = createDucker(() =>
 
 /**
  * Lower folder music for `ms` milliseconds while a cry or alert plays. Safe to
- * call at any time (with no music playing it does nothing audible).
+ * call at any time (with no music playing it does nothing audible). Called by
+ * the sound effects, not by the Jukebox itself.
+ *
+ * @public
  */
 export function duckMusic(ms: number, level?: number): void {
   ducker.duck(ms, level);
