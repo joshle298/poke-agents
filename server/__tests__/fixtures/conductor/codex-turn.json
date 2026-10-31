@@ -1,0 +1,678 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000047",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000047",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a0003-0000-4000-8000-000000000003",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "id": "7a7a0003-0000-4000-8000-000000000003",
+      "message": "Fix the failing test.",
+      "state": "sent",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "harness": "codex",
+        "thinkingLevel": "high",
+        "fastMode": true,
+        "chromeEnabled": false,
+        "localExecutionMcpEnabled": true,
+        "localExecutionMcpRoutedEnabled": false,
+        "getDiffCommentsEnabled": true,
+        "personality": null,
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000048",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000048",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "thread.started",
+          "thread_id": "0000c0de-0000-4000-8000-000000000001"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:00.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000049",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000049",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.started"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:00.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000050",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000050",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "userMessage",
+            "id": "0000c0de-0000-4000-8000-000000000003",
+            "clientId": null,
+            "content": [
+              {
+                "type": "text",
+                "text": "<system_instruction>synthetic</system_instruction>\nFix the failing test.",
+                "text_elements": []
+              }
+            ]
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:01.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000051",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000051",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "userMessage",
+            "id": "0000c0de-0000-4000-8000-000000000003",
+            "clientId": null,
+            "content": [
+              {
+                "type": "text",
+                "text": "<system_instruction>synthetic</system_instruction>\nFix the failing test.",
+                "text_elements": []
+              }
+            ]
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:01.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000052",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 6,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000052",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "reasoning",
+            "id": "rs_SYNTHETIC0001",
+            "summary": [],
+            "content": []
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:01.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000053",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 7,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000053",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "reasoning",
+            "id": "rs_SYNTHETIC0001",
+            "summary": [],
+            "content": []
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:02.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000054",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 8,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000054",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "agentMessage",
+            "id": "msg_SYNTHETIC0001",
+            "text": "",
+            "phase": "commentary",
+            "memoryCitation": null,
+            "delivery": null,
+            "questions": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:02.100Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000055",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 9,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000055",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "agentMessage",
+            "id": "msg_SYNTHETIC0001",
+            "text": "Running the tests first.",
+            "phase": "commentary",
+            "memoryCitation": null,
+            "delivery": null,
+            "questions": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:02.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000056",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 10,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000056",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000c1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'npm test'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "npm test"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:02.300Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000057",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 11,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000057",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000c1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'npm test'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "completed",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "npm test"
+              }
+            ],
+            "aggregatedOutput": "Tests: 1 failed, 4 passed\n",
+            "exitCode": 0,
+            "durationMs": 4100
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:06.400Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000058",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 12,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000058",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000c2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'cat missing-file.txt'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "read",
+                "command": "cat missing-file.txt",
+                "name": "missing-file.txt",
+                "path": "missing-file.txt"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:06.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000059",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 13,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000059",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000c2",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'cat missing-file.txt'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "failed",
+            "commandActions": [
+              {
+                "type": "read",
+                "command": "cat missing-file.txt",
+                "name": "missing-file.txt",
+                "path": "missing-file.txt"
+              }
+            ],
+            "aggregatedOutput": "cat: missing-file.txt: No such file or directory\n",
+            "exitCode": 1,
+            "durationMs": 12
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:06.600Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000060",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 14,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000060",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "fileChange",
+            "id": "exec-00000000-0000-4000-8000-0000000000c3",
+            "changes": [
+              {
+                "path": "/workspace/example-repo/src/math.ts",
+                "kind": {
+                  "type": "update",
+                  "move_path": null
+                },
+                "diff": "@@ -1 +1 @@\n-return a - b\n+return a + b\n"
+              }
+            ],
+            "status": "inProgress"
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:07.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000061",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 15,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000061",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "fileChange",
+            "id": "exec-00000000-0000-4000-8000-0000000000c3",
+            "changes": [
+              {
+                "path": "/workspace/example-repo/src/math.ts",
+                "kind": {
+                  "type": "update",
+                  "move_path": null
+                },
+                "diff": "@@ -1 +1 @@\n-return a - b\n+return a + b\n"
+              }
+            ],
+            "status": "completed"
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:07.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000062",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 16,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000062",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "mcpToolCall",
+            "id": "exec-00000000-0000-4000-8000-0000000000c4",
+            "server": "conductor",
+            "tool": "GetWorkspaceDiff",
+            "status": "inProgress",
+            "arguments": {
+              "stat": true
+            },
+            "mcpAppUi": null,
+            "appContext": null,
+            "pluginId": null,
+            "readOnlyHint": null,
+            "result": null,
+            "error": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:07.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000063",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 17,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000063",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "mcpToolCall",
+            "id": "exec-00000000-0000-4000-8000-0000000000c4",
+            "server": "conductor",
+            "tool": "GetWorkspaceDiff",
+            "status": "completed",
+            "arguments": {
+              "stat": true
+            },
+            "mcpAppUi": null,
+            "appContext": null,
+            "pluginId": null,
+            "readOnlyHint": null,
+            "result": {
+              "content": [
+                {
+                  "type": "text",
+                  "text": " src/math.ts | 2 +-"
+                }
+              ],
+              "structuredContent": null,
+              "_meta": null
+            },
+            "error": null,
+            "durationMs": 85
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:07.600Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000064",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 18,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000064",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "agentMessage",
+            "id": "msg_SYNTHETIC0002",
+            "text": "",
+            "phase": "final_answer",
+            "memoryCitation": null,
+            "delivery": null,
+            "questions": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:08.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000065",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 19,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000065",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "agentMessage",
+            "id": "msg_SYNTHETIC0002",
+            "text": "Fixed the sign error in math.ts.",
+            "phase": "final_answer",
+            "memoryCitation": null,
+            "delivery": null,
+            "questions": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:08.100Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000066",
+    "sessionId": "5e551033-0000-4000-8000-000000000003",
+    "sessionIndex": 20,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000066",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.completed",
+          "usage": {
+            "input_tokens": 41000,
+            "cached_input_tokens": 39000,
+            "cache_write_input_tokens": 1900,
+            "output_tokens": 120,
+            "reasoning_output_tokens": 30
+          },
+          "conductor_sdk_metadata": {
+            "requestedModel": "gpt-6.1-sol",
+            "requestedReasoningEffort": "high",
+            "requestedServiceTier": "fast",
+            "requestedFastMode": true,
+            "requestedThinkingLevel": "high",
+            "model": "gpt-6.1-sol",
+            "modelProvider": "openai_sse",
+            "reasoningEffort": "high",
+            "serviceTier": "priority",
+            "codexUsage": {
+              "schemaVersion": 1,
+              "reports": [
+                {
+                  "threadId": "0000c0de-0000-4000-8000-000000000001",
+                  "turnId": "0000c0de-0000-4000-8000-000000000002",
+                  "cumulativeTotalTokens": 20500,
+                  "model": "gpt-6.1-sol",
+                  "modelProvider": "openai_sse",
+                  "serviceTier": "priority",
+                  "usage": {
+                    "totalTokens": 20500,
+                    "inputTokens": 20400,
+                    "cachedInputTokens": 0,
+                    "cacheWriteInputTokens": 20398,
+                    "outputTokens": 100,
+                    "reasoningOutputTokens": 20
+                  }
+                },
+                {
+                  "threadId": "0000c0de-0000-4000-8000-000000000001",
+                  "turnId": "0000c0de-0000-4000-8000-000000000002",
+                  "cumulativeTotalTokens": 61620,
+                  "model": "gpt-6.1-sol",
+                  "modelProvider": "openai_sse",
+                  "serviceTier": "priority",
+                  "usage": {
+                    "totalTokens": 41120,
+                    "inputTokens": 41000,
+                    "cachedInputTokens": 39000,
+                    "cacheWriteInputTokens": 1900,
+                    "outputTokens": 120,
+                    "reasoningOutputTokens": 30
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a0003-0000-4000-8000-000000000003",
+      "turnId": "7a7a0003-0000-4000-8000-000000000003"
+    },
+    "receivedAt": "2026-01-01T12:00:08.200Z"
+  }
+]

@@ -1,0 +1,151 @@
+{
+  "GET /me": {
+    "userId": "0000feed-0000-4000-8000-000000000001",
+    "authMethod": "api-key",
+    "name": "Example User",
+    "email": "user@example.com",
+    "organizationId": "00000a0a-0000-4000-8000-000000000001",
+    "organizationName": "Example Org",
+    "workspaceId": "0000aaaa-0000-4000-8000-000000000001",
+    "apiKey": {
+      "id": "0000a0a0-0000-4000-8000-000000000001"
+    }
+  },
+  "GET /v0/workspaces?since=…&limit=100": {
+    "data": [
+      {
+        "id": "0000aaaa-0000-4000-8000-000000000001",
+        "name": "Orchestration",
+        "number": 101,
+        "state": "ready",
+        "repoUrl": "https://github.com/example-org/example-repo",
+        "createdAt": "2026-01-01T11:00:00.000Z",
+        "deepLink": "conductor://workspace?id=0000aaaa-0000-4000-8000-000000000001",
+        "creatorId": "0000feed-0000-4000-8000-000000000001",
+        "creatorName": "Example User",
+        "lastActivityAt": "2026-01-01T12:05:00.000Z",
+        "projectId": "0000beef-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "0000bbbb-0000-4000-8000-000000000002",
+        "name": "Worker A",
+        "number": 102,
+        "state": "sleeping",
+        "repoUrl": "https://github.com/example-org/example-repo",
+        "createdAt": "2026-01-01T12:00:04.000Z",
+        "deepLink": "conductor://workspace?id=0000bbbb-0000-4000-8000-000000000002",
+        "creatorId": "0000feed-0000-4000-8000-000000000001",
+        "creatorName": "Example User",
+        "lastActivityAt": "2026-01-01T12:01:04.000Z",
+        "projectId": "0000beef-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "0000cccc-0000-4000-8000-000000000003",
+        "name": "Setup in progress",
+        "number": 103,
+        "state": "initializing",
+        "lifecycleStep": "setting_up",
+        "repoUrl": "https://github.com/example-org/other-repo",
+        "createdAt": "2026-01-01T12:04:50.000Z",
+        "deepLink": "conductor://workspace?id=0000cccc-0000-4000-8000-000000000003",
+        "creatorId": "0000feed-0000-4000-8000-000000000002",
+        "creatorName": "Teammate",
+        "projectId": "0000beef-0000-4000-8000-000000000002"
+      }
+    ],
+    "offset": 0,
+    "hasMore": false
+  },
+  "GET /v0/workspaces/:id/sessions": {
+    "data": [
+      {
+        "id": "5e551044-0000-4000-8000-000000000004",
+        "deepLink": "conductor://workspace?id=0000aaaa-0000-4000-8000-000000000001&session=5e551044-0000-4000-8000-000000000004",
+        "name": "Orchestrator",
+        "model": "opus-5-5-1m",
+        "resolvedModel": "claude-opus-5-5[1m]",
+        "effort": "high",
+        "fastMode": false
+      },
+      {
+        "id": "5e5510ee-0000-4000-8000-000000000014",
+        "deepLink": "conductor://workspace?id=0000aaaa-0000-4000-8000-000000000001&session=5e5510ee-0000-4000-8000-000000000014",
+        "name": "Old chat",
+        "model": "gpt-6.1-sol",
+        "resolvedModel": "gpt-6.1-sol",
+        "effort": "xhigh",
+        "fastMode": true,
+        "archivedAt": "2026-01-01T11:59:00.000Z"
+      },
+      {
+        "id": "5e5510ff-0000-4000-8000-000000000015",
+        "deepLink": "conductor://workspace?id=0000aaaa-0000-4000-8000-000000000001&session=5e5510ff-0000-4000-8000-000000000015",
+        "name": "Never started"
+      }
+    ],
+    "offset": 0,
+    "hasMore": false
+  },
+  "GET /v0/sessions/:id": {
+    "id": "5e551055-0000-4000-8000-000000000005",
+    "deepLink": "conductor://workspace?id=0000bbbb-0000-4000-8000-000000000002&session=5e551055-0000-4000-8000-000000000005",
+    "name": "Worker A",
+    "model": "gpt-6.1-sol",
+    "resolvedModel": "gpt-6.1-sol",
+    "effort": "high",
+    "fastMode": true
+  },
+  "GET /v0/sessions/:id/status (idle)": {
+    "workspaceId": "0000bbbb-0000-4000-8000-000000000002",
+    "sessionId": "5e551055-0000-4000-8000-000000000005",
+    "status": "idle",
+    "updatedAt": "2026-01-01T12:01:04.000Z"
+  },
+  "GET /v0/sessions/:id/status (working, with lastError)": {
+    "workspaceId": "0000aaaa-0000-4000-8000-000000000001",
+    "sessionId": "5e551044-0000-4000-8000-000000000004",
+    "status": "working",
+    "updatedAt": "2026-01-01T12:05:00.000Z",
+    "lastError": "system_interrupt:shutdown",
+    "lastErrorAt": "2026-01-01T12:04:50.000Z"
+  },
+  "GET /v0/workspaces/:id/status": {
+    "workspaceId": "0000cccc-0000-4000-8000-000000000003",
+    "status": "initializing",
+    "lifecycleStep": "setting_up",
+    "updatedAt": "2026-01-01T12:04:55.000Z"
+  },
+  "GET /v0/sessions/:id/messages (page wrapper)": {
+    "data": [
+      "<message items as in the other fixtures>"
+    ],
+    "offset": 0,
+    "hasMore": true
+  },
+  "GET /v0/sessions/:id/messages?after=<unknown id> -> 404": {
+    "userMessage": "Cursor message not found in this session",
+    "code": "NOT_FOUND",
+    "source": "network",
+    "traceId": "00000000000000000000000000000000"
+  },
+  "any endpoint -> 429 (header retry-after: 9)": {
+    "userMessage": "Rate limit exceeded for API requests. Retry after 9 seconds.",
+    "code": "RATE_LIMITED",
+    "retryable": true,
+    "source": "network",
+    "details": {
+      "origin": "roundhouse"
+    },
+    "traceId": "00000000000000000000000000000000"
+  },
+  "GET /v0/sessions/:id/status -> 429 per-session (header retry-after: 59)": {
+    "userMessage": "Rate limit exceeded for status polling. Retry after 59 seconds.",
+    "code": "RATE_LIMITED",
+    "retryable": true,
+    "source": "network",
+    "details": {
+      "origin": "roundhouse"
+    },
+    "traceId": "00000000000000000000000000000000"
+  }
+}

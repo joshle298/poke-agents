@@ -1,0 +1,89 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000170",
+    "sessionId": "5e551099-0000-4000-8000-000000000009",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000170",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a0009-0000-4000-8000-000000000009",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "id": "7a7a0009-0000-4000-8000-000000000009",
+      "message": "Keep going.",
+      "state": "sent",
+      "turnId": "7a7a0009-0000-4000-8000-000000000009",
+      "config": {
+        "collaborationMode": "default",
+        "model": "grok-4.7",
+        "harness": "cursor",
+        "thinkingLevel": "xhigh",
+        "fastMode": true,
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000171",
+    "sessionId": "5e551099-0000-4000-8000-000000000009",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000171",
+      "type": "agent",
+      "rawPayload": {
+        "type": "system",
+        "subtype": "init",
+        "session_id": "5e551099-0000-4000-8000-000000000009",
+        "uuid": "run-00000a11-0000-4000-8000-000000000002",
+        "content": "grok-4.7"
+      },
+      "userMessageId": "7a7a0009-0000-4000-8000-000000000009",
+      "turnId": "7a7a0009-0000-4000-8000-000000000009"
+    },
+    "receivedAt": "2026-01-01T12:00:00.500Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000172",
+    "sessionId": "5e551099-0000-4000-8000-000000000009",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000172",
+      "type": "agent",
+      "rawPayload": {
+        "type": "error",
+        "session_id": "5e551099-0000-4000-8000-000000000009",
+        "content": "Provider Error Something went wrong. If the problem persists, please contact support."
+      },
+      "userMessageId": "7a7a0009-0000-4000-8000-000000000009",
+      "turnId": "7a7a0009-0000-4000-8000-000000000009"
+    },
+    "receivedAt": "2026-01-01T12:00:12.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000173",
+    "sessionId": "5e551099-0000-4000-8000-000000000009",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000173",
+      "type": "agent",
+      "rawPayload": {
+        "type": "result",
+        "session_id": "5e551099-0000-4000-8000-000000000009",
+        "subtype": "error",
+        "is_error": true,
+        "conductor_sdk_metadata": {
+          "requestedModel": "grok-4.7",
+          "requestedFastMode": true,
+          "model": "grok-4.7"
+        }
+      },
+      "userMessageId": "7a7a0009-0000-4000-8000-000000000009",
+      "turnId": "7a7a0009-0000-4000-8000-000000000009"
+    },
+    "receivedAt": "2026-01-01T12:00:12.100Z"
+  }
+]

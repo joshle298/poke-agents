@@ -1,0 +1,149 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000150",
+    "sessionId": "5e5510dd-0000-4000-8000-000000000013",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000150",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a000d-0000-4000-8000-000000000013",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "id": "7a7a000d-0000-4000-8000-000000000013",
+      "message": "Continue the campaign.",
+      "state": "sent",
+      "turnId": "7a7a000d-0000-4000-8000-000000000013",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "thinkingLevel": "high",
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000151",
+    "sessionId": "5e5510dd-0000-4000-8000-000000000013",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000151",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.started"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000d-0000-4000-8000-000000000013",
+      "turnId": "7a7a000d-0000-4000-8000-000000000013"
+    },
+    "receivedAt": "2026-01-01T12:00:00.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000152",
+    "sessionId": "5e5510dd-0000-4000-8000-000000000013",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000152",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "agentMessage",
+            "id": "call_SYNTHETICQUESTION0001",
+            "text": "Please sign in on your Mac so local captures can run. Other work continues meanwhile.",
+            "phase": "final_answer",
+            "memoryCitation": null,
+            "delivery": "async",
+            "questions": [
+              {
+                "title": "Please sign in on your Mac so local captures can run. Other work continues meanwhile.",
+                "options": null
+              }
+            ]
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000d-0000-4000-8000-000000000013",
+      "turnId": "7a7a000d-0000-4000-8000-000000000013"
+    },
+    "receivedAt": "2026-01-01T12:00:09.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000153",
+    "sessionId": "5e5510dd-0000-4000-8000-000000000013",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000153",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.completed",
+          "item": {
+            "type": "agentMessage",
+            "id": "call_SYNTHETICQUESTION0001",
+            "text": "Please sign in on your Mac so local captures can run. Other work continues meanwhile.",
+            "phase": "final_answer",
+            "memoryCitation": null,
+            "delivery": "async",
+            "questions": [
+              {
+                "title": "Please sign in on your Mac so local captures can run. Other work continues meanwhile.",
+                "options": null
+              }
+            ]
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000d-0000-4000-8000-000000000013",
+      "turnId": "7a7a000d-0000-4000-8000-000000000013"
+    },
+    "receivedAt": "2026-01-01T12:00:09.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000154",
+    "sessionId": "5e5510dd-0000-4000-8000-000000000013",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000154",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "item.started",
+          "item": {
+            "type": "commandExecution",
+            "id": "exec-00000000-0000-4000-8000-0000000000f1",
+            "pluginId": null,
+            "scriptPath": null,
+            "command": "/bin/bash -lc 'ls'",
+            "cwd": "/workspace/example-repo",
+            "processId": "4242",
+            "source": "unifiedExecStartup",
+            "status": "inProgress",
+            "commandActions": [
+              {
+                "type": "unknown",
+                "command": "ls"
+              }
+            ],
+            "aggregatedOutput": null,
+            "exitCode": null,
+            "durationMs": null
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000d-0000-4000-8000-000000000013",
+      "turnId": "7a7a000d-0000-4000-8000-000000000013"
+    },
+    "receivedAt": "2026-01-01T12:00:09.500Z"
+  }
+]

@@ -1,0 +1,203 @@
+[
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000174",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 1,
+    "type": "userMessage",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000174",
+      "type": "userMessage",
+      "deliveryAttemptId": "7a7a000a-0000-4000-8000-000000000010",
+      "senderId": "0000feed-0000-4000-8000-000000000001",
+      "senderSessionId": "5e551044-0000-4000-8000-000000000004",
+      "id": "7a7a000a-0000-4000-8000-000000000010",
+      "message": "Run the measurement.",
+      "state": "sent",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010",
+      "config": {
+        "collaborationMode": "default",
+        "model": "gpt-6.1-sol",
+        "thinkingLevel": "high",
+        "workspaceSettingsRevision": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    },
+    "receivedAt": "2026-01-01T12:00:00.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000175",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 2,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000175",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.started"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:00.200Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000176",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 3,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000176",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "error",
+          "willRetry": true,
+          "message": "Reconnecting... 1/5",
+          "codexErrorInfo": {
+            "responseStreamDisconnected": {
+              "httpStatusCode": null
+            }
+          },
+          "additionalDetails": "rate limit exceeded: synthetic details"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:02.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000177",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 4,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000177",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "error",
+          "willRetry": true,
+          "message": "Reconnecting... 2/5",
+          "codexErrorInfo": {
+            "responseStreamDisconnected": {
+              "httpStatusCode": null
+            }
+          },
+          "additionalDetails": "rate limit exceeded: synthetic details"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:04.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000178",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 5,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000178",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "error",
+          "willRetry": true,
+          "message": "Reconnecting... 3/5",
+          "codexErrorInfo": {
+            "responseStreamDisconnected": {
+              "httpStatusCode": null
+            }
+          },
+          "additionalDetails": "rate limit exceeded: synthetic details"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:06.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000179",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 6,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000179",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "error",
+          "willRetry": true,
+          "message": "Reconnecting... 4/5",
+          "codexErrorInfo": {
+            "responseStreamDisconnected": {
+              "httpStatusCode": null
+            }
+          },
+          "additionalDetails": "rate limit exceeded: synthetic details"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:08.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000180",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 7,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000180",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "error",
+          "willRetry": true,
+          "message": "Reconnecting... 5/5",
+          "codexErrorInfo": {
+            "responseStreamDisconnected": {
+              "httpStatusCode": null
+            }
+          },
+          "additionalDetails": "rate limit exceeded: synthetic details"
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:10.000Z"
+  },
+  {
+    "id": "00e0e0e0-0000-4000-8000-000000000181",
+    "sessionId": "5e5510aa-0000-4000-8000-000000000010",
+    "sessionIndex": 8,
+    "type": "agent",
+    "content": {
+      "eventId": "00e0e0e0-0000-4000-8000-000000000181",
+      "type": "agent",
+      "rawPayload": {
+        "event": {
+          "type": "turn.failed",
+          "error": {
+            "message": "rate limit exceeded: synthetic details",
+            "codexErrorInfo": "rateLimitExceeded"
+          }
+        },
+        "thread_id": "0000c0de-0000-4000-8000-000000000001"
+      },
+      "userMessageId": "7a7a000a-0000-4000-8000-000000000010",
+      "turnId": "7a7a000a-0000-4000-8000-000000000010"
+    },
+    "receivedAt": "2026-01-01T12:00:12.000Z"
+  }
+]

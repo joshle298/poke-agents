@@ -1,0 +1,65 @@
+{
+  "note": "SYNTHETIC fixtures. Field names and nesting mirror real Conductor GET /v0/sessions/:id/messages items (observed 2026-10-31). Ids, text, paths are fake. sessionIndex has deliberate gaps (real feeds do).",
+  "sessions": {
+    "S_CLAUDE": "5e551011-0000-4000-8000-000000000001",
+    "S_CURSOR": "5e551022-0000-4000-8000-000000000002",
+    "S_CODEX": "5e551033-0000-4000-8000-000000000003",
+    "S_ORCH": "5e551044-0000-4000-8000-000000000004",
+    "S_CHILD": "5e551055-0000-4000-8000-000000000005",
+    "S_ASK": "5e551066-0000-4000-8000-000000000006",
+    "S_PLAN": "5e551077-0000-4000-8000-000000000007",
+    "S_ERR_CLAUDE": "5e551088-0000-4000-8000-000000000008",
+    "S_ERR_CURSOR": "5e551099-0000-4000-8000-000000000009",
+    "S_ERR_CODEX": "5e5510aa-0000-4000-8000-000000000010"
+  },
+  "workspaces": {
+    "WS_ORCH": "0000aaaa-0000-4000-8000-000000000001",
+    "WS_CHILD": "0000bbbb-0000-4000-8000-000000000002",
+    "WS_SOLO": "0000cccc-0000-4000-8000-000000000003"
+  },
+  "messageIds": {
+    "SPAWN_MSG": "3e553e55-0000-4000-8000-000000000001",
+    "FOLLOW_MSG": "3e553e55-0000-4000-8000-000000000002",
+    "REPORT_MSG": "3e553e55-0000-4000-8000-000000000003"
+  },
+  "expectedEdges": [
+    {
+      "from": "5e551044-0000-4000-8000-000000000004",
+      "to": "5e551055-0000-4000-8000-000000000005",
+      "kind": "spawned",
+      "evidence": [
+        "orchestrator-spawn-claude.json tool_result workspace create JSON",
+        "child-first-message.json first userMessage senderSessionId"
+      ],
+      "messageId": "3e553e55-0000-4000-8000-000000000001"
+    },
+    {
+      "from": "5e551044-0000-4000-8000-000000000004",
+      "to": "5e551055-0000-4000-8000-000000000005",
+      "kind": "watched",
+      "evidence": [
+        "orchestrator-spawn-claude.json session status/message"
+      ]
+    },
+    {
+      "from": "5e551044-0000-4000-8000-000000000004",
+      "to": "5e551055-0000-4000-8000-000000000005",
+      "kind": "messaged",
+      "evidence": [
+        "orchestrator-spawn-claude.json message create",
+        "child-first-message.json mid-turn userMessage"
+      ],
+      "messageId": "3e553e55-0000-4000-8000-000000000002"
+    },
+    {
+      "from": "5e551055-0000-4000-8000-000000000005",
+      "to": "5e551044-0000-4000-8000-000000000004",
+      "kind": "messaged",
+      "evidence": [
+        "child-first-message.json message create --session",
+        "orchestrator-spawn-claude.json userMessage senderSessionId"
+      ],
+      "messageId": "3e553e55-0000-4000-8000-000000000003"
+    }
+  ]
+}
