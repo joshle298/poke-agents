@@ -1,7 +1,8 @@
 /**
  * The chime policy for agentStatus (DESIGN §D "Chimes and selection"): every
  * finished turn chimes for upstream agents; a stream agent only when it needs
- * an answer, or for the selected agent; silent resends never.
+ * an answer, for the selected agent, or when a pinned one errors; silent
+ * resends never.
  *
  * Run with: npm test
  */
@@ -19,6 +20,7 @@ const base: StatusChimeInput = {
   silent: false,
   streamAgent: true,
   selected: false,
+  pinned: false,
   changed: true,
 };
 const chime = (over: Partial<StatusChimeInput>) => statusChimeFor({ ...base, ...over });
@@ -37,6 +39,11 @@ test('an unselected stream agent finishing, starting or erroring stays quiet', (
   assert.equal(chime({}), null);
   assert.equal(chime({ status: 'active' }), null);
   assert.equal(chime({ status: 'error' }), null);
+});
+
+test('a pinned stream agent taps on error, but finishing stays quiet', () => {
+  assert.equal(chime({ pinned: true, status: 'error' }), 'attention');
+  assert.equal(chime({ pinned: true }), null);
 });
 
 test('the selected stream agent: a change to waiting chimes, an error taps', () => {

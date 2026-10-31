@@ -300,6 +300,9 @@ export function useExtensionMessages(
   const [pokemonTheme, setPokemonThemeState] = useState(true);
   /** Last status seen per agent, for the chime policy's "changed". */
   const lastStatusRef = useRef<Record<number, string>>({});
+  /** Agents whose Conductor session is pinned (conductorSessions): their
+   *  errors chime even when they aren't selected. */
+  const pinnedAgentIdsRef = useRef<Set<number>>(new Set());
 
   // The renderer keeps its own module-level copy (read every rAF frame), so both
   // sources of truth move together — the persisted value on settingsLoaded and
@@ -713,6 +716,7 @@ export function useExtensionMessages(
           silent,
           streamAgent: ch?.providerId !== undefined,
           selected: os.selectedAgentId === id,
+          pinned: pinnedAgentIdsRef.current.has(id),
           changed,
         });
         if (chime === 'done') playDoneSound();
@@ -1014,6 +1018,18 @@ export function useExtensionMessages(
             optString(msg.preview),
           );
         }
+      } else if (msg.type === 'conductorSessions') {
+        // The Sessions list is the chrome's; the office only needs who is pinned.
+        const pinned = new Set<number>();
+        for (const session of (Array.isArray(msg.sessions) ? msg.sessions : []) as Array<{
+          pinned?: unknown;
+          agentId?: unknown;
+        }>) {
+          if (session.pinned === true && typeof session.agentId === 'number') {
+            pinned.add(session.agentId);
+          }
+        }
+        pinnedAgentIdsRef.current = pinned;
       } else if (msg.type === 'agentNotice') {
         const text = optString(msg.text);
         if (text) os.showNotice(msg.id as number, text, msg.tone === 'error' ? 'error' : 'info');

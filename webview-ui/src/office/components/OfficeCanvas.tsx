@@ -835,7 +835,7 @@ export function OfficeCanvas({
     panRef,
     clampPan,
     onManualPan: () => officeState.breakCameraFollow(),
-    onTap: (clientX, clientY) => performTap(clientX, clientY),
+    onTap: performTap,
   });
 
   // Prevent default middle-click browser behavior (auto-scroll)

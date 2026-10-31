@@ -17,23 +17,24 @@ export interface StatusChimeInput {
   streamAgent: boolean;
   /** The agent is the office's selected character. */
   selected: boolean;
+  /** The agent's session is pinned in the Sessions list. */
+  pinned: boolean;
   /** The status differs from the last one this client saw for the agent. */
   changed: boolean;
 }
 
 /**
  * Upstream agents keep the upstream rule (every finished turn chimes). A
- * stream agent chimes only when it needs an answer, when the selected agent
- * errors (the attention tap), or when the selected agent's status changes to
- * waiting — an office of forty cloud sessions would otherwise chime
- * constantly. Silent resends never sound.
+ * stream agent chimes only when it needs an answer, when a pinned or the
+ * selected agent errors (the attention tap), or when the selected agent's
+ * status changes to waiting — an office of forty cloud sessions would
+ * otherwise chime constantly. Silent resends never sound.
  */
 export function statusChimeFor(input: StatusChimeInput): StatusChime {
   if (input.silent) return null;
   if (!input.streamAgent) return input.status === 'waiting' ? 'done' : null;
   if (input.status === 'waiting' && input.awaitingInput) return 'done';
-  if (!input.selected) return null;
-  if (input.status === 'error') return 'attention';
-  if (input.status === 'waiting' && input.changed) return 'done';
+  if (input.status === 'error' && (input.selected || input.pinned)) return 'attention';
+  if (input.status === 'waiting' && input.selected && input.changed) return 'done';
   return null;
 }
