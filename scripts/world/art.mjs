@@ -584,19 +584,27 @@ export function pond(frame) {
 
 /**
  * The front (south) wall of a building, one tile high so it never hides the
- * room behind it. Drawn in the wall sheet's own grays: placed with a
- * `colorize` color equal to the building's wall color, it matches the walls.
+ * room behind it. Light grays so it reads as a wall in the editor palette;
+ * the town colorizes it (`colorize: true`) with its building's wall color,
+ * brightness raised by LOW_WALL_BRIGHTNESS_LIFT so the face matches the
+ * walls' (whose face is pure white).
  */
 export function lowWall() {
   const c = new Canvas(16, 16);
-  const DARK = [48, 42, 40, 255];
-  c.rect(0, 0, 16, 16, gray(255));
+  const DARK = gray(20);
+  c.rect(0, 0, 16, 16, gray(216));
   c.hline(0, 15, 0, DARK);
-  c.hline(0, 15, 4, gray(202));
-  c.hline(0, 15, 14, gray(202));
+  c.hline(0, 15, 4, gray(164));
+  c.hline(0, 15, 14, gray(164));
   c.hline(0, 15, 15, DARK);
   return c;
 }
+
+/**
+ * Brightness to add to a wall color so LOW_WALL's face (gray 216) colorizes
+ * like a wall's white face at contrast -50: 200 × (0.75 − (0.5 + 0.347 / 2)).
+ */
+export const LOW_WALL_BRIGHTNESS_LIFT = 15;
 
 /** A service counter, 4×2 tiles (a desk: things stand on its top). */
 export function counter() {

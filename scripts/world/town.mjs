@@ -13,6 +13,8 @@
  * rest in the Pokémon Center (Area role `center`).
  */
 
+import { LOW_WALL_BRIGHTNESS_LIFT } from './art.mjs';
+
 export const TOWN_COLS = 36;
 export const TOWN_ROWS = 26;
 
@@ -94,7 +96,8 @@ export function buildTown() {
         tiles[at(c, r)] = wall ? WALL : floorTile;
         tileColors[at(c, r)] = { ...(wall ? wallColor : floorColor) };
         if (!wall && r === r1 && !doors.includes(c)) {
-          place('LOW_WALL', c, r, { color: { ...wallColor, colorize: true } });
+          const b = wallColor.b + LOW_WALL_BRIGHTNESS_LIFT;
+          place('LOW_WALL', c, r, { color: { ...wallColor, b, colorize: true } });
         }
       }
     }
