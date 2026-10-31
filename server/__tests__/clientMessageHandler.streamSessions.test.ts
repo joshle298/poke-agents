@@ -369,6 +369,37 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
     });
   });
 
+  // ── Seats ─────────────────────────────────────────────────────
+
+  describe('saveAgentSeats', () => {
+    it('keeps the desks of remembered sessions the office has not shown yet', () => {
+      // Two sessions from a previous run, each with its desk.
+      const adapter = store.getAdapter() as FileStateAdapter;
+      adapter.saveStreamAgent('conductor:a', { agentId: 1 });
+      adapter.saveStreamAgent('conductor:b', { agentId: 2 });
+      adapter.saveSeats({ '1': { seatId: 'desk-a' }, '2': { seatId: 'desk-b' }, '9': {} });
+      runtime.dispose();
+      runtime = new AgentRuntime(store, claudeProvider);
+      sink = runtime.attachStreamProvider(provider, { memory: adapter });
+
+      // A walks in; the office saves the seats of the characters it has.
+      expect(adopt('a')).toBe(1);
+      send({ type: 'saveAgentSeats', seats: { '1': { seatId: 'desk-a2', palette: 1 } } });
+
+      // B, adopted later, still finds its desk; agent 9 (gone, unknown) is pruned.
+      expect(adapter.loadSeats()).toEqual({
+        '1': { seatId: 'desk-a2', palette: 1 },
+        '2': { seatId: 'desk-b' },
+      });
+      const created: Message[] = [];
+      store.on('agentAdded', (id: number) => {
+        created.push({ id, seatId: adapter.loadSeats()[String(id)]?.seatId });
+      });
+      expect(adopt('b')).toBe(2);
+      expect(created).toEqual([{ id: 2, seatId: 'desk-b' }]);
+    });
+  });
+
   // ── Deep links ────────────────────────────────────────────────
 
   describe('openExternal', () => {
@@ -476,6 +507,10 @@ describe('clientMessageHandler: stream sessions (Conductor)', () => {
         provider.setSessionPinned,
         provider.setScope,
         provider.getSessionDetail,
+        provider.setFocus,
+        // Answering a refused toggle must not ask the provider either: its
+        // listSessions starts the PC Box's archived listings.
+        provider.listSessions,
         openExternal,
       ]) {
         expect(call).not.toHaveBeenCalled();

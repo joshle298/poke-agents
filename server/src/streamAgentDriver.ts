@@ -31,6 +31,7 @@ import {
   AGENT_ERROR_MESSAGE_MAX_LENGTH,
   AGENT_MESSAGE_MAX_PER_SECOND,
   AGENT_MESSAGE_PAIR_INTERVAL_MS,
+  STREAM_AGENT_MEMORY_MAX,
   STREAM_LINKS_MAX,
   STREAM_SNAPSHOT_DEBOUNCE_MS,
   STREAM_SPECIES_LOAD_TIMEOUT_MS,
@@ -183,9 +184,23 @@ export class StreamAgentDriver implements AgentEventSink {
     }
   }
 
+  /** Agent ids of every session this driver remembers, in the office or not:
+   *  their saved seats outlive their absence (hidden, out of scope, archived,
+   *  not adopted yet after a restart) and go when the memory forgets them. */
+  rememberedAgentIds(): Set<number> {
+    return new Set([...this.remembered.values()].map((record) => record.agentId));
+  }
+
   /** The last conductorStatus broadcast, for a client that needs the truth again. */
   statusMessage(): Record<string, unknown> | null {
     return this.status;
+  }
+
+  /** The session list as last pushed by the provider, without asking it again:
+   *  for answers that must not change what the provider polls (a refused
+   *  read-only toggle). */
+  cachedSessionsSnapshot(): ConductorSessionSummary[] {
+    return this.withAgentIds(this.sessions ?? []);
   }
 
   /** Every session in scope, with agent ids filled in for those in the office. */
@@ -450,7 +465,15 @@ export class StreamAgentDriver implements AgentEventSink {
     ) {
       return;
     }
+    // Same order and cap as the durable memory, so both forget the same sessions.
+    this.remembered.delete(key);
     this.remembered.set(key, record);
+    for (const old of [...this.remembered.keys()].slice(
+      0,
+      Math.max(0, this.remembered.size - STREAM_AGENT_MEMORY_MAX),
+    )) {
+      this.remembered.delete(old);
+    }
     try {
       this.memoryStore?.saveStreamAgent(key, record);
     } catch (err) {

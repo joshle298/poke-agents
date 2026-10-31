@@ -258,7 +258,7 @@ export function handleClientMessage(
             }
           }
         }
-        adapter?.saveSeats(seats);
+        if (adapter) adapter.saveSeats(mergeSeats(adapter.loadSeats(), seats, ctx));
       }
       break;
 
@@ -424,6 +424,31 @@ export function handleClientMessage(
       // still require IDE-specific handling.
       break;
   }
+}
+
+type SeatMap = Record<string, { palette?: number; hueShift?: number; seatId?: string }>;
+
+/**
+ * The seats to persist after an office's `saveAgentSeats`. The office sends
+ * only the characters it has right now, and stream sessions arrive one at a
+ * time after it connects (or come back after being hidden, archived or out of
+ * scope), so replacing the map erased the desk of every session not yet in
+ * the office. Entries the payload names win; the previous seat of an agent
+ * that is live or that a stream driver still remembers is kept; the rest
+ * (agents gone for good, sessions the stream memory forgot) are dropped.
+ */
+function mergeSeats(previous: SeatMap, incoming: SeatMap, ctx: ClientMessageContext): SeatMap {
+  const remembered = new Set<number>();
+  for (const driver of ctx.runtime?.streamDrivers() ?? []) {
+    for (const id of driver.rememberedAgentIds()) remembered.add(id);
+  }
+  const merged: SeatMap = {};
+  for (const [idStr, seat] of Object.entries(previous)) {
+    if (idStr in incoming) continue;
+    const id = Number(idStr);
+    if (ctx.store.has(id) || remembered.has(id)) merged[idStr] = seat;
+  }
+  return { ...merged, ...incoming };
 }
 
 /**

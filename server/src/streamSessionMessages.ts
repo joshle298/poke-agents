@@ -148,7 +148,9 @@ export function refuseStreamSessionMessage(
   if (!ACTION_TYPES.has(type)) return;
   const driver = conductorDriver(ctx);
   if (type === 'setSessionHidden' || type === 'setSessionPinned') {
-    if (driver) send({ type: 'conductorSessions', sessions: driver.sessionsSnapshot() });
+    // The cached list: asking the provider (listSessions) would also start
+    // the PC Box's archived listings, an effect only privileged clients get.
+    if (driver) send({ type: 'conductorSessions', sessions: driver.cachedSessionsSnapshot() });
   } else if (type === 'setConductorScope') {
     const status = driver?.statusMessage();
     if (status) send(status);
