@@ -47,6 +47,7 @@ export const changelogEntries: ChangelogEntry[] = [
       {
         title: 'Features',
         items: [
+          'Connect to Conductor from inside the app (v0.3.1)',
           'The Pokémon town: workers in the Lab, idle ones in the tall grass, fainted ones in the Pokémon Center beds',
           'Sounds: each Pokémon cries when its session needs you, faints, arrives or evolves, plus original chiptune effects',
           'The Jukebox, with Poke Agents Radio: 12 freely licensed original tracks, or your own music',

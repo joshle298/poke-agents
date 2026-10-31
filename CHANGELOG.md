@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## Poke Agents v0.3.1
+
+Connect to Conductor from inside the app.
 
 ### Features
 
