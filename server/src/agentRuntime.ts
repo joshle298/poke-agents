@@ -572,6 +572,8 @@ export class AgentRuntime {
         teamUsesTmux: p.teamUsesTmux,
         palette: p.palette,
         hueShift: p.hueShift,
+        // Its level comes back with it (assignSpeciesIfNeeded reads the count).
+        toolCallCount: restoredToolCallCount(p),
         ...restoredPokemonFields(p),
       });
 
@@ -637,4 +639,11 @@ export class AgentRuntime {
       this.removeAgent(id);
     }
   }
+}
+
+/** The persisted tool-call count (written by AgentStateStore.persist; the
+ *  core PersistedAgent shape predates it), when it is a sane number. */
+function restoredToolCallCount(persisted: object): number | undefined {
+  const count = (persisted as { toolCallCount?: unknown }).toolCallCount;
+  return typeof count === 'number' && Number.isSafeInteger(count) && count > 0 ? count : undefined;
 }

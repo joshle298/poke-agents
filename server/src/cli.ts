@@ -51,7 +51,8 @@ import {
   openWithSystem,
   requestLaunchUrl,
 } from './openAppWindow.js';
-import { setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
+import { setEvolutionPreloader } from './pokemon/agentLevel.js';
+import { ensureSpeciesLoaded, setPokemonSpritesEnabled } from './pokemon/pokemonAssets.js';
 import { claudeProvider, copyHookScript, hookProviderById } from './providers/index.js';
 import { createConductorProvider } from './providers/stream/conductor/conductor.js';
 import { acquirePollerLock, type PollerLock } from './providers/stream/conductor/pollerLock.js';
@@ -372,6 +373,9 @@ async function main(): Promise<void> {
   const store = new AgentStateStore();
   const adapter = new FileStateAdapter({ namespace: 'standalone' });
   store.setAdapter(adapter);
+  // A Claude agent's evolution waits for its new species' sprites (as the
+  // stream driver's does), so the office plays the flash.
+  setEvolutionPreloader((dex, shiny) => ensureSpeciesLoaded(dex, shiny, store));
 
   // ── Create server ──
   const server = new PixelAgentsServer();

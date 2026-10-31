@@ -176,6 +176,7 @@ export class AgentStateStore {
         pokemonLine: agent.pokemonLine,
         species: agent.species,
         shiny: agent.shiny,
+        toolCallCount: agent.toolCallCount || undefined,
       });
     }
     this.adapter.saveAgents(persisted);
