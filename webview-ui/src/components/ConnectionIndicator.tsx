@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { transport } from '../transport/index.js';
 import type { TransportState } from '../transport/types.js';
+import { refusedHostMessage, WebSocketTransport } from '../transport/webSocketTransport.js';
 
 const STATE_LABELS: Partial<Record<TransportState, string>> = {
   connecting: 'Connecting…',
@@ -26,12 +27,17 @@ export function ConnectionIndicator() {
 
   if (state === 'connected') return null;
 
-  const label = STATE_LABELS[state] ?? 'Disconnected';
+  const refused = transport instanceof WebSocketTransport && transport.refusedHost;
+  const label = refused
+    ? refusedHostMessage(window.location.hostname)
+    : (STATE_LABELS[state] ?? 'Disconnected');
   const dotClass = state === 'connecting' ? 'bg-status-permission' : 'bg-status-error';
 
   return (
     <div className="absolute mobile-safe-top left-1/2 -translate-x-1/2 z-20 pixel-panel py-6 px-12 flex items-center gap-8 text-sm">
-      <span className={`w-8 h-8 rounded-full inline-block shrink-0 ${dotClass} pixel-pulse`} />
+      <span
+        className={`w-8 h-8 rounded-full inline-block shrink-0 ${dotClass} ${refused ? '' : 'pixel-pulse'}`}
+      />
       {label}
     </div>
   );

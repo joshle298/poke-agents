@@ -5,8 +5,14 @@ import {
   TRANSPORT_STATE_RECONNECTING,
 } from '../../../core/src/constants.js';
 import type { ClientMessage, ServerMessage } from '../../../core/src/messages.js';
+import { WS_CLOSE_FORBIDDEN_HOST_CODE, WS_CLOSE_FORBIDDEN_HOST_REASON } from '../constants.js';
 import { reconnectDelayMs } from './reconnectBackoff.js';
 import type { MessageTransport, TransportState } from './types.js';
+
+/** What to tell the user when the server refused this page's address. */
+export function refusedHostMessage(hostname: string): string {
+  return `This address isn't allowed. Restart poke-agents with --allowed-host ${hostname}.`;
+}
 
 /**
  * WebSocket transport for standalone browser mode.
@@ -23,6 +29,7 @@ export class WebSocketTransport implements MessageTransport {
   private disposed = false;
   private pendingMessages: ClientMessage[] = [];
   private _state: TransportState = TRANSPORT_STATE_CONNECTING;
+  private _refusedHost = false;
   private readonly _ready: Promise<void>;
   private resolveReady!: () => void;
 
@@ -39,6 +46,12 @@ export class WebSocketTransport implements MessageTransport {
 
   get ready(): Promise<void> {
     return this._ready;
+  }
+
+  /** The server refused this page's address (a DNS name it doesn't allow).
+   *  Reconnecting can't help, so the transport stops and stays disconnected. */
+  get refusedHost(): boolean {
+    return this._refusedHost;
   }
 
   private setState(next: TransportState): void {
@@ -78,11 +91,18 @@ export class WebSocketTransport implements MessageTransport {
       }
     };
 
-    this.ws.onclose = () => {
-      if (!this.disposed) {
-        this.setState(TRANSPORT_STATE_RECONNECTING);
-        this.scheduleReconnect();
+    this.ws.onclose = (event: CloseEvent) => {
+      if (this.disposed) return;
+      if (
+        event.code === WS_CLOSE_FORBIDDEN_HOST_CODE &&
+        event.reason === WS_CLOSE_FORBIDDEN_HOST_REASON
+      ) {
+        this._refusedHost = true;
+        this.setState(TRANSPORT_STATE_DISCONNECTED);
+        return;
       }
+      this.setState(TRANSPORT_STATE_RECONNECTING);
+      this.scheduleReconnect();
     };
 
     this.ws.onerror = () => {

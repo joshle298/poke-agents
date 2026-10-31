@@ -774,9 +774,17 @@ export const CONDUCTOR_REVIVE_MESSAGE = 'continue';
 /** Deep links the UI will hand to openExternal (the server re-validates). */
 export const CONDUCTOR_DEEP_LINK_PROTOCOL = /^conductor(-[a-z0-9-]+)?:$/;
 export const CONDUCTOR_DEEP_LINK_HOST = 'workspace';
+/** The standalone /ws close for a page opened under a DNS name the server
+ *  doesn't allow (server/src/constants.ts WS_CLOSE_FORBIDDEN_ORIGIN, reason
+ *  "forbidden host"): the transport stops reconnecting and says how to fix it. */
+export const WS_CLOSE_FORBIDDEN_HOST_CODE = 4003;
+export const WS_CLOSE_FORBIDDEN_HOST_REASON = 'forbidden host';
 /** Sessions modal scope choices: activity window in hours (0 = no limit) and
  *  the cap on characters. */
 export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;
+/** The label for 0: the server serves "no limit" as its longest window, the
+ *  last 30 days (MAX_ACTIVE_WITHIN_HOURS in the Conductor provider). */
+export const CONDUCTOR_SCOPE_ALL_LABEL = 'All (30d)';
 export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
 /** Battle log: events kept, how long the newest stays up, and its fade. */
 export const BATTLE_LOG_CAPACITY = 30;

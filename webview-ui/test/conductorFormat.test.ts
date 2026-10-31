@@ -93,22 +93,22 @@ describe('small formatters', () => {
     expect(workspaceLabel(undefined, 'fix-login')).toBe('fix-login');
     expect(modelLabel('gpt-5', 'codex')).toBe('gpt-5 · codex');
     expect(modelLabel(undefined, 'codex')).toBe('codex');
-    expect(windowLabel(0)).toBe('All');
+    expect(windowLabel(0)).toBe('All (30d)');
     expect(windowLabel(24)).toBe('24h');
   });
 
-  it('offers "All" (0, no limit) last and shows a value the server applied', () => {
+  it('offers "All" (0, the server\'s 30-day maximum) last and shows a value the server applied', () => {
     const labels = (current?: number) =>
       windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, current).map((o) => o.label);
-    expect(labels()).toEqual(['1h', '6h', '24h', '72h', 'All']);
+    expect(labels()).toEqual(['1h', '6h', '24h', '72h', 'All (30d)']);
     expect(windowOptions(CONDUCTOR_SCOPE_WINDOW_HOURS, 0).at(-1)).toEqual({
       value: 0,
-      label: 'All',
+      label: 'All (30d)',
     });
     // A window the server clamped or kept from an older build stays visible.
-    expect(labels(12)).toEqual(['1h', '6h', '12h', '24h', '72h', 'All']);
-    expect(labels(720)).toEqual(['1h', '6h', '24h', '72h', '720h', 'All']);
-    expect(labels(-1)).toEqual(['1h', '6h', '24h', '72h', 'All']);
+    expect(labels(12)).toEqual(['1h', '6h', '12h', '24h', '72h', 'All (30d)']);
+    expect(labels(720)).toEqual(['1h', '6h', '24h', '72h', '720h', 'All (30d)']);
+    expect(labels(-1)).toEqual(['1h', '6h', '24h', '72h', 'All (30d)']);
   });
 });
 

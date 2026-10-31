@@ -3,7 +3,11 @@
  */
 
 import type { ConductorStatus } from '../../../core/src/messages.js';
-import { CONDUCTOR_DEEP_LINK_HOST, CONDUCTOR_DEEP_LINK_PROTOCOL } from '../constants.js';
+import {
+  CONDUCTOR_DEEP_LINK_HOST,
+  CONDUCTOR_DEEP_LINK_PROTOCOL,
+  CONDUCTOR_SCOPE_ALL_LABEL,
+} from '../constants.js';
 
 /** Compact age: "now", "42s", "5m", "3h", "2d". */
 export function shortAge(at: number, now: number): string {
@@ -82,14 +86,15 @@ export function needsSignIn(status: ConductorStatus | null): boolean {
   return status?.state === 'authRequired' || status?.state === 'unauthorized';
 }
 
-/** Activity window label for the Sessions modal: "1h", "24h", "All". */
+/** Activity window label for the Sessions modal: "1h", "24h", "All (30d)".
+ *  0 asks for no limit; the server applies it as its longest window. */
 export function windowLabel(hours: number): string {
-  return hours === 0 ? 'All' : `${hours}h`;
+  return hours === 0 ? CONDUCTOR_SCOPE_ALL_LABEL : `${hours}h`;
 }
 
 /**
- * The Sessions modal's activity-window choices: the presets (0 = "All", no
- * limit, kept last) plus the server's current value when it is none of them,
+ * The Sessions modal's activity-window choices: the presets (0 = "All", the
+ * server's longest window, kept last) plus the server's current value when it is none of them,
  * so the control always shows what the server actually applied.
  */
 export function windowOptions(
