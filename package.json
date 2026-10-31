@@ -99,6 +99,7 @@
     "app:dev": "npm run build:app && cd desktop && npm ci && npm start",
     "icons:generate": "node scripts/generate-icons.mjs",
     "start": "node dist/cli.js --open",
+    "demo": "node dist/cli.js --demo --open",
     "compile": "npm run asyncapi:generate && npm run check-types && npm run lint && node esbuild.js && npm run build:webview",
     "build": "npm run compile",
     "watch": "npm-run-all -p watch:*",

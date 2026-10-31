@@ -207,6 +207,10 @@ _Avoid_: file fallback, transcript mode, polling mode
 A Conductor session running in one of Conductor's cloud workspaces. The only kind of Conductor session the office can see, because Conductor's public API covers cloud workspaces and not local ones. Each visible cloud session is an agent.
 _Avoid_: remote session, Conductor agent
 
+**Demo office**:
+An office started with `--demo`: it plays a scripted story of synthetic cloud sessions instead of connecting to Conductor. Its sessions behave like real ones in the office and answer the user's actions, but exist nowhere else.
+_Avoid_: mock mode, fake Conductor
+
 **Hidden**:
 A cloud session the user chose not to show. It stays in scope and in the Sessions modal's search, but has no character until it is shown again. Dismissing a cloud session's character hides it.
 _Avoid_: dismissed (for cloud sessions, dismissing is how a session becomes hidden), filtered, muted
