@@ -1,5 +1,11 @@
 # Changelog
 
+## Poke Agents (unreleased)
+
+### Changes
+
+- A new app icon: the Poke Agents capsule, a teal cap and a cream body, with a bold gold C for Conductor, replacing Promptling in the Mac app, the favicon and the installed web app.
+
 ## Poke Agents v0.3.0
 
 The Pokémon release. Poke Agents shows your Conductor cloud sessions as Pokémon in a small pixel-art town, as a Mac app or in a browser window next to Conductor. It is a visualizer: all coding happens in Conductor with your Conductor settings, and Poke Agents only asks Conductor's API to act when you click.

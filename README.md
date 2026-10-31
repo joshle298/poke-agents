@@ -140,7 +140,7 @@ The first time the Jukebox controls Music or Spotify, macOS asks whether your te
 
 The Mac app is the same office in its own window. It only shows Conductor: it never runs coding agents, edits repositories or changes your Conductor settings, and it has no Claude Code tracking, terminal or hooks.
 
-<img src="docs/screenshots/app-icon.png" alt="The Poke Agents app icon, Promptling, on a light and a dark background" width="400">
+<img src="docs/screenshots/app-icon.png" alt="The Poke Agents app icon, a teal-and-cream capsule with a gold C, on a light and a dark background" width="400">
 
 Build it on your Mac, from a clone:
 
@@ -323,7 +323,7 @@ Poke Agents is a fan project and is not affiliated with, endorsed, sponsored or 
 
 **Pixel Agents.** Poke Agents is built on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, used under the MIT License. The classic office, its characters and most of its furniture come from Pixel Agents; its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
 
-**Original art.** The app icon (a mascot called Promptling), the capsule, and the town's art (grass, tall grass, paths, trees, the pond, the buildings and the Lab and Pokémon Center furniture) are original to Poke Agents and drawn in code by `scripts/generate-icons.mjs` and `scripts/generate-world-assets.mjs`.
+**Original art.** The app icon (the capsule with a gold C for Conductor), the capsule, and the town's art (grass, tall grass, paths, trees, the pond, the buildings and the Lab and Pokémon Center furniture) are original to Poke Agents and drawn in code by `scripts/generate-icons.mjs` and `scripts/generate-world-assets.mjs`.
 
 **Sprites.** When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer; the app itself ships none. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): use them only for non-commercial purposes. **Settings → About & credits** lists the artists for each species in use.
 
