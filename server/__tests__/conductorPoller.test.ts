@@ -962,6 +962,51 @@ describe('Conductor provider controls', () => {
     await h.provider.stop();
   });
 
+  it('replays a cold tail for the Pokédex even while a stalled unit holds the session', async () => {
+    const cold = uuid(0xc11);
+    const h = await boot({
+      prepare: (api) => {
+        api.addWorkspace({
+          id: uuid(0xc12),
+          state: 'sleeping',
+          lastActivityAt: new Date(NOW - 3 * 3_600_000).toISOString(),
+        });
+        api.addSession({
+          id: cold,
+          workspaceId: uuid(0xc12),
+          items: idleFeed(cold, NOW - 3 * 3_600_000),
+        });
+      },
+    });
+    // Focusing it schedules a tail unit; its first request stalls, holding the session.
+    let release: () => void = () => {};
+    h.api.override(
+      (c) => c.path === `/v0/sessions/${cold}/messages`,
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(new Response(JSON.stringify({ data: [], hasMore: false })));
+        }),
+    );
+    h.provider.setFocus([cold]);
+    const unit = h.provider.tick();
+    const pagesBefore = h.api
+      .callsTo(`/sessions/${cold}/messages`)
+      .filter((c) => c.query.limit === '100').length;
+    const [first, second] = await Promise.all([
+      h.provider.getSessionDetail(cold),
+      h.provider.getSessionDetail(cold),
+    ]);
+    const pages = h.api
+      .callsTo(`/sessions/${cold}/messages`)
+      .filter((c) => c.query.limit === '100');
+    expect(pages.length - pagesBefore).toBe(1);
+    expect(first?.entries.map((e) => e.role)).toContain('assistant');
+    expect(second).toEqual(first);
+    release();
+    await unit;
+    await h.provider.stop();
+  });
+
   it('ignores a named session that never started', async () => {
     const id = uuid(0xe01);
     const h = await boot({

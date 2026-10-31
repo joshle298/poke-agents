@@ -30,7 +30,7 @@ export interface FakeCall {
   at: number;
 }
 
-type Override = (call: FakeCall) => Response | undefined;
+type Override = (call: FakeCall) => Response | Promise<Response> | undefined;
 
 function json(status: number, body: unknown, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -86,7 +86,11 @@ export class FakeConductorApi {
   }
 
   /** Answer the next matching request with `response` (once unless `times`). */
-  override(match: (call: FakeCall) => boolean, response: () => Response, times = 1): void {
+  override(
+    match: (call: FakeCall) => boolean,
+    response: () => Response | Promise<Response>,
+    times = 1,
+  ): void {
     let left = times;
     this.overrides.push((call) => {
       if (left <= 0 || !match(call)) return undefined;

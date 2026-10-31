@@ -188,6 +188,8 @@ interface SessionRecord {
   feedEmpty: boolean;
   /** Item #1 was fetched for the Pokédex prompt this run. */
   promptFetched: boolean;
+  /** An on-demand tail replay for the Pokédex, shared by overlapping requests. */
+  detailSync?: Promise<void>;
   busy: boolean;
   neverStarted: boolean;
   adopted: boolean;
@@ -425,15 +427,15 @@ export class ConductorPoller {
   async getSessionDetail(sessionId: string) {
     const rec = this.records.get(sessionId);
     if (!rec) return null;
-    if (!rec.tailed && !rec.busy) {
-      rec.busy = true;
-      try {
-        await this.syncTail(rec, PRIORITY_USER);
-      } catch (err) {
-        this.noteSessionError(rec, err);
-      } finally {
-        rec.busy = false;
-      }
+    if (!rec.tailed) {
+      // At user priority, even if a low-priority tail unit is still queued:
+      // replays are idempotent. Overlapping detail requests share one.
+      rec.detailSync ??= this.syncTail(rec, PRIORITY_USER)
+        .catch((err: unknown) => this.noteSessionError(rec, err))
+        .finally(() => {
+          rec.detailSync = undefined;
+        });
+      await rec.detailSync;
     }
     if (!this.logs.get(sessionId).prompt && !rec.promptFetched && !rec.feedEmpty) {
       rec.promptFetched = true;
