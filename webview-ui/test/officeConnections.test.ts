@@ -111,17 +111,17 @@ test('a despawning end hides its links; a new snapshot replaces the old', () => 
 
 // ── projectiles ─────────────────────────────────────────────────
 
-test('a message ball flies sender → receiver and leaves a preview on landing', () => {
+test('a message capsule flies sender → receiver and leaves a preview on landing', () => {
   const os = office({ 1: [1, 1], 2: [6, 1] });
   assert.equal(os.launchProjectile(1, 2, 'messaged', '  please   review\nthe PR  '), true);
-  const [ball] = os.projectiles;
-  assert.equal(ball.preview, 'please review the PR', 'whitespace collapsed');
-  assert.ok(ball.dur >= PROJECTILE_MIN_SEC && ball.dur <= PROJECTILE_MAX_SEC);
+  const [capsule] = os.projectiles;
+  assert.equal(capsule.preview, 'please review the PR', 'whitespace collapsed');
+  assert.ok(capsule.dur >= PROJECTILE_MIN_SEC && capsule.dur <= PROJECTILE_MAX_SEC);
 
-  os.update(ball.dur / 2);
+  os.update(capsule.dur / 2);
   assert.equal(os.projectiles.length, 1, 'still in the air');
   assert.equal(os.messagePreviews.length, 0, 'no preview before it lands');
-  os.update(ball.dur / 2 + 0.01);
+  os.update(capsule.dur / 2 + 0.01);
   assert.equal(os.projectiles.length, 0);
   assert.equal(os.messagePreviews.length, 1);
   assert.equal(os.messagePreviews[0].toId, 2);
@@ -141,7 +141,7 @@ test('flight time scales with distance, clamped', () => {
   assert.equal(os.projectiles[1].dur, PROJECTILE_MAX_SEC, 'across the office: the maximum');
 });
 
-test('at most PROJECTILE_MAX_IN_FLIGHT balls; missing or identical ends are refused', () => {
+test('at most PROJECTILE_MAX_IN_FLIGHT capsules; missing or identical ends are refused', () => {
   const os = office({ 1: [1, 1], 2: [6, 1] });
   for (let i = 0; i < PROJECTILE_MAX_IN_FLIGHT; i++) {
     assert.equal(os.launchProjectile(1, 2, 'messaged'), true);
@@ -152,7 +152,7 @@ test('at most PROJECTILE_MAX_IN_FLIGHT balls; missing or identical ends are refu
   assert.equal(os.launchProjectile(1, 7, 'messaged'), false);
 });
 
-test('a ball whose end leaves the office is dropped, preview and all', () => {
+test('a capsule whose end leaves the office is dropped, preview and all', () => {
   const os = office({ 1: [1, 1], 2: [6, 1] });
   os.launchProjectile(1, 2, 'spawned', 'hello');
   os.removeAgent(2);
@@ -176,7 +176,7 @@ test('one preview per receiver: the newest message wins', () => {
   assert.equal(os.projectiles[0].preview?.length, MESSAGE_PREVIEW_MAX_CHARS, 'capped');
 });
 
-test('a Pokémon sender attacks toward its receiver as the ball leaves', async () => {
+test('a Pokémon sender attacks toward its receiver as the capsule leaves', async () => {
   const msg = speciesMessage(25);
   installFakeLoader([msg]);
   setPokemonSpecies(msg);

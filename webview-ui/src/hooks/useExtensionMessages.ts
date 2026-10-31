@@ -502,7 +502,7 @@ export function useExtensionMessages(
           }
         }
         os.setAgentIdentity(id, identity);
-        // A child created with a Lead pops out of a ball its Lead throws.
+        // A child created with a Lead pops out of a capsule its Lead throws.
         if (teammateParentId !== undefined) os.setSpawnOrigin(id, teammateParentId);
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {

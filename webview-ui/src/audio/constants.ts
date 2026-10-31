@@ -11,7 +11,7 @@ import type { SoundEventName } from './soundEvents.js';
 export const SOUND_QUIET_AFTER_CONNECT_MS = 5_000;
 /** Arrivals that keep coming within this gap of the quiet window (the
  *  server adopting sessions one by one at startup) are still the initial
- *  load: no ball sounds until the stream pauses this long. */
+ *  load: no throw or pop sounds until the stream pauses this long. */
 export const SOUND_ARRIVAL_CHAIN_MS = 2_000;
 /** A level jump bigger than this is a level being filled in (a session's
  *  real level arriving after a placeholder), not a level-up. */
@@ -21,7 +21,7 @@ export const SOUND_MAX_LEVEL_UP_STEP = 3;
  *  adoption, not a level-up. */
 export const SOUND_LEVEL_SETTLE_MS = 10_000;
 /** A `spawned` message this soon after its child's arrival sound adds
- *  nothing: the arrival already threw the ball. */
+ *  nothing: the arrival already threw the capsule. */
 export const SOUND_SPAWN_DEDUPE_MS = 5_000;
 /** Cry pitch shift for a fainting Pokémon. */
 export const SOUND_FAINT_CRY_SEMITONES = -4;

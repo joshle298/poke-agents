@@ -11,8 +11,8 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 - **A Pokémon per session.** Every visible cloud session is a Pokémon whose species stays with that session. It works at a desk while the session runs tools, reads on read tools, and wanders when the turn is done.
 - **Levels and evolution.** `Lv` comes from the session's message count, so a session walks in at its level and climbs as it works. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it needs your answer or a permission.
-- **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon. Its new sessions are thrown out of a Poké Ball from where it stands.
-- **Links and messages.** Dashed lines connect a Lead to the sessions it created or messaged. When one session messages another, a Poké Ball flies between them with a short preview.
+- **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon. Its new sessions are thrown out of a capsule from where it stands, and a session that leaves is recalled into one.
+- **Links and messages.** Dashed lines connect a Lead to the sessions it created or messaged. When one session messages another, a capsule flies between them with a short preview.
 - **Pokédex panel.** Click a Pokémon to see its session: workspace, repository, model and harness, status, an HP bar for the context left, the task prompt, recent activity, and messages exchanged with other sessions. Actions: Open in Conductor, Send message, Revive, Stop, Deposit in PC, Hide and Pin.
 - **Chat tab.** The Pokédex's Chat tab shows the session's conversation: your messages, the agent's replies, tool steps and messages from other sessions. **Load earlier** pages back through older messages, and the reply box at the bottom sends a message to the session.
 - **Pending questions.** When a session asks you something, the Pokédex shows the question and its options, and an option button sends that option as your reply.
@@ -21,7 +21,7 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 - **Party bar.** Visible sessions as party slots with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks when its session needs you.
 - **Battle log.** An optional one-line ticker of events such as "Pikachu used Bash!" or "Charmander fainted!".
 - **Mac app.** `npm run app:mac` builds Poke Agents as a macOS app with notifications when a session needs you and a Dock badge counting them. See [Mac App](#mac-app).
-- **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a Poké Ball pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
+- **Sounds.** Each Pokémon cries when its session needs you, faints when it errors, and a capsule pops when a new session arrives, with original chiptune effects for level-ups, evolutions and messages. See [Sounds](#sounds).
 - **The town.** A new office opens on a small town in a forest. Working sessions sit at the desks in the Lab (Leads at the lectern), idle ones wander and nap in the Meadow's tall grass and around the pond, and fainted ones rest on the Pokémon Center's beds until revived. **Layout → Templates** switches between the town and the classic office; Undo switches back.
 - **Browser window.** `npm start` opens the office in a Chromium app window next to Conductor, and the office can be installed as a web app.
 - **Jukebox.** Background music from albums you own or play in the Music or Spotify app. See [Music](#music).
@@ -41,7 +41,7 @@ The exception is `--claude`, upstream's local Claude Code mode. It is opt-in, an
 
 ## Requirements
 
-- A [Conductor](https://conductor.build) Pro account with **cloud** workspaces. Conductor's public API needs Pro and only covers cloud workspaces.
+- A [Conductor](https://conductor.build) Pro account with **cloud** workspaces. Conductor's public API needs Pro and only covers cloud workspaces. The [demo](#try-the-demo) needs neither.
 - A Conductor API key in `CONDUCTOR_API_KEY`, or a Conductor CLI login (`conductor auth login`) on macOS. The Mac app, opened from Finder, needs the CLI login: it can't see your shell's variables.
 - Node.js 20 or later, and git. Building the Mac app needs Node.js 22.12 or later.
 - For the Mac app, macOS 13 or later. For the browser window, macOS with Chrome, Edge, Brave, Chromium or Vivaldi. On Linux, the office works in any browser.
@@ -76,6 +76,21 @@ The first run downloads about 125 MB of build tools and builds the app. It takes
 The command prints a URL with a `?token=`. Treat it as a secret: whoever has it can use the office's session actions (send a message, stop, archive). A browser without the token can only watch.
 
 Without a Conductor sign-in, the office opens with the steps to sign in, and the terminal says the same. Run `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart Poke Agents.
+
+## Try the Demo
+
+No Conductor account, or just curious? Run the demo from a clone:
+
+```bash
+npm ci
+npm run demo   # the same as: node dist/cli.js --demo --open
+```
+
+The demo office plays a scripted story with synthetic sessions instead of connecting to Conductor. A Lead, "Release v2 orchestration", spawns five sessions in the first 20 seconds. They run tools, message the Lead and level up. "Fix flaky tests" faints and the Lead revives it, "Update docs" finishes early and falls asleep, "Review PR #42" waits on a question for you, and "Triage nightly alerts" evolves. The finished "Prototype pricing page" goes to the PC Box.
+
+Everything in the office works on the demo's sessions: the Pokédex and its Chat tab, a question's options, **Send**, **Revive**, **Stop**, **Deposit in PC** and **Withdraw**, **Hide** and **Pin**, and the Sessions modal. Nothing reaches Conductor, and **Open in Conductor** says there is nothing to open. Sprites and cries download as usual.
+
+The first round, about five minutes long, plays the same way every time. Then the Lead hands out new tasks and the office keeps going. `--demo-seed <n>` varies the generated history and the later rounds, and `--demo-speed <x>` (or `POKE_AGENTS_DEMO_SPEED`) plays the story faster or slower. The demo office keeps its seats in its own file, and it never reuses or replaces an office that shows your real sessions. For the Mac app, quit it, then launch the demo with `open -a "Poke Agents" --args --demo`.
 
 ## Mac App
 
@@ -180,19 +195,19 @@ A session becomes a Lead when it creates another session with a first message, f
 
 Each Pokémon makes sounds when something happens to its session. Sound is on by default and starts after your first click, tap or key press in the office: browsers keep audio locked until then, and nothing that happened before is played late.
 
-| When                                                          | You hear                                              |
-| ------------------------------------------------------------- | ----------------------------------------------------- |
-| A session needs your answer or a permission                   | An alert, then its Pokémon's cry                      |
-| A session errors (faints)                                     | Its cry, pitched down, and a falling tone             |
-| A fainted session works again                                 | A rising heal arpeggio                                |
-| A Pokémon levels up                                           | A short level-up arpeggio                             |
-| A Pokémon evolves                                             | A rising shimmer, then the new species' cry           |
-| A Lead creates a session                                      | A Poké Ball throw, the pop, and the new Pokémon's cry |
-| Any other session appears                                     | The pop and its cry                                   |
-| One session messages another                                  | A whoosh                                              |
-| A session leaves the office (hidden, deposited, out of scope) | A recall zap                                          |
-| The selected or a pinned session finishes its turn            | A soft two-note tone                                  |
-| You open a Pokédex                                            | That Pokémon's cry                                    |
+| When                                                          | You hear                                            |
+| ------------------------------------------------------------- | --------------------------------------------------- |
+| A session needs your answer or a permission                   | An alert, then its Pokémon's cry                    |
+| A session errors (faints)                                     | Its cry, pitched down, and a falling tone           |
+| A fainted session works again                                 | A rising heal arpeggio                              |
+| A Pokémon levels up                                           | A short level-up arpeggio                           |
+| A Pokémon evolves                                             | A rising shimmer, then the new species' cry         |
+| A Lead creates a session                                      | A capsule throw, the pop, and the new Pokémon's cry |
+| Any other session appears                                     | The pop and its cry                                 |
+| One session messages another                                  | A whoosh                                            |
+| A session leaves the office (hidden, deposited, out of scope) | A recall zap                                        |
+| The selected or a pinned session finishes its turn            | A soft two-note tone                                |
+| You open a Pokédex                                            | That Pokémon's cry                                  |
 
 A busy office stays bearable: at most four sounds a second, one cry at a time, a cooldown per session, nothing for five seconds after the office connects, and no level-up sound while a session's real level is being filled in. With the Pokémon theme off, only the alert, faint and done tones play. Claude Code agents (`--claude`) keep the upstream chime.
 
@@ -236,6 +251,9 @@ While music plays, a small pill above the toolbar shows the track and album; cli
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                                                                                                          |
 | `--no-sprites`           | sprites on   | Never download sprites. The office shows the upstream characters.                                                                                                                                                                                                |
 | `--no-sounds`            | sounds on    | Never download cries or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                                                                                                                 |
+| `--demo`                 | off          | Play the scripted [demo](#try-the-demo) with synthetic sessions instead of connecting to Conductor. Not with `--claude`.                                                                                                                                         |
+| `--demo-seed <n>`        | `42`         | Vary the demo's generated history, replies and later rounds. The first round is the same for every seed. Implies `--demo`.                                                                                                                                       |
+| `--demo-speed <x>`       | `1`          | Demo speed factor, from 0.25 to 20. Implies `--demo`.                                                                                                                                                                                                            |
 | `--claude`               | off          | Also track local Claude Code sessions, as upstream Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                               |
 | `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                                                                                                               |
 
@@ -247,6 +265,7 @@ While music plays, a small pill above the toolbar shows the track and album; cli
 | `POKE_AGENTS_SPRITES`          | `off` disables sprite downloads, like `--no-sprites`.                     |
 | `POKE_AGENTS_SOUNDS`           | `off` disables cry downloads and the sound pack, like `--no-sounds`.      |
 | `POKE_AGENTS_CONDUCTOR_BUDGET` | Conductor API requests per minute when `--conductor-budget` is not given. |
+| `POKE_AGENTS_DEMO_SPEED`       | The demo's speed factor when `--demo-speed` is not given.                 |
 | `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.              |
 
 Without either token variable, Poke Agents on macOS reads the token that `conductor auth login` saved in the Keychain (service `com.conductor.cli`). With no token at all, the office asks you to sign in with `conductor auth login` or set `CONDUCTOR_API_KEY`, then restart.
@@ -258,6 +277,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 | `standalone-state.json` | Seats, and each Conductor session's agent id and Pokémon (under `streamAgents`). With `--claude`, each agent's tool-call count (its level).                          |
 | `conductor-state.json`  | The Sessions modal's scope, hidden and pinned sessions, recent withdrawals, and where Poke Agents last read each session. Entries untouched for 30 days are dropped. |
 | `conductor.lock`        | Which office polls Conductor. Only one office per machine does.                                                                                                      |
+| `demo-state.json`       | The demo office's seats (`--demo`), apart from the real office's.                                                                                                    |
 | `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                                                                                 |
 | `config.json`           | Settings such as the Pokémon theme and sounds.                                                                                                                       |
 | `layout.json`           | The office layout.                                                                                                                                                   |
@@ -269,7 +289,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with upstream Pixel Age
 
 ## Privacy
 
-- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, for cries to `raw.githubusercontent.com`, and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries.
+- Poke Agents makes outbound requests only to the Conductor API (`api.conductor.build`, or `CONDUCTOR_API_URL`), for sprites to `raw.githubusercontent.com` with `cdn.jsdelivr.net` as a fallback, for cries to `raw.githubusercontent.com`, and to `open.spotify.com/oembed` when you save a Spotify link in the Jukebox. With the Pokémon theme off or `--no-sprites`, it fetches no sprites and no cries; with `--no-sounds`, no cries. The demo (`--demo`) never contacts Conductor.
 - Your Conductor token is never written to disk, logged, or passed on a command line. Poke Agents reads it from the environment or the Keychain each time it starts.
 - Reads use GET requests. Writes to Conductor happen only for the actions above, when you click them.
 - Saving a Spotify link asks `open.spotify.com/oembed` once for its title. The Jukebox makes no other requests: folder music streams from your own machine, and the Music and Spotify apps play in their own windows.
@@ -307,12 +327,13 @@ These need a Mac and can't be checked in CI:
 5. Install the office as an app from Chrome. After stopping and restarting `npm start`, the installed app still connects (fixed port 41510).
 6. Optional: with `--claude`, check whether local Conductor workspaces appear through their Claude Code transcripts.
 7. `npm run app:mac` builds the app for your Mac, and it opens from Finder with no Gatekeeper warning.
-8. The icon: in the Dock, Finder (icon and list view), Cmd-Tab and Spotlight it shows the red-and-white pill with the green `>` screen, not a grey square around it (on macOS 26 and later, check that it isn't shown inside a grey rounded square; if it is, the tile needs Apple's exact shape or an Icon Composer file). Compare the 16 and 32 px sizes in Finder's list view with `iconutil -c iconset desktop/resources/icon.icns` output.
+8. The icon: in the Dock, Finder (icon and list view), Cmd-Tab and Spotlight it shows Promptling (the teal creature with a `>` eye and a cursor eye) on its dark tile, not a grey square around it (on macOS 26 and later, check that it isn't shown inside a grey rounded square; if it is, the tile needs Apple's exact shape or an Icon Composer file). Compare the 16 and 32 px sizes in Finder's list view with `iconutil -c iconset desktop/resources/icon.icns` output.
 9. Opened from Finder with only `conductor auth login` done, the app connects after you allow the Keychain prompt. Without a sign-in it shows the app's steps; **Reconnect** connects after `conductor auth login`, and says so when it still can't. Choosing Deny, then Reconnect and Allow, also connects.
 10. Soon after the first connection, a "Watching your Conductor sessions" notification appears and macOS asks to allow notifications.
 11. A session that starts waiting for an answer posts a notification while another app is in front; clicking it opens that session's Pokédex. The notification leaves Notification Center when the session continues. The Dock badge counts waiting sessions and clears when they continue.
 12. **File → Close Window** (Cmd-W) keeps the app in the Dock, clicking the Dock icon reopens it, and Cmd-Q quits. Reopened, the window keeps its size and position. **Settings…** (Cmd-,) opens Settings, and the title bar stays dark in Light Mode.
 13. With `npm start` running, the app opens the same office; after stopping `npm start`, the app keeps working on its own server.
+14. With the app quit, `open -a "Poke Agents" --args --demo` opens the demo office: the scripted sessions appear without a Conductor sign-in, and a session that faints or asks a question posts a notification.
 
 ## Development
 
@@ -320,6 +341,7 @@ These need a Mac and can't be checked in CI:
 npm ci
 npm run build                      # protocol generation, type check, lint, esbuild and Vite
 node dist/cli.js --no-conductor    # run the office without Conductor
+node dist/cli.js --demo            # or with the scripted demo sessions
 ```
 
 Checks:
@@ -339,7 +361,7 @@ Standalone end-to-end tests run without Conductor and without sprites. The VS Co
 
 Poke Agents is a fan project and is not affiliated with, endorsed, sponsored or approved by Nintendo, The Pokémon Company, Creatures Inc., GAME FREAK inc. or Spike Chunsoft. Pokémon and Pokémon character names are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc.
 
-This repository contains no Pokémon artwork. When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Use them only for non-commercial purposes: don't sell, advertise in or host a public demo of a build that shows them. **Settings → Credits** lists the artists for each species in use.
+This repository contains no Pokémon artwork. Poke Agents' own pixel art, such as the app icon (a mascot called Promptling) and the capsule sessions are thrown from, is original and drawn in code. When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/). Use them only for non-commercial purposes: don't sell, advertise in or host a public demo of a build that shows them. **Settings → Credits** lists the artists for each species in use.
 
 When sounds are on, the app also downloads Pokémon cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project (collected from Pokémon Showdown, Veekun and The Sounds Resource) to the same cache. Cries are © Nintendo, Creatures Inc. and GAME FREAK inc., fetched at runtime and not redistributed. The other sound effects are original compositions synthesized in the app.
 

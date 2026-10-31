@@ -162,7 +162,7 @@ What an Area does beyond directory mapping. A **Meadow** is where characters who
 _Avoid_: zone
 
 **Pokémon Town**:
-The bundled layout a new standalone office opens on: the Lab (desks for working agents and a lectern for Leads), the Meadow with tall grass and a pond garden, and the Pokémon Center with its beds, inside a forest edge. The classic office is the other bundled layout; the editor's Templates panel switches between them.
+The bundled layout a new standalone office opens on: the Lab (desks for working agents and a lectern for Leads), the Meadow with tall grass and a fenced pond garden, and the Pokémon Center with its beds (its own pink-heart emblem), inside a forest edge. The classic office is the other bundled layout; the editor's Templates panel switches between them.
 _Avoid_: map
 
 **Area mapping**:
@@ -214,6 +214,10 @@ _Avoid_: file fallback, transcript mode, polling mode
 **Cloud session**:
 A Conductor session running in one of Conductor's cloud workspaces. The only kind of Conductor session the office can see, because Conductor's public API covers cloud workspaces and not local ones. Each visible cloud session is an agent.
 _Avoid_: remote session, Conductor agent
+
+**Demo office**:
+An office started with `--demo`: it plays a scripted story of synthetic cloud sessions instead of connecting to Conductor. Its sessions behave like real ones in the office and answer the user's actions, but exist nowhere else.
+_Avoid_: mock mode, fake Conductor
 
 **Hidden**:
 A cloud session the user chose not to show. It stays in scope and in the Sessions modal's search, but has no character until it is shown again. Dismissing a cloud session's character hides it.

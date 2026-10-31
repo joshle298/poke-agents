@@ -36,6 +36,42 @@ export function mapOffset(
   };
 }
 
+/**
+ * Clamp a camera pan on one axis so the map never leaves empty canvas on that
+ * axis it could have filled: a map that fits (`mapPx` ≤ `viewPx`) stays
+ * centred (pan 0); a larger one may follow its target only until a map edge
+ * reaches the viewport's edge. Device px, like the pan itself.
+ */
+export function clampPanAxis(pan: number, mapPx: number, viewPx: number): number {
+  const slack = (mapPx - viewPx) / 2;
+  if (slack <= 0) return 0;
+  return Math.max(-slack, Math.min(slack, pan));
+}
+
+/**
+ * Clamp a pan the user makes (wheel, drag, pinch, zoom). `tight` (the town,
+ * not editing): per axis like a follow (clampPanAxis), so panning and zooming
+ * never show empty canvas the map could fill. Otherwise the map's edge may
+ * come `marginFraction` of the canvas inside it, room to edit at the edges.
+ * Device px.
+ */
+export function clampManualPan(
+  pan: { x: number; y: number },
+  map: { w: number; h: number },
+  view: { w: number; h: number },
+  { tight, marginFraction }: { tight: boolean; marginFraction: number },
+): { x: number; y: number } {
+  if (tight) {
+    return { x: clampPanAxis(pan.x, map.w, view.w), y: clampPanAxis(pan.y, map.h, view.h) };
+  }
+  const maxX = map.w / 2 + view.w / 2 - view.w * marginFraction;
+  const maxY = map.h / 2 + view.h / 2 - view.h * marginFraction;
+  return {
+    x: Math.max(-maxX, Math.min(maxX, pan.x)),
+    y: Math.max(-maxY, Math.min(maxY, pan.y)),
+  };
+}
+
 /** Projects world points into CSS pixels within the overlay container that
  *  sits on top of the canvas. */
 export interface OverlayProjection {

@@ -122,8 +122,18 @@ test('pieces: a small sprite limits how high the grass covers it; the lowest lim
 test('the bundled tall grass marks its blades as foreground; plain grass does not', () => {
   const read = (file: string) =>
     decodeFloorPng(fs.readFileSync(path.join(ASSETS_DIR, 'floors', file)));
-  // Three blade variants, one per tile in the town.
-  for (const file of ['floor_11.png', 'floor_15.png', 'floor_16.png']) {
+  // Three blade variants, one per tile in the town, and a patch's edges: its
+  // top row, its left and right sides, its top corners.
+  for (const file of [
+    'floor_11.png',
+    'floor_15.png',
+    'floor_16.png',
+    'floor_17.png',
+    'floor_19.png',
+    'floor_20.png',
+    'floor_21.png',
+    'floor_22.png',
+  ]) {
     const tall = splitFloorForeground(read(file));
     assert.ok(tall.own, `${file}: blades cover the tile’s own occupant`);
     assert.ok(tall.below, `${file}: the lower blades cover the occupant of the tile below`);
@@ -134,7 +144,28 @@ test('the bundled tall grass marks its blades as foreground; plain grass does no
     'floor_10.png',
     'floor_12.png',
     'floor_14.png',
+    'floor_18.png',
   ]) {
     assert.equal(hasForegroundPixels(read(file)), false, `${file} has no foreground`);
+  }
+  // A patch's top row is plain grass above its short blades: those rows only
+  // cover a character where a blade is.
+  const top = read('floor_17.png');
+  const fgInRow = (r: number) => top[r].filter((p) => p.length === 9).length;
+  assert.ok(fgInRow(1) < 16 && fgInRow(2) < 16, 'ragged: the top rows are not all blades');
+  // A side is plain grass for a ragged few pixels in from its edge.
+  const reach = (file: string, edgeX: (x: number) => number) =>
+    read(file).map((row) => {
+      let x = 0;
+      while (x < 16 && row[edgeX(x)].length !== 9) x++;
+      return x;
+    });
+  for (const [file, edgeX] of [
+    ['floor_19.png', (x: number) => x],
+    ['floor_20.png', (x: number) => 15 - x],
+  ] as const) {
+    const inset = reach(file, edgeX).slice(2, 12);
+    assert.ok(Math.min(...inset) >= 1, `${file}: grass along its outer edge (${inset})`);
+    assert.ok(new Set(inset).size >= 3, `${file}: a ragged edge, not a straight cut (${inset})`);
   }
 });

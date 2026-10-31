@@ -10,6 +10,7 @@ import {
   safeHttpsUrl,
   shortAge,
   signInSteps,
+  splitNameTail,
   windowLabel,
   windowOptions,
   workspaceLabel,
@@ -328,5 +329,31 @@ describe('isDesktopAppUserAgent', () => {
       ),
     ).toBe(false);
     expect(isDesktopAppUserAgent('Mozilla/5.0 NotPokeAgentsDesktop/1')).toBe(false);
+  });
+});
+
+describe('splitNameTail', () => {
+  it('keeps the end of a long slug in view, whole segments where they fit', () => {
+    expect(splitNameTail('recorder-platform-review-1')).toEqual({
+      head: 'recorder-platform-',
+      tail: 'review-1',
+    });
+    expect(splitNameTail('recorder-platform-review-2').tail).toBe('review-2');
+    expect(splitNameTail('feature/very_long_branch_name.v12').tail).toBe('name.v12');
+  });
+
+  it('falls back to the last few characters when the last segment is long', () => {
+    expect(splitNameTail('workspacewithoutanyseparators')).toEqual({
+      head: 'workspacewithoutanysepa',
+      tail: 'rators',
+    });
+  });
+
+  it('leaves short names and titles whole', () => {
+    expect(splitNameTail('short-name')).toEqual({ head: 'short-name', tail: '' });
+    expect(splitNameTail('Google Files baseline measurement')).toEqual({
+      head: 'Google Files baseline measurement',
+      tail: '',
+    });
   });
 });

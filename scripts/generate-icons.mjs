@@ -4,17 +4,16 @@
 //   node scripts/generate-icons.mjs --preview <dir> also write nearest-neighbor
 //                                                  previews (1024/128/32/16 px)
 //
-// The art is original: a pixel capsule shaped like a pill, wider than tall
-// (red top, white bottom, dark band), with a small terminal screen set into
-// the band where a button would be. The screen shows a green `>` prompt and a
-// block cursor. Two sparkles sit at the upper right, and everything is on a
-// macOS-style rounded square in the app's palette. It copies no official
-// Pokémon art or logo: the capsule is not round and has no round button.
+// The art is original: Promptling, a mascot of our own. A round teal creature
+// with a cream belly, stubby feet and a lilac bulb on a bent antenna, whose
+// face is a terminal prompt: a `>` for the left eye and a block cursor for the
+// right. Two gold sparkles sit at the upper right, and everything is on a
+// macOS-style rounded square in the app's night palette. It is not based on
+// any Pokémon, ball or logo.
 //
 // Each size is drawn on an integer pixel grid, so edges stay crisp. 64 px and
-// up draw the full design; 32 and 48 px a simpler one (one sparkle, smaller
-// glint, same screen); 16 px a hand-drawn one where the screen is a bright
-// cursor in the band.
+// up draw the full 32-cell design; 32 and 48 px the same grid with the mouth,
+// cheeks and deepest shades dropped; 16 px a hand-drawn one with no outline.
 //
 // Outputs (all committed; scripts/generate-icons.test.mjs fails when they
 // drift from this script):
@@ -37,9 +36,9 @@ const { PNG } = pngjs;
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ── Palette ───────────────────────────────────────────────────
-// The app's Pokémon theme (webview-ui/src/index.css): night-dark #1a1c2c,
-// accent red #dc0a2d, dialog white #f8f8f0, status green #78c850 and yellow
-// #f8d030.
+// The tile keeps the app's night blues. Promptling has its own scheme: a teal
+// body with a cream belly, a lilac antenna bulb, dark-ink eyes, and the
+// theme's gold for the sparkles. No red and no red/white split.
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16),
@@ -50,7 +49,7 @@ const hex = (h) => [
 const BG_TOP = hex('#363f60');
 /** Light enough that the tile's lower half still separates from a dark Dock. */
 const BG_BOTTOM = hex('#202439');
-const GLOW = hex('#56658f');
+const GLOW = hex('#4f6a8f');
 /** A faint light line just inside the tile's edge, all the way round. */
 const INNER_STROKE_ALPHA = 0.1;
 /** The brighter part of that line along the top edge. */
@@ -58,17 +57,20 @@ const TOP_RIM_ALPHA = 0.2;
 
 /** Cell colors by key. */
 const INK = {
-  k: hex('#12141f'), // outline, band, screen frame
-  n: hex('#2a3350'), // terminal screen
-  g: hex('#78c850'), // prompt
-  G: hex('#b8f088'), // cursor
-  r: hex('#dc0a2d'), // capsule red
-  R: hex('#98081f'), // red in shadow
-  p: hex('#ff6b7d'), // red highlight
-  P: hex('#fff4f0'), // specular glint
-  w: hex('#f8f8f0'), // capsule white
-  s: hex('#bcc6d6'), // white in shadow
-  S: hex('#7f8ba6'), // white in deep shadow
+  k: hex('#0e1a26'), // outline
+  T: hex('#9af2dd'), // teal, lit
+  t: hex('#45c9b4'), // teal body
+  d: hex('#2a9a9c'), // teal in shadow
+  D: hex('#1d6c7c'), // teal in deep shadow
+  c: hex('#fdf3d2'), // cream belly
+  C: hex('#e6cf9c'), // cream in shadow
+  e: hex('#141826'), // eyes: the `>` prompt and the block cursor
+  P: hex('#ffffff'), // glint in the cursor eye
+  l: hex('#c79cf0'), // lilac antenna bulb
+  L: hex('#efe2ff'), // lilac, lit
+  v: hex('#9b74d8'), // lilac in shadow
+  b: hex('#c99be8'), // cheeks
+  m: hex('#16525f'), // mouth
   y: hex('#f8d030'), // sparkle tips
   Y: hex('#ffe878'), // sparkle arms
   W: hex('#ffffff'), // sparkle core
@@ -77,164 +79,84 @@ const INK = {
 // ── Designs ───────────────────────────────────────────────────
 // A design is a square grid of cell keys covering the whole icon canvas
 // (null = transparent). The rounded square behind it is drawn separately, as
-// a smooth shape, at each output size.
+// a smooth shape, at each output size. Grids are drawn by hand: '.' is empty.
 
-function emptyGrid(n) {
-  return Array.from({ length: n }, () => Array(n).fill(null));
-}
-
-/** Copy a hand-drawn block onto the grid with its top-left cell at (x0, y0);
- *  '.' leaves the cell below as it is. */
-function stamp(grid, rows, x0, y0) {
-  rows.forEach((row, dy) => {
-    [...row].forEach((key, dx) => {
-      if (key !== '.') grid[y0 + dy][x0 + dx] = key;
-    });
-  });
-}
-
-/** A four-point star centered on (sx, sy) that brightens toward its middle. */
-function sparkle(grid, sx, sy, arm) {
-  for (let i = -arm; i <= arm; i++) {
-    const key = Math.abs(i) === arm ? 'y' : 'Y';
-    grid[sy][sx + i] = key;
-    grid[sy + i][sx] = key;
-  }
-  grid[sy][sx] = 'W';
-}
-
-/** The capsule's half-width, in cells, on each row of its top half (rows 9
- *  to 15 of the 32-cell grid); the bottom half mirrors it. Hand-tuned so the
- *  round ends step like a drawn circle rather than an octagon. */
-const CAPSULE_PROFILE = [6, 8, 9, 10, 10, 11, 11];
-/** Half the capsule's height, and of its flat middle stretch, for shading. */
-const CAPSULE_RADIUS = CAPSULE_PROFILE.length;
-const CAPSULE_STRAIGHT = CAPSULE_PROFILE.at(-1) - CAPSULE_RADIUS;
-
-/** Light from the upper left and front, as a unit vector (x right, y down,
- *  z toward the viewer). */
-const LIGHT = [-0.35, -0.35, 0.87].map((c) => c / Math.hypot(-0.35, -0.35, 0.87));
-
-/** How lit the capsule's surface is at (px, py) cells from its center: a
- *  cylinder along the flat middle, half-spheres at the ends. */
-function capsuleLight(px, py) {
-  const dx = Math.sign(px) * Math.max(0, Math.abs(px) - CAPSULE_STRAIGHT);
-  const nx = dx / CAPSULE_RADIUS;
-  const ny = py / CAPSULE_RADIUS;
-  const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
-  return nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
-}
+const parseGrid = (rows) => rows.map((row) => [...row].map((c) => (c === '.' ? null : c)));
 
 /**
- * The capsule: a pill 22 cells wide and 14 tall (round ends, flat top and
- * bottom) centered on the 32-cell grid, outlined, with a two-cell dark band
- * across the middle, lit from the upper left.
+ * Promptling on a 32-cell grid (64 px and up): the outlined body lit from the
+ * upper left (a rim of light, shade down the right and along the bottom),
+ * the `>` eye and the cursor eye with its glint, a small smile, cheeks, the
+ * belly and feet, the antenna, and two sparkles clear of the tile's corner.
  */
-function paintCapsule(grid) {
-  const c = grid.length / 2;
-  const top = c - CAPSULE_PROFILE.length;
-  const halfWidth = (y) => {
-    const i = y < c ? y - top : 2 * c - 1 - y - top;
-    return i >= 0 && i < CAPSULE_PROFILE.length ? CAPSULE_PROFILE[i] : 0;
-  };
-  const inside = (x, y) => {
-    const hw = halfWidth(y);
-    return hw > 0 && x >= c - hw && x < c + hw;
-  };
-  for (let y = 0; y < grid.length; y++) {
-    for (let x = 0; x < grid.length; x++) {
-      if (!inside(x, y)) continue;
-      const px = x + 0.5 - c;
-      const py = y + 0.5 - c;
-      const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
-      if (edge || Math.abs(py) < 1) {
-        grid[y][x] = 'k';
-        continue;
-      }
-      const light = capsuleLight(px, py);
-      if (py < 0) grid[y][x] = light < 0.5 ? 'R' : 'r';
-      else if (light < 0.15) grid[y][x] = 'S';
-      else if (light < 0.4) grid[y][x] = 's';
-      else grid[y][x] = 'w';
-    }
-  }
-}
+const GRID_32 = parseGrid([
+  '................................',
+  '................................',
+  '................................',
+  '................................',
+  '.........ll.........y...........',
+  '........lLll.......yWy..y.......',
+  '........lllv........y...Y.......',
+  '.........vvd..........yYWYy.....',
+  '...........d............Y.......',
+  '............d...........y.......',
+  '...........kkkkkkkkkk...........',
+  '.........kktTTtttttttkk.........',
+  '........ktTTttttttttttdk........',
+  '.......ktTttttttttttttddk.......',
+  '......ktttettttttttPettddk......',
+  '......kttteettttttteettddk......',
+  '.....kttttteetttttteettddDk.....',
+  '.....ktttteettttttteettddDk.....',
+  '.....kttttetttmttmteettddDk.....',
+  '.....ktbbttttttmmtttttbbdDk.....',
+  '.....kttttttttcccctttttddDk.....',
+  '.....kttttttcccccccCtttddDk.....',
+  '.....kdttttccccccccCCttddDk.....',
+  '......kddttccccccCCCCddDDk......',
+  '.......kkdddccCCCCCCDDDkk.......',
+  '.........kdddkkkkkkddDk.........',
+  '..........kkk......kkk..........',
+  '................................',
+  '................................',
+  '................................',
+  '................................',
+  '................................',
+]);
 
-/**
- * The terminal set into the band, 10 by 8 cells around the canvas center: a
- * dark frame round a screen showing a bold `>` prompt and a block cursor.
- */
-const SCREEN = [
-  '.kkkkkkkk.',
-  'knnnnnnnnk',
-  'knggnnGGnk',
-  'knnggnGGnk',
-  'knnggnGGnk',
-  'knggnnGGnk',
-  'knnnnnnnnk',
-  '.kkkkkkkk.',
-];
+/** Promptling for 32 and 48 px, where a cell is one or two pixels: no mouth or
+ *  cheeks (they read as smudges), and three teal tones instead of four. */
+const GRID_32_PLAIN = GRID_32.map((row) =>
+  row.map((key) => ({ m: 't', b: 't', T: 't', D: 'd' })[key] ?? key),
+);
 
-/**
- * The full design on a 32-cell grid (64 px and up). `detail` adds a larger
- * glint and a second sparkle; without it (32 and 48 px) the art keeps only
- * what still reads at one or two pixels per cell.
- */
-function capsuleGrid({ detail }) {
-  const grid = emptyGrid(32);
-  paintCapsule(grid);
-  stamp(grid, SCREEN, 11, 12);
-
-  // Glint on the red cap, upper left.
-  const glint = detail
-    ? [
-        ['p', 8, 12],
-        ['p', 9, 11],
-        ['p', 10, 10],
-        ['p', 8, 13],
-        ['P', 9, 12],
-        ['P', 10, 11],
-      ]
-    : [
-        ['p', 8, 12],
-        ['P', 9, 11],
-      ];
-  for (const [key, x, y] of glint) grid[y][x] = key;
-
-  // Sparkles above the capsule's right shoulder, well inside the tile's
-  // rounded corner.
-  sparkle(grid, 24, 7, 2);
-  if (detail) sparkle(grid, 20, 5, 1);
-  return grid;
-}
-
-/** Hand-drawn 16 px design: the same pill, 10 px wide with at least a pixel
- *  of tile all round, a bright cursor in the band where the screen is, and
- *  one sparkle. The pill sits a pixel low so the sparkle clears it. No
- *  outline: at this size it would melt into the dark square. */
-const GRID_16 = [
+/** Hand-drawn 16 px design: the same creature, 10 px wide with at least a
+ *  pixel of tile all round, a `>` eye and a solid cursor eye, the antenna
+ *  bulb and one sparkle. No outline: at this size it would melt into the
+ *  dark square. */
+const GRID_16 = parseGrid([
   '................',
   '................',
-  '............y...',
-  '...........yWy..',
-  '............y...',
-  '.....rrrrrr.....',
-  '....rPrrrrrR....',
-  '...rprrrrrrRR...',
-  '...kkkkGGkkkk...',
-  '...kkkkGGkkkk...',
-  '...wwwwwwwwss...',
-  '....wwwwwwss....',
-  '.....ssssSS.....',
+  '....Ll......y...',
+  '....lv.....yWy..',
+  '......d.....y...',
+  '.....tttttt.....',
+  '....tTTttttd....',
+  '...tTettteetd...',
+  '...tttetteetd...',
+  '...ttettteetd...',
+  '...tttcccctdd...',
+  '....tccccCCd....',
+  '.....dd..dd.....',
   '................',
   '................',
   '................',
-].map((row) => [...row].map((c) => (c === '.' ? null : c)));
+]);
 
 const DESIGNS = {
   small: GRID_16,
-  medium: capsuleGrid({ detail: false }),
-  large: capsuleGrid({ detail: true }),
+  medium: GRID_32_PLAIN,
+  large: GRID_32,
 };
 
 /** The design drawn at a given output size. */
@@ -362,7 +284,7 @@ export function renderIcon(size, { fullBleed = false } = {}) {
     for (let p = 0; p < size * size; p++) over(data, p * 4, [0, 0, 0], shadow[p] * 0.32);
   }
 
-  // The rounded square: a vertical gradient, a soft glow behind the capsule,
+  // The rounded square: a vertical gradient, a soft glow behind the mascot,
   // and a faint light line just inside the edge, brighter along the top.
   const top = fullBleed ? 0 : (size * (1 - BODY_FRACTION)) / 2;
   const span = fullBleed ? size : size * BODY_FRACTION;

@@ -1,0 +1,13 @@
+{
+  "id": "WALL_WINDOW",
+  "name": "Wall Window",
+  "category": "wall",
+  "type": "asset",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 16,
+  "height": 32,
+  "footprintW": 1,
+  "footprintH": 2
+}

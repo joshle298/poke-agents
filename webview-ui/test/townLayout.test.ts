@@ -204,3 +204,102 @@ test('the Lab and the Pokémon Center have doors, and only doors lead in', () =>
     assert.ok(doors.length >= 1 && doors.length <= 3, `${name} doors: ${doors.join(' ')}`);
   }
 });
+
+test('the Meadow keeps a tile clear of the forest on either side', () => {
+  const roles = areaRoleTiles(town)!;
+  const forest = new Set<string>();
+  for (const f of town.furniture) {
+    if (f.type !== 'TALL_TREE' && f.type !== 'PINE_TREE') continue;
+    const entry = getCatalogEntry(f.type)!;
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      for (let dc = 0; dc < entry.footprintW; dc++) forest.add(tileKey(f.col + dc, f.row + dr));
+    }
+  }
+  for (const key of roles.meadow) {
+    const [col, row] = key.split(',').map(Number);
+    for (const dc of [-1, 1]) {
+      assert.ok(!forest.has(tileKey(col + dc, row)), `Meadow tile ${key} is beside a forest tree`);
+    }
+  }
+});
+
+test('the pond garden is fenced: a gate on the street, an opening by the signpost', () => {
+  const tileMap = layoutToTileMap(town);
+  const blocked = getBlockedTiles(town.furniture);
+  const open = (col: number, row: number) => isWalkable(col, row, tileMap, blocked);
+  const street = [26, 27, 28, 29, 30, 31, 32, 33, 34].filter((c) => open(c, 17));
+  assert.deepEqual(street, [29, 30], 'the gate, in line with the Center door');
+  const pathSide = [18, 19, 20, 21, 22].filter((r) => open(25, r));
+  assert.deepEqual(pathSide, [19], 'one opening, just under the signpost');
+  const sign = town.furniture.find((f) => f.type === 'SIGNPOST')!;
+  assert.deepEqual([sign.col, sign.row + 1], [25, 18], 'the signpost stands beside it');
+});
+
+test('tall-grass patches have ragged edges, coloured like the grass, and a shadow below', () => {
+  const TALL = [12, 16, 17]; // floor_11, floor_15, floor_16
+  const TOP = 18; // floor_17
+  const SHADOW = 19; // floor_18
+  const LEFT = 20; // floor_19
+  const RIGHT = 21; // floor_20
+  const TOP_LEFT = 22; // floor_21
+  const TOP_RIGHT = 23; // floor_22
+  const EDGES = [TOP, LEFT, RIGHT, TOP_LEFT, TOP_RIGHT];
+  const PLAIN_GRASS = [10, 11]; // floor_9, floor_10
+  const tile = (c: number, r: number): number => town.tiles[r * town.cols + c];
+  const tall = (c: number, r: number) => r >= 0 && [...TALL, ...EDGES].includes(tile(c, r));
+  const lawn = town.tileColors![16 * town.cols + 5]!; // under the main street, plain grass
+  const counts = new Map<number, number>();
+  let shadows = 0;
+  for (let r = 0; r < town.rows; r++) {
+    for (let c = 0; c < town.cols; c++) {
+      if (tall(c, r)) {
+        const top = !tall(c, r - 1);
+        const side = !tall(c - 1, r) ? 'left' : !tall(c + 1, r) ? 'right' : null;
+        const want = top
+          ? side === 'left'
+            ? TOP_LEFT
+            : side === 'right'
+              ? TOP_RIGHT
+              : TOP
+          : side === 'left'
+            ? LEFT
+            : side === 'right'
+              ? RIGHT
+              : null;
+        if (want === null) assert.ok(TALL.includes(tile(c, r)), `(${c},${r}) inside a patch`);
+        else assert.equal(tile(c, r), want, `(${c},${r}) on the patch's edge`);
+        if (want !== null) {
+          counts.set(want, (counts.get(want) ?? 0) + 1);
+          const color = town.tileColors![r * town.cols + c];
+          assert.deepEqual(color, lawn, `(${c},${r}): an edge tile is coloured like the grass`);
+        }
+      } else if (tall(c, r - 1) && town.carpetTiles?.[r * town.cols + c] === null) {
+        assert.ok(!PLAIN_GRASS.includes(tile(c, r)), `(${c},${r}) under a patch is shadowed`);
+        if (tile(c, r) === SHADOW) shadows++;
+      }
+    }
+  }
+  for (const edge of EDGES) assert.ok((counts.get(edge) ?? 0) > 0, `edge tile ${edge} is used`);
+  assert.ok((counts.get(TOP) ?? 0) >= 6, `${counts.get(TOP)} top-row tiles`);
+  assert.ok(shadows >= 4, `${shadows} shadowed tiles`);
+  // The patch and the grass share a hue: an edge tile can match both.
+  const patch = town.tileColors![18 * town.cols + 5]!;
+  assert.ok(TALL.includes(tile(5, 18)), 'inside the patch');
+  assert.notDeepEqual(patch, lawn);
+  assert.deepEqual([patch.h, patch.s], [lawn.h, lawn.s]);
+});
+
+test('the Center has its own back wall and four beds, each three tiles by two', () => {
+  const at = (type: string) => town.furniture.filter((f) => f.type === type);
+  assert.equal(at('WALL_WINDOW').length, 4, 'two pairs of windows');
+  assert.equal(at('CENTER_POSTER').length, 1, 'a poster');
+  const wainscot = at('WAINSCOT').map((f) => f.col);
+  assert.deepEqual(wainscot, [26, 27, 28, 29, 30, 31, 32, 33], 'a wainscot the width of the room');
+  for (const bed of town.furniture.filter((f) => f.type.startsWith('CENTER_BED_'))) {
+    const entry = getCatalogEntry(bed.type)!;
+    assert.deepEqual([entry.footprintW, entry.footprintH, entry.backgroundTiles], [3, 2, 2]);
+  }
+  for (const type of ['SPECIMEN_CABINET', 'MICROSCOPE', 'PAPER_STACK']) {
+    assert.ok(at(type).length > 0, `the Lab has a ${type}`);
+  }
+});

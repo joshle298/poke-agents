@@ -220,6 +220,101 @@ describe('startStandalone: polish behaviors the CLI and the Mac app share', () =
   });
 });
 
+describe('startStandalone: the demo office (--demo)', () => {
+  const started: Office[] = [];
+
+  beforeEach(() => {
+    tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-test-'));
+  });
+
+  afterEach(async () => {
+    for (const office of started.splice(0)) await office.stop();
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  });
+
+  const dataDir = (): string => path.join(tmpBase, '.pixel-agents');
+
+  it('plays synthetic sessions without Conductor: no lock, no Conductor state, its own seats file', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const office = await startStandalone({
+        distRoot: DIST_ROOT,
+        port: await freePort(),
+        conductor: true, // --demo wins: Conductor stays off
+        claude: false,
+        sprites: false,
+        demo: {},
+      });
+      started.push(office);
+      await vi.waitFor(() =>
+        expect(office.conductorStatus()).toMatchObject({
+          state: 'connected',
+          account: expect.stringContaining('demo'),
+        }),
+      );
+      const labels = [...office.store.values()].map((agent) => agent.label);
+      expect(labels).toContain('Release v2 orchestration');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(fs.existsSync(path.join(dataDir(), 'conductor.lock'))).toBe(false);
+      expect(fs.existsSync(path.join(dataDir(), 'conductor-state.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dataDir(), 'demo-state.json'))).toBe(true);
+      expect(fs.existsSync(path.join(dataDir(), 'standalone-state.json'))).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('never reuses, and is never reused by, an office in another mode', async () => {
+    const real = await startOffice(await freePort());
+    started.push(real);
+    const demo = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      sprites: false,
+      demo: {},
+    });
+    started.push(demo);
+    expect(demo.ownsServer).toBe(true);
+    const again = await startOffice(await freePort());
+    started.push(again);
+    expect(again.ownsServer).toBe(false);
+    expect(again.port).toBe(real.port);
+  });
+
+  it('answers "Open in Conductor" with a refusal: demo sessions exist nowhere else', async () => {
+    const office = await startStandalone({
+      distRoot: DIST_ROOT,
+      port: await freePort(),
+      conductor: false,
+      claude: false,
+      sprites: false,
+      demo: {},
+    });
+    started.push(office);
+    const socket = new WebSocket(`ws://127.0.0.1:${office.port}/ws?token=${office.token}`);
+    const replies: Array<Record<string, unknown>> = [];
+    socket.onmessage = (event) => replies.push(JSON.parse(String(event.data)));
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = reject;
+    });
+    socket.send(JSON.stringify({ type: 'openExternal', url: 'conductor://workspace?id=x' }));
+    await vi.waitFor(() =>
+      expect(replies).toContainEqual(
+        expect.objectContaining({
+          type: 'conductorActionResult',
+          action: 'openExternal',
+          ok: false,
+          message: expect.stringContaining('demo session'),
+        }),
+      ),
+    );
+    socket.close();
+  });
+});
+
 describe('startStandalone: sounds', () => {
   beforeEach(() => {
     tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'pxl-standalone-test-'));

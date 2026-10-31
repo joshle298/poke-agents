@@ -296,8 +296,8 @@ export interface Character {
   idleSec?: number;
   /** PMD row (0-7) to face instead of `dir` while a one-shot plays. */
   faceOverride?: number | null;
-  /** World point the Poké Ball is thrown from on spawn (the Lead or parent);
-   *  absent = the ball drops from above. */
+  /** World point the capsule is thrown from on spawn (the Lead or parent);
+   *  absent = the capsule drops from above. */
   effectOrigin?: { x: number; y: number };
   /** Seconds into the evolution flash; undefined when not evolving. */
   evolveTimer?: number;
@@ -314,22 +314,42 @@ export interface Character {
   /** Seconds left in which a status that sends it to the Meadow or the Center
    *  places it there directly (just created); undefined once over. */
   townSpawnGrace?: number;
+  /** The bed a fainted character lies in (head on the pillow, `x` moved to
+   *  the bed's middle; see bedLie.ts for where it is drawn); undefined when it
+   *  isn't lying in one. */
+  bedRest?: BedRest;
 }
 
 /** Where an inactive character belongs in a layout with Area roles. */
 export type TownGoal = 'meadow' | 'center' | 'stay';
 
+/** A bed in the Pokémon Center, as a character lying in it needs it drawn. */
+export interface BedRest {
+  /** The end the pillow is at: the sleeper's head points there. */
+  pillow: 'left' | 'right';
+  /** World x of the bed's middle (the sleeper's `x` while it lies there). */
+  midX: number;
+  /** The bed's box, world px (its sprite's top-left and size). */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The bed's blanket (its foreground pixels, opaque) and where it is drawn
+   *  (world px, top-left), laid over the sleeper; null when it has none. */
+  blanket: { sprite: SpriteData; x: number; y: number } | null;
+}
+
 /** One-shot animations: a tool burst, sending a message, a finished turn,
  *  waking up, and the hurt flinch that leads into a faint. */
 export type PokemonOneShot = 'toolBurst' | 'message' | 'turnEnd' | 'wake' | 'hurt';
 
-/** A message ball in flight from one agent to another (agentMessage). */
+/** A message capsule in flight from one agent to another (agentMessage). */
 export interface Projectile {
   id: number;
   fromId: number;
   toId: number;
   kind: AgentLinkKind;
-  /** Shown near the receiver once the ball lands. */
+  /** Shown near the receiver once the capsule lands. */
   preview?: string;
   /** Seconds in flight, and the flight's length. */
   t: number;

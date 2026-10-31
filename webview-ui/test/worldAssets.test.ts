@@ -110,3 +110,42 @@ test('both bundled maps load, and loading one keeps the pets already placed', as
   const again = prepareBundledLayout(classic, current);
   assert.notEqual(again.tiles[0], 1, 'the bundled layout is never mutated');
 });
+
+test('the Center wears its own emblem (a pink heart), not a cross', () => {
+  const pixels = (type: string) => new Set(getCatalogEntry(type)!.sprite.flat());
+  /** A sprite pixel's colour from its channels (the art's palette, scripts/world/art.mjs). */
+  const rgb = (...channels: number[]) =>
+    `#${channels.map((v) => v.toString(16).padStart(2, '0').toUpperCase()).join('')}`;
+  const HEART_PINK = rgb(224, 103, 154);
+  const HEART_LIGHT = rgb(245, 154, 191);
+  for (const type of ['CENTER_SIGN', 'HEALING_MACHINE', 'CENTER_POSTER']) {
+    assert.ok(pixels(type).has(HEART_PINK), `${type} shows the heart`);
+    assert.ok(pixels(type).has(HEART_LIGHT), `${type}: a lit heart, not just its outline`);
+  }
+  // The sign's plate is cream: no red-and-white plate for a cross to sit on.
+  const sign = pixels('CENTER_SIGN');
+  assert.ok(!sign.has(rgb(255, 255, 255)) && !sign.has(rgb(218, 75, 75)), 'no white-on-red');
+  // The machine's heart sits inside its plate: the tip never cuts the housing.
+  const machine = getCatalogEntry('HEALING_MACHINE')!.sprite;
+  const heartRows = machine
+    .map((row, y) => (row.some((px) => px === HEART_PINK || px === HEART_LIGHT) ? y : -1))
+    .filter((y) => y >= 0);
+  const housingTop = machine.findIndex((row) => row[4] !== '');
+  assert.ok(Math.max(...heartRows) < 10, `the heart ends above the plate's edge (${heartRows})`);
+  assert.ok(housingTop > 0, 'the housing starts under the plate top');
+});
+
+test('a bed tucks its sleeper in: its blanket is foreground, its pillow is not', () => {
+  for (const type of ['CENTER_BED_FRONT', 'CENTER_BED_SIDE']) {
+    const sprite = getCatalogEntry(type)!.sprite;
+    assert.deepEqual([sprite[0].length, sprite.length], [48, 32], `${type}: 3×2 tiles`);
+    const fg = (x: number, y: number) => sprite[y][x].length === 9 && sprite[y][x].endsWith('FE');
+    const pillowLeft = type === 'CENTER_BED_FRONT';
+    const mirror = (x: number) => (pillowLeft ? x : 47 - x);
+    assert.ok(fg(mirror(30), 21), `${type}: the blanket covers the sleeper's lower body`);
+    assert.ok(fg(mirror(30), 19), `${type}: its fold arches up over the middle`);
+    assert.ok(!fg(mirror(16), 19), `${type}: and is lower at the turned-down sheet`);
+    assert.ok(!fg(mirror(10), 18), `${type}: the pillow end leaves the head in view`);
+    assert.ok(!fg(mirror(30), 14), `${type}: the top of the blanket leaves the body in view`);
+  }
+});

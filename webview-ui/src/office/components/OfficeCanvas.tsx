@@ -25,6 +25,7 @@ import type {
   SelectionRenderState,
 } from '../engine/renderer.js';
 import { renderFrame } from '../engine/renderer.js';
+import { clampManualPan, clampPanAxis } from '../projection.js';
 import { getShowConnections } from '../showConnections.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
@@ -110,24 +111,22 @@ export function OfficeCanvas({
   const isEraseDraggingRef = useRef(false);
   // Zoom scroll accumulator for trackpad pinch sensitivity
   const zoomAccumulatorRef = useRef(0);
-  // Clamp pan so the map edge can't go past a margin inside the viewport
+  // Clamp a manual pan: in the town (not editing) the map never leaves empty
+  // canvas it could fill; elsewhere its edge can't go past a margin inside
+  // the viewport.
   const clampPan = useCallback(
     (px: number, py: number): { x: number; y: number } => {
       const canvas = canvasRef.current;
       if (!canvas) return { x: px, y: py };
       const layout = officeState.getLayout();
-      const mapW = layout.cols * TILE_SIZE * zoom;
-      const mapH = layout.rows * TILE_SIZE * zoom;
-      const marginX = canvas.width * PAN_MARGIN_FRACTION;
-      const marginY = canvas.height * PAN_MARGIN_FRACTION;
-      const maxPanX = mapW / 2 + canvas.width / 2 - marginX;
-      const maxPanY = mapH / 2 + canvas.height / 2 - marginY;
-      return {
-        x: Math.max(-maxPanX, Math.min(maxPanX, px)),
-        y: Math.max(-maxPanY, Math.min(maxPanY, py)),
-      };
+      return clampManualPan(
+        { x: px, y: py },
+        { w: layout.cols * TILE_SIZE * zoom, h: layout.rows * TILE_SIZE * zoom },
+        { w: canvas.width, h: canvas.height },
+        { tight: officeState.town !== null && !isEditMode, marginFraction: PAN_MARGIN_FRACTION },
+      );
     },
-    [officeState, zoom],
+    [officeState, zoom, isEditMode],
   );
 
   // Resize canvas backing store to device pixels (no DPR transform on ctx)
@@ -181,8 +180,15 @@ export function OfficeCanvas({
           const layout = officeState.getLayout();
           const mapW = layout.cols * TILE_SIZE * zoom;
           const mapH = layout.rows * TILE_SIZE * zoom;
-          const targetX = mapW / 2 - cameraFocus.x * zoom;
-          const targetY = mapH / 2 - cameraFocus.y * zoom;
+          let targetX = mapW / 2 - cameraFocus.x * zoom;
+          let targetY = mapH / 2 - cameraFocus.y * zoom;
+          // In the town, following a character (opening its Pokédex) never
+          // pulls the map off the canvas: each axis stays centred when the
+          // map fits, and stops at the map's edge when it doesn't.
+          if (followCh && officeState.town) {
+            targetX = clampPanAxis(targetX, mapW, w);
+            targetY = clampPanAxis(targetY, mapH, h);
+          }
           const dx = targetX - panRef.current.x;
           const dy = targetY - panRef.current.y;
           if (
@@ -196,6 +202,14 @@ export function OfficeCanvas({
               y: panRef.current.y + dy * CAMERA_FOLLOW_LERP,
             };
           }
+        } else if (officeState.town && !isEditMode) {
+          // A zoom or a resize can leave the last manual pan past the town's
+          // edge: pull it back, as a pan would have been.
+          const layout = officeState.getLayout();
+          panRef.current = {
+            x: clampPanAxis(panRef.current.x, layout.cols * TILE_SIZE * zoom, w),
+            y: clampPanAxis(panRef.current.y, layout.rows * TILE_SIZE * zoom, h),
+          };
         }
 
         // Build selection render state
@@ -238,6 +252,11 @@ export function OfficeCanvas({
           activeAreaLabel,
           officeState.pets,
           connections,
+          {
+            items: officeState.staticFurniture,
+            walls: officeState.staticWallTiles,
+            version: officeState.staticLayerVersion,
+          },
         );
         offsetRef.current = { x: offsetX, y: offsetY };
 

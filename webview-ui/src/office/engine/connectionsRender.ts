@@ -3,23 +3,27 @@
  * owns the data).
  *
  * Links lie on the floor under everyone: pixel-art dashes between two
- * characters' tiles, marching from sender to receiver — spawned as dashes,
- * messaged as dots, watched faint. Projectiles fly above everyone on an arc
- * from chest to chest: a Poké Ball while themed, an envelope otherwise.
+ * characters (where each stands, or the middle of a body drawn off its tile:
+ * a Pokémon seated at a desk, anyone lying in a bed), marching from sender
+ * to receiver — spawned as dashes, messaged as dots, watched faint — each
+ * lit pixel over a dark casing pixel.
+ * Projectiles fly above everyone on an arc from chest to chest: a capsule
+ * while themed, an envelope otherwise.
  */
 
 import {
+  LINK_CASING_COLOR,
   LINK_COLORS,
   LINK_DIM_ALPHA,
   LINK_MARCH_PX_PER_SEC,
   LINK_PATTERNS,
   PROJECTILE_ARC_LIFT_PX,
 } from '../../constants.js';
-import { ENVELOPE_SPRITE, POKEBALL_CLOSED_SPRITE } from '../sprites/pokemonUiSprites.js';
+import { CAPSULE_CLOSED_SPRITE, ENVELOPE_SPRITE } from '../sprites/pokemonUiSprites.js';
 import type { Character, LinkSegment, Projectile } from '../types.js';
+import { drawCenteredSprite } from './capsuleEffect.js';
 import { forEachLinePixel, isDashLit } from './pixelLine.js';
-import { drawCenteredSprite } from './pokeballEffect.js';
-import { characterChest } from './pokemonCharacter.js';
+import { characterChest, linkEnd } from './pokemonCharacter.js';
 
 /** What renderFrame needs to draw connections this frame. */
 export interface ConnectionsRenderState {
@@ -29,7 +33,7 @@ export interface ConnectionsRenderState {
   characters: Map<number, Character>;
   /** Seconds of simulated time (OfficeState.clock). */
   time: number;
-  /** Fly Poké Balls (themed) or envelopes. */
+  /** Fly capsules (themed) or envelopes. */
   themed: boolean;
 }
 
@@ -43,14 +47,29 @@ export function renderLinks(
 ): void {
   const march = time * LINK_MARCH_PX_PER_SEC;
   ctx.save();
-  for (const { from, to, kind, dim } of links) {
+  for (const link of links) {
+    const { kind, dim } = link;
+    const from = linkEnd(link.from);
+    const to = linkEnd(link.to);
     const { period, on } = LINK_PATTERNS[kind];
-    ctx.fillStyle = LINK_COLORS[kind];
     ctx.globalAlpha = dim ? LINK_DIM_ALPHA : 1;
-    forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
-      if (!isDashLit(step, march, period, on)) return;
-      ctx.fillRect(Math.round(offsetX + x * zoom), Math.round(offsetY + y * zoom), zoom, zoom);
-    });
+    // A dark casing one pixel under every lit pixel first, so the line reads
+    // on light ground (sand, the Lab's floor) as well as on dark.
+    for (const [color, dy] of [
+      [LINK_CASING_COLOR, 1],
+      [LINK_COLORS[kind], 0],
+    ] as const) {
+      ctx.fillStyle = color;
+      forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
+        if (!isDashLit(step, march, period, on)) return;
+        ctx.fillRect(
+          Math.round(offsetX + x * zoom),
+          Math.round(offsetY + (y + dy) * zoom),
+          zoom,
+          zoom,
+        );
+      });
+    }
   }
   ctx.restore();
 }
@@ -62,7 +81,7 @@ export function renderProjectiles(
   offsetY: number,
   zoom: number,
 ): void {
-  const sprite = state.themed ? POKEBALL_CLOSED_SPRITE : ENVELOPE_SPRITE;
+  const sprite = state.themed ? CAPSULE_CLOSED_SPRITE : ENVELOPE_SPRITE;
   for (const p of state.projectiles) {
     const from = state.characters.get(p.fromId);
     const to = state.characters.get(p.toId);

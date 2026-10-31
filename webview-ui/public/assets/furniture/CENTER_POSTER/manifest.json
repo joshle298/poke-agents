@@ -1,0 +1,13 @@
+{
+  "id": "CENTER_POSTER",
+  "name": "Center Poster",
+  "category": "wall",
+  "type": "asset",
+  "canPlaceOnWalls": true,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 32,
+  "height": 32,
+  "footprintW": 2,
+  "footprintH": 2
+}

@@ -8,6 +8,7 @@ import {
   AREA_LABEL_SHADOW_ALPHA,
   AREA_LABEL_SHADOW_COLOR,
   AREA_OVERLAY_ALPHA,
+  BED_BLANKET_Z_OFFSET,
   BUBBLE_FADE_DURATION_SEC,
   BUTTON_ICON_COLOR,
   BUTTON_ICON_SIZE_FACTOR,
@@ -78,8 +79,15 @@ import type {
   SpriteData,
   TileType as TileTypeVal,
 } from '../types.js';
-import { CharacterState, TILE_SIZE, TileType } from '../types.js';
-import { getWallInstances, hasWallSprites, wallColorToHex } from '../wallTiles.js';
+import { CharacterState, Direction, TILE_SIZE, TileType } from '../types.js';
+import {
+  getWallInstances,
+  getWallSpritesVersion,
+  hasWallSprites,
+  wallColorToHex,
+} from '../wallTiles.js';
+import type { BedLie } from './bedLie.js';
+import { renderCapsuleEffect } from './capsuleEffect.js';
 import { getCharacterSprite } from './characters.js';
 import type { ConnectionsRenderState } from './connectionsRender.js';
 import { renderLinks, renderProjectiles } from './connectionsRender.js';
@@ -87,8 +95,7 @@ import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
 import { spawnEffectStyle } from './matrixEffectState.js';
 import { getPetSpriteData } from './petEntity.js';
-import { renderPokeballEffect } from './pokeballEffect.js';
-import { pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
+import { bedLieOf, pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
 import type { ZDrawable } from './pokemonRender.js';
 import { pushPokemonDrawables, resolvePokemonFrame } from './pokemonRender.js';
 
@@ -320,6 +327,21 @@ export function renderAreaLabels(
 
 const NEUTRAL_FLOOR_COLOR: ColorValue = { h: 0, s: 0, b: 0, c: 0 };
 
+/** The town's static layer (OfficeState.staticFurniture): placed items drawn
+ *  once with the ground, in this order, instead of z-sorted every frame. */
+export interface StaticLayerState {
+  items: FurnitureInstance[];
+  /** Wall tiles (`"col,row"`) drawn with the ground too. */
+  walls: ReadonlySet<string>;
+  /** Changes whenever `items` or `walls` does. */
+  version: number;
+}
+
+/** The tile key of a wall instance (getWallInstances: x = col, zY = row + 1). */
+function wallTileKey(wall: FurnitureInstance): string {
+  return `${Math.round(wall.x / TILE_SIZE)},${Math.round(wall.zY / TILE_SIZE) - 1}`;
+}
+
 /** The ground drawn once into an offscreen canvas, and what it was drawn from. */
 interface GroundCache {
   canvas: HTMLCanvasElement;
@@ -331,6 +353,28 @@ interface GroundCache {
   zoom: number;
   floorVersion: number;
   carpetVersion: number;
+  staticVersion: number;
+  wallVersion: number;
+}
+
+/** Draw one placed item (mirrored side variants flipped) at device px (x, y). */
+function drawFurnitureAt(
+  ctx: CanvasRenderingContext2D,
+  f: FurnitureInstance,
+  x: number,
+  y: number,
+  zoom: number,
+): void {
+  const cached = getCachedSprite(f.sprite, zoom);
+  if (!f.mirrored) {
+    ctx.drawImage(cached, x, y);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x + cached.width, y);
+  ctx.scale(-1, 1);
+  ctx.drawImage(cached, 0, 0);
+  ctx.restore();
 }
 
 let groundCache: GroundCache | null = null;
@@ -351,12 +395,25 @@ function renderGround(
   offsetX: number,
   offsetY: number,
   zoom: number,
+  staticLayer: StaticLayerState | undefined,
 ): void {
   const drawGround = (target: CanvasRenderingContext2D, x: number, y: number) => {
     renderTileGrid(target, tileMap, x, y, zoom, tileColors, cols);
     if (carpetTiles && carpetTiles.length > 0) {
       renderCarpetLayer(target, carpetTiles, cols, rows, x, y, zoom);
     }
+    if (!staticLayer) return;
+    // The static walls and items, in their z order (a wall first on a tie).
+    const walls =
+      staticLayer.walls.size > 0 && hasWallSprites()
+        ? getWallInstances(tileMap, tileColors, cols).filter((w) =>
+            staticLayer.walls.has(wallTileKey(w)),
+          )
+        : [];
+    const layer = [...walls, ...staticLayer.items]
+      .map((f, i) => ({ f, i }))
+      .sort((a, b) => a.f.zY - b.f.zY || a.i - b.i);
+    for (const { f } of layer) drawFurnitureAt(target, f, x + f.x * zoom, y + f.y * zoom, zoom);
   };
   const width = cols * TILE_SIZE * zoom;
   const height = rows * TILE_SIZE * zoom;
@@ -366,6 +423,8 @@ function renderGround(
   }
   const floorVersion = getFloorSpritesVersion();
   const carpetVersion = getCarpetSpritesVersion();
+  const staticVersion = staticLayer?.version ?? -1;
+  const wallVersion = getWallSpritesVersion();
   let cache = groundCache;
   if (
     !cache ||
@@ -376,7 +435,9 @@ function renderGround(
     cache.rows !== rows ||
     cache.zoom !== zoom ||
     cache.floorVersion !== floorVersion ||
-    cache.carpetVersion !== carpetVersion
+    cache.carpetVersion !== carpetVersion ||
+    cache.staticVersion !== staticVersion ||
+    cache.wallVersion !== wallVersion
   ) {
     const canvas = cache?.canvas ?? document.createElement('canvas');
     canvas.width = width; // also clears it
@@ -398,6 +459,8 @@ function renderGround(
       zoom,
       floorVersion,
       carpetVersion,
+      staticVersion,
+      wallVersion,
     };
     groundCache = cache;
   }
@@ -515,6 +578,70 @@ export function renderTileGrid(
   }
 }
 
+/** The z key a character sorts by: the bottom of its tile, just past
+ *  same-row furniture. */
+function characterZ(ch: Character): number {
+  return ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
+}
+
+/** A sleeper's blanket, drawn just after the sleeper so it lies tucked in. */
+function pushBlanket(
+  drawables: ZDrawable[],
+  ch: Character,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const blanket = ch.bedRest?.blanket;
+  if (!blanket || ch.matrixEffect) return;
+  const cached = getCachedSprite(blanket.sprite, zoom);
+  const x = offsetX + blanket.x * zoom;
+  const y = offsetY + blanket.y * zoom;
+  drawables.push({
+    zY: characterZ(ch) + BED_BLANKET_Z_OFFSET,
+    draw: (c) => c.drawImage(cached, x, y),
+  });
+}
+
+/**
+ * A human lying in bed (theme off): its front-facing sprite turned on its
+ * side, the head toward the pillow, lying on the mattress (bedLie.ts). A
+ * quarter turn about a whole device pixel stays on the grid.
+ */
+function pushLyingHuman(
+  drawables: ZDrawable[],
+  ch: Character,
+  sprite: SpriteData,
+  lie: BedLie,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  { alpha, outline }: { alpha: number; outline: number },
+): void {
+  const gx = Math.round(offsetX + lie.x * zoom);
+  const gy = Math.round(offsetY + lie.y * zoom);
+  const zY = characterZ(ch);
+  // Anchored at the sprite's bottom centre, like a standing character; the
+  // outline ring is one sprite pixel larger on every side.
+  const turned = (cached: HTMLCanvasElement, a: number, ring: number) => {
+    const x = -Math.round(cached.width / 2);
+    const y = -cached.height + ring;
+    return (c: CanvasRenderingContext2D) => {
+      c.save();
+      c.globalAlpha = a;
+      c.translate(gx, gy);
+      c.rotate((lie.turn * Math.PI) / 2);
+      c.drawImage(cached, x, y);
+      c.restore();
+    };
+  };
+  if (outline > 0) {
+    const ring = getCachedSprite(getOutlineSprite(sprite), zoom);
+    drawables.push({ zY: zY - OUTLINE_Z_SORT_OFFSET, draw: turned(ring, outline, zoom) });
+  }
+  drawables.push({ zY, draw: turned(getCachedSprite(sprite, zoom), alpha, 0) });
+}
+
 /** @internal */
 export function renderScene(
   ctx: CanvasRenderingContext2D,
@@ -532,28 +659,9 @@ export function renderScene(
 
   // Furniture
   for (const f of furniture) {
-    const cached = getCachedSprite(f.sprite, zoom);
     const fx = offsetX + f.x * zoom;
     const fy = offsetY + f.y * zoom;
-    if (f.mirrored) {
-      drawables.push({
-        zY: f.zY,
-        draw: (c) => {
-          c.save();
-          c.translate(fx + cached.width, fy);
-          c.scale(-1, 1);
-          c.drawImage(cached, 0, 0);
-          c.restore();
-        },
-      });
-    } else {
-      drawables.push({
-        zY: f.zY,
-        draw: (c) => {
-          c.drawImage(cached, fx, fy);
-        },
-      });
-    }
+    drawables.push({ zY: f.zY, draw: (c) => drawFurnitureAt(c, f, fx, fy, zoom) });
   }
 
   // Characters
@@ -563,6 +671,9 @@ export function renderScene(
     const alpha = ch.isHeadless && ghostHeadlessAgents ? HEADLESS_CHARACTER_ALPHA : 1;
     const isSelected = selectedAgentId !== null && ch.id === selectedAgentId;
     const isHovered = hoveredAgentId !== null && ch.id === hoveredAgentId;
+
+    // In bed, the blanket is drawn over the sleeper's lower body.
+    pushBlanket(drawables, ch, offsetX, offsetY, zoom);
 
     // Pokémon branch: a decoded species replaces the upstream character.
     // Anything not ready (theme off, no species, sheets loading) falls through.
@@ -583,6 +694,14 @@ export function renderScene(
     }
 
     const sprites = getCharacterSprites(ch.palette, ch.hueShift);
+    const lie = bedLieOf(ch);
+    if (lie) {
+      pushLyingHuman(drawables, ch, sprites.walk[Direction.DOWN][1], lie, offsetX, offsetY, zoom, {
+        alpha,
+        outline: isSelected ? SELECTED_OUTLINE_ALPHA : isHovered ? HOVERED_OUTLINE_ALPHA : 0,
+      });
+      continue;
+    }
     const spriteData = getCharacterSprite(ch, sprites);
     const cached = getCachedSprite(spriteData, zoom);
     // Sitting offset: shift character down when seated so they visually sit in the chair
@@ -596,16 +715,16 @@ export function renderScene(
     // at lower rows (e.g. desks, bookshelves that occlude from below).
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
 
-    // A Pokémon still decoding opens out of its Poké Ball as the upstream
+    // A Pokémon still decoding opens out of its capsule as the upstream
     // character; everyone else gets the matrix rain.
-    if (ch.matrixEffect && spawnEffectStyle(ch) === 'pokeball') {
+    if (ch.matrixEffect && spawnEffectStyle(ch) === 'capsule') {
       const frame = spriteFrame(spriteData);
       const ground = { x: ch.x, y: ch.y + sittingOffset };
       const pCh = ch;
       drawables.push({
         zY: charZY,
         draw: (c) =>
-          renderPokeballEffect(
+          renderCapsuleEffect(
             c,
             pCh,
             frame,
@@ -1089,6 +1208,7 @@ export function renderFrame(
   activeAreaLabel?: string | null,
   pets?: Pet[],
   connections?: ConnectionsRenderState,
+  staticLayer?: StaticLayerState,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
@@ -1102,7 +1222,18 @@ export function renderFrame(
   const { offsetX, offsetY } = mapOffset(canvasWidth, canvasHeight, cols, rows, zoom, panX, panY);
 
   // Floor tiles, wall base color and carpets: the static ground
-  renderGround(ctx, tileMap, tileColors, carpetTiles, cols, rows, offsetX, offsetY, zoom);
+  renderGround(
+    ctx,
+    tileMap,
+    tileColors,
+    carpetTiles,
+    cols,
+    rows,
+    offsetX,
+    offsetY,
+    zoom,
+    staticLayer,
+  );
 
   // Area overlay (translucent color wash) — above carpets, below seat indicators
   if (showAreas) {
@@ -1128,8 +1259,14 @@ export function renderFrame(
     renderLinks(ctx, connections.links, connections.time, offsetX, offsetY, zoom);
   }
 
-  // Build wall instances for z-sorting with furniture and characters
-  const wallInstances = hasWallSprites() ? getWallInstances(tileMap, tileColors, layoutCols) : [];
+  // Build wall instances for z-sorting with furniture and characters (the
+  // static layer's walls were drawn with the ground)
+  const staticWalls = staticLayer?.walls;
+  const wallInstances = hasWallSprites()
+    ? getWallInstances(tileMap, tileColors, layoutCols).filter(
+        (w) => !staticWalls?.has(wallTileKey(w)),
+      )
+    : [];
   const allFurniture = wallInstances.length > 0 ? [...wallInstances, ...furniture] : furniture;
 
   // Tall grass in front of whoever stands in it

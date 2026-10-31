@@ -18,9 +18,17 @@ import { TILE_SIZE, TileType } from './types.js';
 /** Wall tile sets: each set has 16 sprites indexed by bitmask (0-15) */
 let wallSets: SpriteData[][] = [];
 
+let wallSpritesVersion = 0;
+
 /** Set wall tile sets (called once when extension sends wallTilesLoaded) */
 export function setWallSprites(sets: SpriteData[][]): void {
   wallSets = sets;
+  wallSpritesVersion++;
+}
+
+/** Bumped whenever the wall tile sets change (cached drawings key on it). */
+export function getWallSpritesVersion(): number {
+  return wallSpritesVersion;
 }
 
 /** Check if wall sprites have been loaded */

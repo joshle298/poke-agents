@@ -35,6 +35,29 @@ export const TOWN_WALL_OVERLAP_PX = 6;
  *  fainted still places it straight in the Meadow or the Center (the status
  *  follows agentCreated within a message or two). */
 export const TOWN_SPAWN_GRACE_SEC = 1.5;
+/** Meadow destinations prefer tiles at least this many tiles (Chebyshev) from
+ *  every other character's tile and destination, so wanderers spread out. */
+export const TOWN_SPREAD_TILES = 2;
+/** World px a sleeper's body may reach over the bottom edge of the bed above
+ *  it before that bed counts as covered (the blanket's front drape). */
+export const TOWN_BED_OVERLAP_PX = 4;
+/** A bed's shape as a sleeper lies on it (world px, mirroring the bed art in
+ *  scripts/world/art.mjs): the boards at each end are this thick, the
+ *  mattress runs between them. */
+export const BED_BOARD_PX = 5;
+/** The sleeper's head end lies this far in from the bed's pillow end (on the
+ *  pillow), unless its body is too long for the mattress. */
+export const BED_PILLOW_INSET_PX = 6;
+/** The sleeper's lowest pixel lies this far above the bed's bottom edge (the
+ *  mattress's near edge; the tucked blanket covers its lower body). */
+export const BED_SLEEPER_BASE_PX = 9;
+/** A sleeper taller than the mattress sinks toward the front instead of
+ *  reaching above the bed's top edge, but never lower than this far above the
+ *  bed's bottom edge. */
+export const BED_SLEEPER_SINK_LIMIT_PX = 5;
+/** A bed's blanket sorts this far after its sleeper (and before anything on
+ *  the next row). */
+export const BED_BLANKET_Z_OFFSET = 0.1;
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3;
@@ -67,6 +90,10 @@ export const FLOOR_FOREGROUND_MAX_COVER = 0.4;
 /** Foreground sorts just after the characters of its row (CHARACTER_Z_SORT_OFFSET)
  *  and before anything on the next row. */
 export const FLOOR_FOREGROUND_Z_OFFSET = 0.75;
+/** How far any character's sprite may reach from its ground point (world px,
+ *  generous: wide and tall Pokémon, attack poses): the town's static layer
+ *  only takes items no such sprite can be drawn behind. */
+export const STATIC_LAYER_REACH = { halfW: 40, rise: 64, below: 8 } as const;
 /** Largest ground layer (device pixels) kept as one cached canvas; bigger
  *  layouts at high zoom draw their floor and carpets tile by tile. */
 export const GROUND_CACHE_MAX_PIXELS = 12_000_000;
@@ -594,7 +621,7 @@ export const KEYBOARD_MIN_HEIGHT_PX = 150;
 
 // ── Pokémon office ───────────────────────────────────────────
 // Characters drawn from PMDCollab sheets (decoded at runtime, never bundled),
-// the Poké Ball spawn/recall, links and message projectiles between agents,
+// the capsule spawn/recall, links and message projectiles between agents,
 // and the themed overlay label. Theme off = none of this runs.
 
 /** PMD sheet durations are game frames at this rate. */
@@ -654,9 +681,12 @@ export const POKEMON_DECODE_ORDER = [
   'Wake',
   'Pose',
 ] as const;
-/** Fainted (errored) Pokémon: alpha and grey tint. */
+/** Fainted (errored) Pokémon: alpha, and the cool tint laid over the sprite
+ *  once it is turned to greys (so yellow species go grey, not olive). */
 export const POKEMON_FAINT_ALPHA = 0.6;
-export const POKEMON_FAINT_TINT = 'rgba(112, 112, 120, 0.6)';
+export const POKEMON_FAINT_TINT = 'rgba(120, 140, 190, 0.22)';
+/** Any grey: the colour a 'saturation' blend takes the saturation of. */
+export const FRAME_GREY = '#808080';
 /** Evolution: a white-silhouette flash; the species swaps at the midpoint. */
 export const POKEMON_EVOLVE_SEC = 1.2;
 /** Flicker rate of the evolution flash (on/off cycles per second). */
@@ -668,32 +698,32 @@ export const POKEMON_EVOLVE_SOLID_ENVELOPE = 0.8;
 export const POKEMON_EVOLVE_FLICKER_LOW = 0.4;
 export const POKEMON_SILHOUETTE_COLOR = '#ffffff';
 export const POKEMON_OUTLINE_COLOR = '#ffffff';
-export const POKEMON_RECALL_COLOR = '#ff4040';
+export const POKEMON_RECALL_COLOR = '#7ee8d6';
 
-// Poké Ball spawn (throw → open → materialize) and recall (red beam → return).
-export const POKEBALL_SPAWN_SEC = 0.9;
-export const POKEBALL_RECALL_SEC = 0.6;
-/** Spawn phase boundaries as fractions of POKEBALL_SPAWN_SEC. */
-export const POKEBALL_THROW_END = 0.4;
-export const POKEBALL_OPEN_END = 0.55;
-/** Recall: beam phase ends here; the ball flies off for the rest. */
-export const POKEBALL_RECALL_BEAM_END = 0.5;
-/** With no thrower, the ball drops from this far above the ground point. */
-export const POKEBALL_DROP_HEIGHT_PX = 48;
-/** Peak height of a thrown ball's arc above the straight line. */
-export const POKEBALL_THROW_ARC_PX = 20;
+// Capsule spawn (throw → open → materialize) and recall (teal beam → return).
+export const CAPSULE_SPAWN_SEC = 0.9;
+export const CAPSULE_RECALL_SEC = 0.6;
+/** Spawn phase boundaries as fractions of CAPSULE_SPAWN_SEC. */
+export const CAPSULE_THROW_END = 0.4;
+export const CAPSULE_OPEN_END = 0.55;
+/** Recall: beam phase ends here; the capsule flies off for the rest. */
+export const CAPSULE_RECALL_BEAM_END = 0.5;
+/** With no thrower, the capsule drops from this far above the ground point. */
+export const CAPSULE_DROP_HEIGHT_PX = 48;
+/** Peak height of a thrown capsule's arc above the straight line. */
+export const CAPSULE_THROW_ARC_PX = 20;
 /** The materializing body starts at this scale and grows to 1. */
-export const POKEBALL_MATERIALIZE_MIN_SCALE = 0.25;
+export const CAPSULE_MATERIALIZE_MIN_SCALE = 0.25;
 /** Share of the materialize phase spent growing (the rest fades white → colour). */
-export const POKEBALL_GROW_SHARE = 0.6;
-export const POKEBALL_FLASH_COLOR = '#ffffff';
-/** Burst ring radius (world px) when the ball opens, and its sample count. */
-export const POKEBALL_BURST_RADIUS_PX = 10;
-export const POKEBALL_BURST_POINTS = 16;
-export const POKEBALL_RECALL_BEAM_COLOR = 'rgba(255, 64, 64, 0.9)';
-/** During recall the ball hovers this far above the head, then leaves this far up. */
-export const POKEBALL_RECALL_HOVER_PX = 6;
-export const POKEBALL_RECALL_EXIT_PX = 40;
+export const CAPSULE_GROW_SHARE = 0.6;
+export const CAPSULE_FLASH_COLOR = '#ffffff';
+/** Burst ring radius (world px) when the capsule opens, and its sample count. */
+export const CAPSULE_BURST_RADIUS_PX = 10;
+export const CAPSULE_BURST_POINTS = 16;
+export const CAPSULE_RECALL_BEAM_COLOR = 'rgba(126, 232, 214, 0.9)';
+/** During recall the capsule hovers this far above the head, then leaves this far up. */
+export const CAPSULE_RECALL_HOVER_PX = 6;
+export const CAPSULE_RECALL_EXIT_PX = 40;
 
 // Links between agents (agentLinks), drawn on the floor under everyone.
 export const LINK_MARCH_PX_PER_SEC = 12;
@@ -709,18 +739,20 @@ export const LINK_COLORS = {
   watched: 'rgba(255, 255, 255, 0.3)',
 } as const;
 /** Opacity of a faint link (the town's, unless its family is hovered or selected). */
-export const LINK_DIM_ALPHA = 0.3;
+export const LINK_DIM_ALPHA = 0.7;
+/** Drawn one pixel under every lit link pixel, so links read on light ground. */
+export const LINK_CASING_COLOR = 'rgba(48, 30, 12, 0.5)';
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
-// Message projectiles (agentMessage): a ball flies sender → receiver.
+// Message projectiles (agentMessage): a capsule flies sender → receiver.
 export const PROJECTILE_SPEED_PX_PER_SEC = 160;
 export const PROJECTILE_MIN_SEC = 0.4;
 export const PROJECTILE_MAX_SEC = 1.4;
 export const PROJECTILE_ARC_LIFT_PX = 16;
 /** The server coalesces; this caps what the client keeps in the air. */
 export const PROJECTILE_MAX_IN_FLIGHT = 8;
-/** Message preview bubble near the receiver once the ball lands. */
+/** Message preview bubble near the receiver once the capsule lands. */
 export const MESSAGE_PREVIEW_SEC = 3;
 export const MESSAGE_PREVIEW_MAX_CHARS = 80;
 /** agentNotice speech bubble. */
@@ -753,8 +785,36 @@ export const TOWN_COMPACT_LABEL_MAX_SCALE = 2;
 /** Nickname characters a one-line town chip shows: about 11 fit the 64 CSS px
  *  between neighboring desks at zoom 2. */
 export const TOWN_COMPACT_LABEL_CHARS = 11;
-/** CSS px a town FNT chip floats above the head (clear of hair and horns). */
-export const TOWN_FAINT_CHIP_LIFT_PX = 4;
+/** Font sizes (CSS px) of a one-line town label and of its status badge. */
+export const TOWN_COMPACT_LABEL_FONT_PX = 14;
+export const TOWN_COMPACT_LABEL_BADGE_FONT_PX = 12;
+/** A one-line town label's chrome (CSS px): padding, the gap after its badge,
+ *  the badge's padding, and the panel border (.pixel-panel's 2px). The label
+ *  is drawn with these and nudged apart by its measured size. */
+export const TOWN_COMPACT_LABEL_CHROME_PX = {
+  padX: 4,
+  padBottom: 2,
+  gap: 3,
+  badgePadX: 2,
+  border: 2,
+} as const;
+/** Advance of the pixel font per em, for sizing text when no canvas can
+ *  measure it. */
+export const PIXEL_FONT_ADVANCE_EM = 0.6;
+/** CSS px between a town FNT chip and the top of the body it belongs to. */
+export const TOWN_FAINT_CHIP_GAP_PX = 2;
+/** A town FNT chip's font size per unit of CSS scale (zoom ÷ device pixel
+ *  ratio), and its bounds: it grows with the sprites it labels. */
+export const TOWN_FAINT_CHIP_FONT_PER_SCALE = 7;
+export const TOWN_FAINT_CHIP_FONT_MIN_PX = 12;
+export const TOWN_FAINT_CHIP_FONT_MAX_PX = 32;
+/** A FNT chip's side padding: this share of its font size, at least the minimum. */
+export const TOWN_FAINT_CHIP_PAD_PER_FONT = 1 / 7;
+export const TOWN_FAINT_CHIP_PAD_MIN_PX = 2;
+/** Theme off, a fainted character in the town shows the party bar's red
+ *  status dot instead of a FNT chip: its side, per px of chip font. */
+export const TOWN_FAINT_DOT_PER_FONT = 0.5;
+export const TOWN_FAINT_DOT_MIN_PX = 6;
 export const STATUS_BADGE_COLORS = {
   asleep: '#7880a0',
   fainted: '#c03028',
@@ -774,6 +834,13 @@ export const PARTY_BAR_WIDE_WIDTH_PX = 200;
 export const PARTY_BAR_COMPACT_WIDTH_PX = 72;
 /** Indent per nesting level for a Lead's children in the wide party bar. */
 export const PARTY_CHILD_INDENT_PX = 10;
+/** A party slot's name that may not fit keeps its end in view (sessions often
+ *  share a prefix): an identifier-like name longer than this... */
+export const PARTY_NAME_SPLIT_MIN_CHARS = 14;
+/** ...keeps up to this many of its last characters (whole segments between
+ *  `-`, `_`, `.` or `/` where they fit, else the last PARTY_NAME_TAIL_CHARS). */
+export const PARTY_NAME_TAIL_MAX_CHARS = 10;
+export const PARTY_NAME_TAIL_CHARS = 6;
 /** Deepest nesting the party bar indents (children of children stop here). */
 export const PARTY_MAX_NEST_DEPTH = 2;
 /** A done agent whose last activity is older than this shows as asleep. */

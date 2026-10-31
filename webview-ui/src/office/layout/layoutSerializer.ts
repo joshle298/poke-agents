@@ -5,6 +5,7 @@ import type {
   OfficeLayout,
   PlacedFurniture,
   Seat,
+  SpriteData,
   TileType as TileTypeVal,
 } from '../types.js';
 import { DEFAULT_COLS, DEFAULT_ROWS, Direction, TILE_SIZE, TileType } from '../types.js';
@@ -24,6 +25,18 @@ export function layoutToTileMap(layout: OfficeLayout): TileTypeVal[][] {
 }
 
 /** Convert placed furniture into renderable FurnitureInstance[] */
+/** A placed item's sprite: its catalog sprite, colorized when the item has a
+ *  colour of its own. */
+export function placedSprite(item: PlacedFurniture, sprite: SpriteData): SpriteData {
+  if (!item.color) return sprite;
+  const { h, s, b: bv, c: cv } = item.color;
+  return getColorizedSprite(
+    `furn-${item.type}-${h}-${s}-${bv}-${cv}-${item.color.colorize ? 1 : 0}`,
+    sprite,
+    item.color,
+  );
+}
+
 export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): FurnitureInstance[] {
   // Pre-compute desk zY per tile so surface items can sort in front of desks
   const deskZByTile = new Map<string, number>();
@@ -74,16 +87,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       }
     }
 
-    // Colorize sprite if this furniture has a color override
-    let sprite = entry.sprite;
-    if (item.color) {
-      const { h, s, b: bv, c: cv } = item.color;
-      sprite = getColorizedSprite(
-        `furn-${item.type}-${h}-${s}-${bv}-${cv}-${item.color.colorize ? 1 : 0}`,
-        entry.sprite,
-        item.color,
-      );
-    }
+    const sprite = placedSprite(item, entry.sprite);
 
     // Determine if this instance should be mirrored (side asset used in "left" orientation)
     let mirrored = false;

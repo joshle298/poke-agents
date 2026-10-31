@@ -1,7 +1,7 @@
 /**
  * The renderer's Pokémon branch: resolve the PMD frame a character shows
  * right now, and queue its z-sorted drawables (outline, body, faint tint,
- * evolution flash, Poké Ball effect). Returns null whenever the character
+ * evolution flash, capsule effect). Returns null whenever the character
  * should stay upstream — theme off, no species, sheets not decoded — so it
  * never disappears while sprites load.
  */
@@ -23,9 +23,9 @@ import {
 } from '../sprites/pokemonSprites.js';
 import type { Character } from '../types.js';
 import { TILE_SIZE } from '../types.js';
+import { renderCapsuleEffect } from './capsuleEffect.js';
 import type { FrameRef } from './frameCanvas.js';
-import { frameOutline, frameSilhouette, frameTinted } from './frameCanvas.js';
-import { renderPokeballEffect } from './pokeballEffect.js';
+import { frameGreyed, frameOutline, frameSilhouette } from './frameCanvas.js';
 import {
   choosePokemonAnim,
   evolutionFlashAlpha,
@@ -33,7 +33,7 @@ import {
   pmdRow,
   pokemonAnimKey,
 } from './pokemonAnim.js';
-import { isPokemonCharacter, pokemonGeometryOf, pokemonGroundY } from './pokemonCharacter.js';
+import { isPokemonCharacter, pokemonDrawPlace, pokemonGeometryOf } from './pokemonCharacter.js';
 
 export interface ZDrawable {
   zY: number;
@@ -80,9 +80,20 @@ export function pushPokemonDrawables(
   isHovered: boolean,
   ghostAlpha: number,
 ): void {
-  const groundY = pokemonGroundY(ch);
-  const drawX = Math.round(offsetX + ch.x * zoom - frame.anchorX * zoom);
-  const drawY = Math.round(offsetY + groundY * zoom - frame.anchorY * zoom);
+  // In bed a tall pose lies on its side: the frame turns about its ground
+  // point, a whole device pixel, so it stays on the pixel grid.
+  const place = pokemonDrawPlace(ch);
+  const groundY = place.y;
+  const gx = Math.round(offsetX + place.x * zoom);
+  const gy = Math.round(offsetY + place.y * zoom);
+  const drawX = gx - frame.anchorX * zoom;
+  const drawY = gy - frame.anchorY * zoom;
+  const turned = (c: CanvasRenderingContext2D) => {
+    if (place.turn === 0) return;
+    c.translate(gx, gy);
+    c.rotate((place.turn * Math.PI) / 2);
+    c.translate(-gx, -gy);
+  };
   const zY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
   // Fainted: see-through, except in the town, where it walks to the Pokémon
   // Center and rests there at full strength (still grey), so it reads clearly.
@@ -91,11 +102,11 @@ export function pushPokemonDrawables(
 
   if (ch.matrixEffect) {
     const headRise = pokemonGeometryOf(ch)?.headRise ?? frame.anchorY;
-    const ground = { x: ch.x, y: groundY };
+    const ground = { x: place.x, y: groundY };
     drawables.push({
       zY,
       draw: (c) =>
-        renderPokeballEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
+        renderCapsuleEffect(c, ch, frame, ground, headRise, offsetX, offsetY, zoom, alpha),
     });
     return;
   }
@@ -107,6 +118,7 @@ export function pushPokemonDrawables(
       zY: zY - OUTLINE_Z_SORT_OFFSET,
       draw: (c) => {
         c.save();
+        turned(c);
         c.globalAlpha = outlineAlpha;
         c.drawImage(
           outline,
@@ -128,9 +140,10 @@ export function pushPokemonDrawables(
     zY,
     draw: (c) => {
       c.save();
+      turned(c);
       c.globalAlpha = alpha;
       if (errored) {
-        c.drawImage(frameTinted(frame, POKEMON_FAINT_TINT), drawX, drawY, dw, dh);
+        c.drawImage(frameGreyed(frame, POKEMON_FAINT_TINT), drawX, drawY, dw, dh);
       } else {
         c.drawImage(frame.image, frame.sx, frame.sy, frame.sw, frame.sh, drawX, drawY, dw, dh);
       }
