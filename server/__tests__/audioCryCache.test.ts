@@ -196,12 +196,16 @@ describe('CryCache', () => {
     const pending = dexes.map((dex) => cache.ensureCry(dex));
     await vi.waitFor(() => expect(upstream.calls).toHaveLength(2));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(upstream.calls.map((c) => c.url)).toEqual([
-      `${CRY_BASE}/latest/1.ogg`,
-      `${CRY_BASE}/latest/4.ogg`,
-    ]);
+    // Which two start first depends on which cache check (a stat) returns
+    // first; only the limit is the contract.
+    const urls = dexes.map((dex) => `${CRY_BASE}/latest/${dex}.ogg`);
+    const first = upstream.calls.map((c) => c.url);
+    expect(first).toHaveLength(2);
+    expect(new Set(first).size).toBe(2);
+    for (const url of first) expect(urls).toContain(url);
     upstream.releaseAll();
     await vi.waitFor(() => expect(upstream.calls).toHaveLength(4));
+    expect(upstream.calls.map((c) => c.url).sort()).toEqual([...urls].sort());
     upstream.hold = false;
     upstream.releaseAll();
     const results = await Promise.all(pending);
