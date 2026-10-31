@@ -15,7 +15,6 @@ import { useConductor } from '../conductor/conductorStore.js';
 import {
   agoText,
   CLOUD_ONLY_NOTE,
-  CONDUCTOR_SIGN_IN_TEXT,
   conductorStatusLine,
   modelLabel,
   needsSignIn,
@@ -201,7 +200,6 @@ function EmptyState({
           </li>
           <li>Restart Poke Agents.</li>
         </ol>
-        <span className="text-xs text-text-muted">{CONDUCTOR_SIGN_IN_TEXT}</span>
       </div>
     );
   }

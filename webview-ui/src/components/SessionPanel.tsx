@@ -143,17 +143,19 @@ export function SessionPanel({
     if (needSessions) requestConductorSessions();
   }, [needSessions]);
 
-  // Escape closes the panel unless the user is typing.
+  // Escape dismisses an open confirmation, else closes the panel — unless
+  // the user is typing.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea')) return;
-      onClose();
+      if (confirm) setConfirm(null);
+      else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, confirm]);
 
   const species = findSpecies({ species: speciesMap }, agent?.species, agent?.shiny);
   const condition = agentCondition(agent, now);

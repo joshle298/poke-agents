@@ -154,7 +154,9 @@ export function AgentCard({
   const badge = conditionBadge(slot.condition);
   const attention = needsAttention(slot.condition) ? 'party-attention' : '';
   const statusLabel = slot.condition ? CONDITION_LABEL[slot.condition] : '';
-  const hoverText = [
+  // The title stays the bare nickname ("Agent N" for unnamed agents, which
+  // e2e locates cards by); the full reading goes to assistive tech.
+  const description = [
     slot.nickname,
     slot.speciesName,
     slot.level !== undefined ? `Lv ${slot.level}` : undefined,
@@ -183,7 +185,8 @@ export function AgentCard({
         className={`pointer-events-auto flex items-stretch gap-1 p-1 cursor-pointer border-2 shrink-0 ${CARD_VARIANT[variant]} ${attention}`}
         onClick={(e) => onSelect(agentId, clickMods(e, false))}
         onDoubleClick={(e) => onSelect(agentId, clickMods(e, true))}
-        title={hoverText}
+        title={slot.nickname}
+        aria-label={description}
       >
         {portrait}
         <div className="flex flex-col items-center justify-between shrink-0">
@@ -200,7 +203,8 @@ export function AgentCard({
       style={{ marginLeft: slot.depth * PARTY_CHILD_INDENT_PX }}
       onClick={(e) => onSelect(agentId, clickMods(e, false))}
       onDoubleClick={(e) => onSelect(agentId, clickMods(e, true))}
-      title={hoverText}
+      title={slot.nickname}
+      aria-label={description}
     >
       {portrait}
       <div className="flex-1 min-w-0 flex flex-col gap-2">

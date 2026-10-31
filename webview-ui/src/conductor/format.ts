@@ -36,7 +36,7 @@ export function modelLabel(model?: string, harness?: string): string {
 }
 
 /** Sign-in steps shown when no Conductor token was found. */
-export const CONDUCTOR_SIGN_IN_TEXT =
+const CONDUCTOR_SIGN_IN_TEXT =
   'Sign in with `conductor auth login` or set CONDUCTOR_API_KEY, then restart.';
 
 /** Why a session the user expects may be missing from the office. */

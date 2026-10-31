@@ -33,21 +33,15 @@ export function writeBoolPref(key: string, value: boolean): void {
   }
 }
 
-/** A boolean preference persisted under `key`; `onChange` runs after each
- *  set (and never on mount). */
-export function useBoolPref(
-  key: string,
-  fallback: boolean,
-  onChange?: (value: boolean) => void,
-): [boolean, (value: boolean) => void] {
+/** A boolean preference persisted under `key`. */
+export function useBoolPref(key: string, fallback: boolean): [boolean, (value: boolean) => void] {
   const [value, setValue] = useState(() => readBoolPref(key, fallback));
   const set = useCallback(
     (next: boolean) => {
       writeBoolPref(key, next);
       setValue(next);
-      onChange?.(next);
     },
-    [key, onChange],
+    [key],
   );
   return [value, set];
 }

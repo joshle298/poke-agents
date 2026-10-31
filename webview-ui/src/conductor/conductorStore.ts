@@ -126,7 +126,7 @@ export interface ConductorState {
 
 const DEFAULT_PROVIDERS: readonly string[] = ['claude'];
 
-export function initialConductorState(): ConductorState {
+function initialConductorState(): ConductorState {
   return {
     activeProviders: DEFAULT_PROVIDERS,
     agentIds: [],
@@ -144,7 +144,7 @@ export function initialConductorState(): ConductorState {
   };
 }
 
-export function speciesKey(dex: number, shiny: boolean): string {
+function speciesKey(dex: number, shiny: boolean): string {
   return `${dex}:${shiny ? 1 : 0}`;
 }
 
@@ -221,7 +221,7 @@ function actionWho(state: ConductorState, id: number | undefined): string {
 
 /** Toast text for an action outcome; null when a success needs no toast
  *  (visibility toggles answer with the updated list instead). */
-export function actionToastText(
+function actionToastText(
   state: ConductorState,
   action: ConductorAction,
   ok: boolean,
@@ -276,13 +276,6 @@ export class ConductorStore {
       this.listeners.delete(listener);
     };
   };
-
-  /** Back to a fresh state (tests). */
-  reset(): void {
-    this.state = initialConductorState();
-    this.seq = 0;
-    this.emit();
-  }
 
   private set(next: ConductorState): void {
     if (next === this.state) return;
@@ -350,7 +343,10 @@ export class ConductorStore {
             shiny: msg.shiny,
             level: msg.level,
           }),
-          speciesLevel: msg.species !== undefined ? msg.level : a.speciesLevel,
+          speciesLevel:
+            msg.species !== undefined && msg.species !== a.species
+              ? (msg.level ?? a.level)
+              : (a.speciesLevel ?? msg.level),
           leadAgentId:
             msg.isTeammate && msg.parentAgentId !== undefined ? msg.parentAgentId : a.leadAgentId,
         }));
