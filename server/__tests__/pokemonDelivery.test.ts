@@ -17,8 +17,9 @@ const { createAgentState } = await import('../src/agentState.js');
 const { AgentStateStore } = await import('../src/agentStateStore.js');
 const { createHttpServer } = await import('../src/httpServer.js');
 const { PmdCache, setPmdCache } = await import('../src/pokemon/pmdCache.js');
-const { ensureSpeciesLoaded, resetLoadedSpecies, setPokemonSpritesEnabled } =
+const { ensureSpeciesLoaded, resetLoadedSpecies, setPokemonSpritesEnabled, speciesRetryAt } =
   await import('../src/pokemon/pokemonAssets.js');
+const { PMD_SPECIES_RETRY_MS } = await import('../src/pokemon/constants.js');
 const { createSpeciesDelivery } = await import('../src/pokemon/speciesDelivery.js');
 const { addSyntheticSpecies, FakeUpstream, FALLBACK, PRIMARY } =
   await import('./pokemonTestUtils.js');
@@ -132,6 +133,53 @@ describe('createSpeciesDelivery', () => {
     expect(labels(out)).toEqual(['agentCreated:1']);
     await settle();
     expect(labels(out)).toEqual(['agentCreated:1', 'species:4']);
+  });
+
+  it('retries a species that failed to load for an idle agent, backing off', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    // Real I/O (the cache writes files) still needs the event loop to turn.
+    const flush = async () => {
+      for (let i = 0; i < 400; i++) await new Promise((resolve) => setImmediate(resolve));
+    };
+    try {
+      setPmdCache(
+        new PmdCache({
+          root: path.join(tmpBase, 'cache'),
+          fetch: upstream.fetch,
+          hosts: [PRIMARY, FALLBACK],
+          failureBackoffMs: 0,
+          now: () => Date.now(),
+        }),
+      );
+      const store = storeWithTheme();
+      addAgent(store, 1, 7);
+      upstream.failHosts.add(PRIMARY);
+      upstream.failHosts.add(FALLBACK);
+      const out: Message[] = [];
+      const delivery = createSpeciesDelivery(store, (m) => out.push(m));
+
+      // Offline at startup: the idle agent's species fails and nothing else
+      // will ever ask for it again.
+      delivery.send({ type: 'existingAgents', agents: [1] });
+      await flush();
+      expect(labels(out)).toEqual(['existingAgents']);
+      expect(speciesRetryAt(7, false)).toBe(Date.now() + PMD_SPECIES_RETRY_MS);
+
+      // Still offline at the first retry: the wait doubles.
+      await vi.advanceTimersByTimeAsync(PMD_SPECIES_RETRY_MS);
+      await flush();
+      expect(labels(out)).toEqual(['existingAgents']);
+      expect(speciesRetryAt(7, false)).toBe(Date.now() + 2 * PMD_SPECIES_RETRY_MS);
+
+      // Back online: the next retry delivers it without any new message.
+      upstream.failHosts.clear();
+      await vi.advanceTimersByTimeAsync(2 * PMD_SPECIES_RETRY_MS);
+      await flush();
+      expect(labels(out)).toEqual(['existingAgents', 'species:7']);
+      delivery.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('sends each dex:shiny once per connection', async () => {

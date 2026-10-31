@@ -25,6 +25,7 @@ import {
   OPTIONAL_ANIMS,
   OPTIONAL_PORTRAITS,
   PMD_PAGE_URL_PREFIX,
+  PMD_SPECIES_RETRY_MAX_MS,
   PMD_SPECIES_RETRY_MS,
   POKEMON_ROUTE_PREFIX,
   REQUIRED_ANIMS,
@@ -276,7 +277,8 @@ export async function loadSpecies(
 
 const loadedSpecies = new Map<string, PokemonSpeciesPayload>();
 const pendingSpecies = new Map<string, Promise<boolean>>();
-const failedSpeciesAt = new Map<string, number>();
+/** When each failing species last failed, and how many times in a row. */
+const failedSpecies = new Map<string, { at: number; count: number }>();
 
 /** `dex:shiny` key used for the memo and per-socket delivery tracking. */
 export function speciesKey(dex: number, shiny: boolean): string {
@@ -289,10 +291,22 @@ export function getLoadedSpecies(dex: number, shiny: boolean): PokemonSpeciesPay
 }
 
 /**
+ * Epoch ms from which a species that failed to load may be tried again, or
+ * undefined when it has not failed. The wait starts at PMD_SPECIES_RETRY_MS
+ * and doubles with each consecutive failure, up to PMD_SPECIES_RETRY_MAX_MS.
+ */
+export function speciesRetryAt(dex: number, shiny: boolean): number | undefined {
+  const failed = failedSpecies.get(speciesKey(dex, shiny));
+  if (!failed) return undefined;
+  const wait = Math.min(PMD_SPECIES_RETRY_MAX_MS, PMD_SPECIES_RETRY_MS * 2 ** (failed.count - 1));
+  return failed.at + wait;
+}
+
+/**
  * Load a species once per process (same-origin URLs) and remember it.
  * Resolves true when its payload is ready (getLoadedSpecies returns it), false
  * when sprites are off, the theme is off, or the load failed; a failure is
- * retried no sooner than PMD_SPECIES_RETRY_MS. Never rejects.
+ * retried no sooner than speciesRetryAt. Never rejects.
  *
  * The evolution path awaits this before broadcasting the new species, so the
  * socket layer can send `pokemonSpeciesLoaded` ahead of `agentDetails`.
@@ -307,18 +321,16 @@ export function ensureSpeciesLoaded(
   if (!isValidDex(dex) || !pokemonDeliveryEnabled(store)) return Promise.resolve(false);
   const pending = pendingSpecies.get(key);
   if (pending) return pending;
-  const failedAt = failedSpeciesAt.get(key);
-  if (failedAt !== undefined && Date.now() - failedAt < PMD_SPECIES_RETRY_MS) {
-    return Promise.resolve(false);
-  }
+  const retryAt = speciesRetryAt(dex, shiny);
+  if (retryAt !== undefined && Date.now() < retryAt) return Promise.resolve(false);
   const load = loadSpecies(dex, shiny)
     .then((payload) => {
       if (payload) {
         loadedSpecies.set(key, payload);
-        failedSpeciesAt.delete(key);
+        failedSpecies.delete(key);
         return true;
       }
-      failedSpeciesAt.set(key, Date.now());
+      failedSpecies.set(key, { at: Date.now(), count: (failedSpecies.get(key)?.count ?? 0) + 1 });
       return false;
     })
     .finally(() => pendingSpecies.delete(key));
@@ -330,5 +342,5 @@ export function ensureSpeciesLoaded(
 export function resetLoadedSpecies(): void {
   loadedSpecies.clear();
   pendingSpecies.clear();
-  failedSpeciesAt.clear();
+  failedSpecies.clear();
 }

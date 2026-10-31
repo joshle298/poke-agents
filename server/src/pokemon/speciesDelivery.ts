@@ -8,6 +8,10 @@
  *   that message when the species is already loaded, otherwise as soon as its
  *   load completes (the office draws the upstream character until then);
  * - when the theme is switched on (`pokemonThemeUpdated`), every species in use.
+ * A species whose load fails is tried again once its backoff passes
+ * (pokemonAssets.speciesRetryAt), for as long as an agent still shows it: an
+ * idle session sends nothing new that would ask again, and would otherwise stay
+ * an upstream character until the page reloads.
  * Nothing is fetched or sent while sprites are off or the theme is off.
  *
  * The theme state is read from the messages this connection is sent
@@ -16,6 +20,7 @@
  */
 
 import type { AgentStateStore } from '../agentStateStore.js';
+import { PMD_SPECIES_RETRY_MS } from './constants.js';
 import { isValidDex } from './pmdCache.js';
 import {
   arePokemonSpritesEnabled,
@@ -23,6 +28,7 @@ import {
   getLoadedSpecies,
   isPokemonThemeOn,
   speciesKey,
+  speciesRetryAt,
 } from './pokemonAssets.js';
 
 type OutgoingMessage = Record<string, unknown>;
@@ -40,6 +46,7 @@ export function createSpeciesDelivery(
 ): SpeciesDelivery {
   const sent = new Set<string>();
   const loading = new Set<string>();
+  const retries = new Map<string, ReturnType<typeof setTimeout>>();
   let themeOn: boolean | undefined;
   let disposed = false;
 
@@ -62,8 +69,33 @@ export function createSpeciesDelivery(
     loading.add(key);
     void ensureSpeciesLoaded(dex, shiny, store).then((ready) => {
       loading.delete(key);
-      if (ready && enabled()) deliver(dex, shiny);
+      if (!enabled()) return;
+      if (ready) deliver(dex, shiny);
+      else scheduleRetry(dex, shiny);
     });
+  };
+
+  const inUse = (dex: number, shiny: boolean): boolean => {
+    for (const agent of store.values()) {
+      if (agent.species === dex && (agent.shiny === true) === shiny) return true;
+    }
+    return false;
+  };
+
+  /** Ask again once the failed species' backoff has passed, if still shown. */
+  const scheduleRetry = (dex: number, shiny: boolean): void => {
+    const key = speciesKey(dex, shiny);
+    if (retries.has(key) || !inUse(dex, shiny)) return;
+    const at = speciesRetryAt(dex, shiny) ?? Date.now() + PMD_SPECIES_RETRY_MS;
+    const timer = setTimeout(
+      () => {
+        retries.delete(key);
+        if (enabled() && inUse(dex, shiny)) deliver(dex, shiny);
+      },
+      Math.max(0, at - Date.now()),
+    );
+    timer.unref?.();
+    retries.set(key, timer);
   };
 
   const deliverSpeciesInUse = (): void => {
@@ -109,6 +141,8 @@ export function createSpeciesDelivery(
     },
     dispose() {
       disposed = true;
+      for (const timer of retries.values()) clearTimeout(timer);
+      retries.clear();
     },
   };
 }
