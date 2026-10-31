@@ -25,6 +25,7 @@ import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
 import { Toasts } from './components/Toasts.js';
 import { Tooltip } from './components/Tooltip.js';
+import type { Rect } from './components/topBarLayout.js';
 import { officeRightCover } from './components/topBarLayout.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
@@ -38,9 +39,7 @@ import { buildPartySlot, partyOrder } from './conductor/party.js';
 import { useBoolPref } from './conductor/preferences.js';
 import { useConductorFeed } from './conductor/useConductorFeed.js';
 import {
-  BATTLE_LOG_EDGE_GAP_PX,
   BATTLE_LOG_STORAGE_KEY,
-  EDITOR_PALETTE_EDGE_PX,
   OFFICE_CANVAS_TEST_ID,
   OFFICE_TOP_BAR_STACK_GAP_PX,
   PARTY_WIDE_MIN_WINDOW_PX,
@@ -413,8 +412,10 @@ function App() {
   ]);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  // The layout editor's palette, measured: the battle log stays above it.
+  // The layout editor's palette, measured, and what the desktop top bar
+  // covers (OfficeTopBar reports it): the battle log keeps clear of both.
   const [paletteRef, paletteBox] = useBoxSize<HTMLDivElement>();
+  const [topBarOccupied, setTopBarOccupied] = useState<readonly Rect[]>([]);
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
   useEditorKeyboard(
@@ -794,26 +795,30 @@ function App() {
       {!isMobile && (
         <OfficeTopBar
           rightInset={officeRightInset}
+          onOccupiedChange={setTopBarOccupied}
           toolbar={
-            !officeReadOnly && (
-              <OfficeToolbar
-                isEditMode={editor.isEditMode}
-                onToggleEditMode={editor.handleToggleEditMode}
-                isSettingsOpen={isSettingsOpen}
-                onToggleSettings={() => setIsSettingsOpen((v) => !v)}
-                directories={directories}
-                onAddDirectory={directoryEditor.add}
-                onEditDirectory={directoryEditor.edit}
-                terminalAvailable={terminalAvailable}
-                terminalUnavailableReason={terminalUnavailableReason}
-                claudeActive={claudeActive}
-                conductorActive={conductorActive}
-                isSessionsOpen={isSessionsOpen}
-                onOpenSessions={() => setIsSessionsOpen(true)}
-                isPcBoxOpen={isPcBoxOpen}
-                onOpenPcBox={() => setIsPcBoxOpen(true)}
-              />
-            )
+            officeReadOnly
+              ? null
+              : (maxWidth) => (
+                  <OfficeToolbar
+                    maxWidth={maxWidth}
+                    isEditMode={editor.isEditMode}
+                    onToggleEditMode={editor.handleToggleEditMode}
+                    isSettingsOpen={isSettingsOpen}
+                    onToggleSettings={() => setIsSettingsOpen((v) => !v)}
+                    directories={directories}
+                    onAddDirectory={directoryEditor.add}
+                    onEditDirectory={directoryEditor.edit}
+                    terminalAvailable={terminalAvailable}
+                    terminalUnavailableReason={terminalUnavailableReason}
+                    claudeActive={claudeActive}
+                    conductorActive={conductorActive}
+                    isSessionsOpen={isSessionsOpen}
+                    onOpenSessions={() => setIsSessionsOpen(true)}
+                    isPcBoxOpen={isPcBoxOpen}
+                    onOpenPcBox={() => setIsPcBoxOpen(true)}
+                  />
+                )
           }
           belowToolbar={
             <>
@@ -848,6 +853,7 @@ function App() {
               return (
                 <EditorToolbar
                   ref={paletteRef}
+                  rightInset={officeRightInset}
                   activeTool={editorState.activeTool}
                   selectedTileType={editorState.selectedTileType}
                   selectedFurnitureType={editorState.placingType}
@@ -979,16 +985,13 @@ function App() {
         <NothingTrackedOffice />
       )}
 
-      {/* A quarter of the office's height above its bottom edge, and above the
-          layout editor's palette while it is open. */}
+      {/* A quarter of the office's height above its bottom edge, clear of the
+          layout editor's palette and the desktop top bar. */}
       {pokemonTheme && battleLogOn && !isDebugMode && (
         <BattleLog
-          minBottomPx={
-            editor.isEditMode && paletteBox.height > 0
-              ? EDITOR_PALETTE_EDGE_PX + paletteBox.height + BATTLE_LOG_EDGE_GAP_PX
-              : BATTLE_LOG_EDGE_GAP_PX
-          }
           rightInset={officeRightInset}
+          obstacles={isMobile ? [] : topBarOccupied}
+          palette={editor.isEditMode && paletteBox.height > 0 ? paletteBox : null}
         />
       )}
 

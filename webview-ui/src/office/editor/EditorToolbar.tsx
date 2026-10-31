@@ -89,6 +89,9 @@ interface EditorToolbarProps {
   onAreaMappingChange: (directoryName: string, areaLabel: string, action: 'add' | 'remove') => void;
   /** Replace the layout with a bundled one (undoable). */
   onLoadBundledLayout: (id: BundledLayoutId) => void;
+  /** What covers the office's right edge, as a CSS length (the Pokédex
+   *  drawer, the upstream card column): the palette stays left of it. */
+  rightInset: string;
   /** The palette's outer box (App keeps the battle log above it). */
   ref?: Ref<HTMLDivElement>;
 }
@@ -138,6 +141,7 @@ export function EditorToolbar({
   onAreaColorChange,
   onAreaMappingChange,
   onLoadBundledLayout,
+  rightInset,
   ref,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurniturePanelCategory>('desks');
@@ -257,8 +261,10 @@ export function EditorToolbar({
   };
 
   return (
-    // Bottom-left of the office, growing upward; the office's own width caps
-    // it (the party bar and a docked Pokédex sit outside the office).
+    // Bottom-left of the office, growing upward; capped to the office left of
+    // what covers its right edge (the party bar and a docked Pokédex sit
+    // outside the office), so its tool row wraps rather than slide under the
+    // Pokédex drawer.
     <div
       ref={ref}
       className="absolute pixel-panel p-4 flex flex-col-reverse gap-4"
@@ -266,7 +272,7 @@ export function EditorToolbar({
         zIndex: EDITOR_PALETTE_Z_INDEX,
         left: EDITOR_PALETTE_EDGE_PX,
         bottom: EDITOR_PALETTE_EDGE_PX,
-        maxWidth: `calc(100% - ${2 * EDITOR_PALETTE_EDGE_PX}px)`,
+        maxWidth: `calc(100% - ${rightInset} - ${2 * EDITOR_PALETTE_EDGE_PX}px)`,
       }}
     >
       {/* Tool row — at the bottom */}

@@ -163,9 +163,14 @@ export const OFFICE_TOP_BAR_GAP_PX = 8;
 /** Space between the items stacked under the toolbar (the now-playing pill,
  *  the first-run tooltip) and between the top-centre pills. */
 export const OFFICE_TOP_BAR_STACK_GAP_PX = 6;
-/** The toolbar: above the characters' labels and bubbles (41-43), the Intro
- *  (45) and the now-playing pill under it (46), so its launch drawer opens
- *  over them; below the modals (50) and the toasts (60). */
+/** The top-centre pills (EditActionBar, the rotate hint, the zoom level, the
+ *  connection status) and the first-run tooltip under the toolbar: above the
+ *  characters' labels and bubbles (41-43), the Pokédex drawer (44) and the
+ *  Intro (45), level with the now-playing pill (MUSIC_PILL_Z_INDEX), since
+ *  narrow windows move them down into the office. */
+export const OFFICE_TOP_PILLS_Z_INDEX = 46;
+/** The toolbar: above the pills, so its launch drawer opens over them; below
+ *  the modals (50) and the toasts (60). */
 export const OFFICE_TOOLBAR_Z_INDEX = 47;
 
 // ── Editor ───────────────────────────────────────────────────
@@ -943,8 +948,8 @@ export const BATTLE_LOG_FADE_MS = 500;
  *  office's height: it reads in the lower part of the office instead of
  *  hugging the window's bottom edge. */
 export const BATTLE_LOG_BOTTOM_FRACTION = 0.25;
-/** ...and never less than this from the bottom edge, or from the top of the
- *  layout editor's palette while it is open. */
+/** ...and at least this far from the office's edges and from what it keeps
+ *  clear of (the layout editor's palette, the desktop top bar). */
 export const BATTLE_LOG_EDGE_GAP_PX = 10;
 export const BATTLE_LOG_MAX_WIDTH_PX = 520;
 /** Per-device preferences (localStorage, not synced through the server). */

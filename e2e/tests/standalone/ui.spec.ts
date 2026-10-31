@@ -10,6 +10,7 @@ import {
   closeAgentFromOverlay,
   expectOverlayCount,
   expectOverlayVisible,
+  readAgentOverlayIds,
 } from '../../helpers/office';
 import { openSettingsModal, setSettings } from '../../helpers/webview';
 
@@ -233,5 +234,84 @@ test.describe('Standalone / UI', () => {
     }
     await standalone.startHost();
     await expect(indicator).toHaveCount(0, { timeout: CONNECTION_STATE_TIMEOUT_MS });
+  });
+});
+
+/** What the desktop app's preload exposes (webview-ui/src/desktopApp.ts),
+ *  faked so the test can send its commands. */
+interface FakeDesktopWindow {
+  pokeAgentsDesktop?: {
+    reconnectConductor: () => void;
+    onCommand: (listener: (command: unknown) => void) => () => void;
+  };
+  __sendDesktopCommand?: (command: unknown) => void;
+}
+
+test.describe('Standalone / layout editor beside the Pokédex drawer', () => {
+  test.use({ standaloneOptions: { viewport: { width: 860, height: 900 } } });
+
+  test('the layout palette stays left of the Pokédex drawer, its tools reachable @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    // Only Conductor agents open a Pokédex on click; the Mac app's
+    // notification click opens any session's. Fake that bridge (read once,
+    // as the page loads) and send the click.
+    await page.addInitScript(() => {
+      const w = window as unknown as FakeDesktopWindow;
+      w.pokeAgentsDesktop = {
+        reconnectConductor: () => {},
+        onCommand: (listener) => {
+          w.__sendDesktopCommand = listener;
+          return () => {};
+        },
+      };
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible({ timeout: 30_000 });
+    await setSettings(page, {
+      alwaysShowLabels: true,
+      hooksEnabled: true,
+      watchAllSessions: true,
+      debugView: false,
+    });
+
+    const sessionId = 'standalone-palette-drawer-session';
+    await sendHookEvent(
+      standalone.hookServerConfig,
+      sessionStartStartup(sessionId, standalone.workspaceDir),
+    );
+    await sendHookEvent(standalone.hookServerConfig, {
+      session_id: sessionId,
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      tool_input: { file_path: path.join(standalone.workspaceDir, 'drawer.ts') },
+    });
+    await expectOverlayCount(page, 1);
+    const [agentId] = await readAgentOverlayIds(page);
+    await page.evaluate((id) => {
+      (window as unknown as FakeDesktopWindow).__sendDesktopCommand?.({
+        type: 'openSession',
+        agentId: id,
+      });
+    }, agentId);
+
+    // 860 px is under the docking width: the Pokédex is a drawer over the
+    // office's right edge.
+    const drawer = page.getByRole('complementary', { name: 'Pokédex' });
+    await expect(drawer).toBeVisible();
+    await page.getByRole('button', { name: 'Layout', exact: true }).click();
+    const palette = page.locator('.pixel-panel', {
+      has: page.getByRole('button', { name: 'Furniture', exact: true }),
+    });
+    await expect(palette).toBeVisible();
+
+    const drawerBox = (await drawer.boundingBox())!;
+    const paletteBox = (await palette.boundingBox())!;
+    expect(paletteBox.x + paletteBox.width).toBeLessThanOrEqual(drawerBox.x);
+    // Its tool row wraps instead: the last tool is clickable, not under the
+    // drawer.
+    await page.getByRole('button', { name: 'Templates', exact: true }).click();
+    await expect(page.getByTestId('templates-panel')).toBeVisible();
   });
 });
