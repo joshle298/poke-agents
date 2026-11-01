@@ -1,5 +1,16 @@
 # Changelog
 
+## Poke Agents v0.5.1
+
+Notifications in a message bar under the map.
+
+### Changes
+
+- **A message bar under the map.** The battle log and the outcomes of your actions ("Message sent to …", or why Conductor refused one) appear in a text box under the town, like the one under a GBA screen, instead of over the map and under the toolbar. The map makes room for it, so the bar never covers the map, and an outcome arriving never moves it.
+- The newest battle-log line types in and can wrap onto both rows, with the line before it above, dimmed.
+- An error shows in full and stays up 10 s, never while the pointer or keyboard focus is on it, and a newer success never hides it. × dismisses an outcome.
+- Screen readers hear each outcome once, errors as alerts.
+
 ## Poke Agents v0.5.0
 
 A town twice the size with the work moved outdoors, the catch orb, Archive, and an idle limit in Sessions.

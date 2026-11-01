@@ -55,6 +55,7 @@ export const changelogEntries: ChangelogEntry[] = [
       {
         title: 'Changes',
         items: [
+          'Notifications in a message bar under the map (v0.5.1)',
           'Sessions: hide sessions idle longer than 15 min to 3 days, or never',
           'Archive replaces the PC: Archived sessions, with Restore',
           '"Connecting to Conductor…" no longer sticks after the connection comes back',
