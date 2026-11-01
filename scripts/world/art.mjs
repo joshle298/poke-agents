@@ -41,6 +41,11 @@ const BLUE = ['#1D3A78', '#2B57A6', '#4377CF', '#73A2EA', '#B5D3FA'].map((c) => 
 /** The Pokémon Center's own colour: its heart emblem and its blankets. */
 const PINK = ['#7E2550', '#B23E72', '#E0679A', '#F59ABF', '#FFD2E4'].map((c) => hex(c));
 const GLASS = ['#3D6E9E', '#5D93C4', '#8EC0E8', '#CBE6F8'].map((c) => hex(c));
+/** The catch orb's colours (webview-ui/src/office/sprites/orb.json): its
+ *  sphere dark → light, the gold of its C, and its outline. */
+const ORB = ['#2B2A6A', '#2D4590', '#21639A', '#1E8FA6', '#34BDBB'].map((c) => hex(c));
+const ORB_GOLD = hex('#F2C23A');
+const ORB_OUT = hex('#0E1A26');
 const INK = hex('#2A2430');
 const WHITE = hex('#FFFFFF');
 
@@ -1188,8 +1193,26 @@ export function counter() {
   return c;
 }
 
-/** The healing machine, 2×2 tiles, stands on the counter: three capsule
- *  bays, a status strip, and the Center's heart on a plate on top. */
+/** The C round each orb in the healing machine: (dx, dy) from the bay's
+ *  centre, along the top, the left and the bottom of its outline ring. */
+const BAY_ORB_C = [
+  [-1, -3],
+  [0, -3],
+  [1, -3],
+  [-2, -2],
+  [-3, -1],
+  [-3, 0],
+  [-3, 1],
+  [-2, 2],
+  [-1, 2],
+  [0, 2],
+  [1, 2],
+];
+
+/** The healing machine, 2×2 tiles, stands on the counter: three bays, each
+ *  holding a catch orb (the thrown orb in miniature: a teal-to-indigo sphere
+ *  in a gold C open on the right), a status strip, and the Center's heart on
+ *  a plate on top. */
 export function healingMachine() {
   const c = new Canvas(32, 32);
   const body = new Canvas(32, 32);
@@ -1197,15 +1220,20 @@ export function healingMachine() {
   body.rect(3, 7, 26, 14, CREAM[2]);
   body.hline(3, 28, 7, CREAM[3]);
   body.rect(3, 18, 26, 3, CREAM[1]);
-  // three capsule bays
-  for (const [x, glass] of [
-    [9, RED],
-    [16, TEAL],
-    [23, RED],
-  ]) {
-    body.disc(x, 14, 3.2, METAL[2]);
-    body.disc(x, 14, 2.3, glass[3]);
+  // three bays, a catch orb in each
+  for (const x of [9, 16, 23]) {
+    body.disc(x, 14, 3.2, ORB_OUT);
+    body.disc(
+      x,
+      14,
+      2.3,
+      (px, py) => ORB[sphereShade(px + 0.5, py + 0.5, x, 14, 2.3, ORB.length, 0.15)],
+    );
     body.set(x - 1, 13, WHITE);
+    for (const [dx, dy] of BAY_ORB_C) body.set(x + dx, 14 + dy, ORB_GOLD);
+    // the C's opening, on the right
+    body.set(x + 2, 13, CREAM[2]);
+    body.set(x + 2, 14, CREAM[2]);
   }
   // status strip
   body.rect(6, 17, 20, 2, TEAL[0]);

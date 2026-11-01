@@ -49,6 +49,7 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **
 
 ### Using the Office
 
+- The office opens on the Lab and the Work Yard. To look around the rest of the town, scroll with two fingers or the mouse wheel, or drag the ground. To zoom, pinch, Ctrl/⌘-scroll or use the + and − buttons at the top left.
 - Click a Pokémon or its party slot to open its Pokédex. Cmd-click (Ctrl-click) or double-click opens the session in Conductor.
 - In the **Chat** tab, Enter sends your reply and Shift+Enter starts a new line.
 - **Sessions** in the toolbar opens the Sessions modal, **Archive** the archived sessions, and **Music** the Jukebox.
@@ -96,19 +97,19 @@ A session becomes a Lead when it creates another session with a first message, f
 
 Sound is on by default and starts after your first click, tap or key press in the office: browsers keep audio locked until then, and nothing that happened earlier is played late.
 
-| When                                                 | You hear                                         |
-| ---------------------------------------------------- | ------------------------------------------------ |
-| A session needs your answer or a permission          | An alert, then its Pokémon's cry                 |
-| A session errors (faints)                            | Its cry, pitched down, and a falling tone        |
-| A fainted session works again                        | A rising heal arpeggio                           |
-| A Pokémon levels up                                  | A short level-up arpeggio                        |
-| A Pokémon evolves                                    | A rising shimmer, then the new species' cry      |
-| A Lead creates a session                             | An orb throw, the pop, and the new Pokémon's cry |
-| Any other session appears                            | The pop and its cry                              |
-| One session messages another                         | A whoosh                                         |
-| A session leaves (hidden, deposited or out of scope) | A recall zap                                     |
-| The selected or a pinned session finishes its turn   | A soft two-note tone                             |
-| You open a Pokédex                                   | That Pokémon's cry                               |
+| When                                                | You hear                                         |
+| --------------------------------------------------- | ------------------------------------------------ |
+| A session needs your answer or a permission         | An alert, then its Pokémon's cry                 |
+| A session errors (faints)                           | Its cry, pitched down, and a falling tone        |
+| A fainted session works again                       | A rising heal arpeggio                           |
+| A Pokémon levels up                                 | A short level-up arpeggio                        |
+| A Pokémon evolves                                   | A rising shimmer, then the new species' cry      |
+| A Lead creates a session                            | An orb throw, the pop, and the new Pokémon's cry |
+| Any other session appears                           | The pop and its cry                              |
+| One session messages another                        | A whoosh                                         |
+| A session leaves (hidden, archived or out of scope) | A recall zap                                     |
+| The selected or a pinned session finishes its turn  | A soft two-note tone                             |
+| You open a Pokédex                                  | That Pokémon's cry                               |
 
 At most four sounds play a second, one cry at a time, with a cooldown per session and nothing for five seconds after the office connects. **Settings → Sound** has the **Sounds** switch, a volume slider, **Cries**, **Alerts** and **Effects** toggles, and a test button for each sound.
 
@@ -327,7 +328,7 @@ The Mac app also keeps its window position in `~/Library/Application Support/Pok
 - **An installed web app can't connect after a restart.** Port 41510 was busy, so the office started on another port. Stop whatever holds 41510, or always pass the same `--port`.
 - **No sound.** Click, tap or press a key in the office once: browsers keep audio locked until then. Check that **Sounds** is on in Settings and the volume is up.
 - **No cries, but the other sounds play.** Cries download after your first click, so a species new to the town can miss its first cry. They are mostly Ogg files, which some Safari versions can't play. They also need the Pokémon theme and sprites on.
-- **Pokémon show as office workers.** Sprites download in the background, and a Pixel Agents character shows until a sprite is ready. If it never changes, check that `raw.githubusercontent.com` or `cdn.jsdelivr.net` is reachable.
+- **Pokémon stay closed orbs.** Sprites download in the background, and a session waits as a closed catch orb until its Pokémon's sprite is ready. If the orb never opens, check that `raw.githubusercontent.com` or `cdn.jsdelivr.net` is reachable.
 
 ## Development
 
