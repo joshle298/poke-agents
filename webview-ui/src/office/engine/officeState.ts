@@ -30,11 +30,10 @@ import {
   PROJECTILE_SPEED_PX_PER_SEC,
   STATIC_LAYER_REACH,
   TEAMMATE_CLUSTER_MAX_CHILDREN,
-  TOWN_MEADOW_DELAY_SEC,
-  TOWN_MEADOW_DELAY_ZONED_SEC,
   TOWN_RETRY_SEC,
   TOWN_SPAWN_GRACE_SEC,
   TOWN_USER_WALK_HOLD_SEC,
+  TOWN_WORK_MEADOW_NEAR_TILES,
   WAITING_BUBBLE_DURATION_SEC,
 } from '../../constants.js';
 import { isAsleep, isDrowsy } from '../asleep.js';
@@ -119,9 +118,11 @@ import {
   stepTownCharacter,
   townBeds,
   townGoalFor,
+  townMeadowDelay,
   townRoomNeeded,
   townSeatMove,
   townSpawnTile,
+  townWorkTiles,
   zonedSeatMove,
 } from './townBehavior.js';
 
@@ -505,9 +506,14 @@ export class OfficeState {
     }
     const zoned = isZonedTown(roles);
     const walkBehind = this.walkBehindTiles();
+    const meadowTiles = walkableIn(roles.meadow);
+    const fieldTiles = walkableIn(roles.field).filter(
+      (t) => !walkBehind.has(tileKey(t.col, t.row)),
+    );
+    const seatTiles = new Set([...this.seats.values()].map((s) => tileKey(s.seatCol, s.seatRow)));
     this.town = {
       roles,
-      meadowTiles: walkableIn(roles.meadow),
+      meadowTiles,
       centerTiles,
       beds,
       bedTiles,
@@ -521,7 +527,8 @@ export class OfficeState {
       reservedSeats: zoned
         ? new Set([...this.seats.keys()].filter((uid) => !fieldSeats.has(uid)))
         : lecternSeats,
-      fieldTiles: walkableIn(roles.field).filter((t) => !walkBehind.has(tileKey(t.col, t.row))),
+      fieldTiles,
+      ...townWorkTiles(fieldTiles, meadowTiles, seatTiles, TOWN_WORK_MEADOW_NEAR_TILES),
       seatRoom,
       tileMap: this.tileMap,
       blockedTiles: this.blockedTiles,
@@ -1139,12 +1146,11 @@ export class OfficeState {
     if (!teammate || !lead) return;
     const anchorAt = anchorTile(lead, this.seats);
     if (!anchorAt) return;
-    const target = closestFreeSeat(
-      this.seats,
-      anchorAt.col,
-      anchorAt.row,
-      this.town?.reservedSeats,
-    );
+    // In a zoned town a free seat someone still rests on is not free either.
+    const reserved = this.town?.zoned
+      ? new Set([...this.town.reservedSeats, ...this.occupiedSeats(teammate)])
+      : this.town?.reservedSeats;
+    const target = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, reserved);
     if (!target || target === teammate.seatId) return;
     const targetSeat = this.seats.get(target)!;
     const targetDist =
@@ -1154,7 +1160,12 @@ export class OfficeState {
       ? Math.abs(currentSeat.seatCol - anchorAt.col) + Math.abs(currentSeat.seatRow - anchorAt.row)
       : Infinity;
     if (targetDist < currentDist) {
-      if (this.town && !teammate.isActive) this.moveTownSeat(teammate, target);
+      // Still appearing in a zoned town: it starts at that seat, so it never
+      // sets off across the town just as its status arrives (asleep, it
+      // would stop on whichever seat it was passing).
+      if (this.town?.zoned && teammate.townSpawnGrace !== undefined) {
+        this.placeAtTownSeat(teammate, target);
+      } else if (this.town && !teammate.isActive) this.moveTownSeat(teammate, target);
       else this.reassignSeat(teammateId, target);
     }
   }
@@ -1167,13 +1178,15 @@ export class OfficeState {
   private moveTownSeat(ch: Character, uid: string): void {
     const seat = this.seats.get(uid);
     if (!seat) return;
+    const zoned = this.town?.zoned === true;
     for (const other of this.characters.values()) {
-      if (other !== ch && other.seatId === uid) other.seatId = null;
+      if (other === ch || other.seatId !== uid) continue;
+      other.seatId = null;
+      // In a zoned town a bumped holder still on the seat gets up and goes.
+      if (zoned && this.standsOnSeat(other, seat)) this.leaveSeatNow(other);
     }
-    if (ch.seatId) {
-      const old = this.seats.get(ch.seatId);
-      if (old) old.assigned = false;
-    }
+    const old = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+    if (old) old.assigned = false;
     seat.assigned = false;
     if (ch.isActive) {
       ch.seatId = null;
@@ -1182,6 +1195,95 @@ export class OfficeState {
     }
     seat.assigned = true;
     ch.seatId = uid;
+    // Its claim moved on (a non-Lead's Lab desk, a wide one's cramped seat):
+    // in a zoned town it doesn't stay sitting there until its rest is over.
+    if (zoned && old && this.standsOnSeat(ch, old)) this.leaveSeatNow(ch);
+  }
+
+  /** Give `ch` the seat `uid` and put it there at once, seated as a new
+   *  character is: one still appearing, so it never walks across the town
+   *  to the seat its team (a Lead's Lab) gives it moments later. */
+  private placeAtTownSeat(ch: Character, uid: string): void {
+    const seat = this.seats.get(uid);
+    if (!seat) return;
+    for (const other of this.characters.values()) {
+      if (other !== ch && other.seatId === uid) other.seatId = null;
+    }
+    const old = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+    if (old) old.assigned = false;
+    seat.assigned = true;
+    ch.seatId = uid;
+    ch.tileCol = seat.seatCol;
+    ch.tileRow = seat.seatRow;
+    ch.x = seat.seatCol * TILE_SIZE + TILE_SIZE / 2;
+    ch.y = seat.seatRow * TILE_SIZE + TILE_SIZE / 2;
+    ch.dir = seat.facingDir;
+    ch.path = [];
+    ch.moveProgress = 0;
+    ch.state = CharacterState.TYPE;
+    ch.frame = 0;
+    ch.frameTimer = 0;
+  }
+
+  /** Whether `ch` is walking and its walk ends at its own seat. */
+  private walkingToOwnSeat(ch: Character): boolean {
+    const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+    const end = ch.path[ch.path.length - 1];
+    return (
+      ch.state === CharacterState.WALK &&
+      seat !== undefined &&
+      end !== undefined &&
+      end.col === seat.seatCol &&
+      end.row === seat.seatRow
+    );
+  }
+
+  /** Standing on its own seat's tile: face the way the seat faces. */
+  private faceOwnSeat(ch: Character): void {
+    const seat = ch.seatId ? this.seats.get(ch.seatId) : undefined;
+    if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+      ch.dir = seat.facingDir;
+    }
+  }
+
+  /** Whether `ch` is on `seat`'s tile and staying there (not walking off). */
+  private standsOnSeat(ch: Character, seat: Seat): boolean {
+    return (
+      ch.state !== CharacterState.WALK && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow
+    );
+  }
+
+  /** A character that isn't working stands up and heads for its area now
+   *  instead of resting first. One that is asleep, or waiting for you (it
+   *  stays where it is), is left alone. */
+  private leaveSeatNow(ch: Character): void {
+    if (ch.isActive || ch.asleep || ch.townGoal === 'stay') return;
+    if (ch.state === CharacterState.TYPE) {
+      ch.state = CharacterState.IDLE;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    }
+    ch.seatTimer = 0;
+    ch.townRetryTimer = 0;
+  }
+
+  /** Seats someone other than `asker` is on and staying on (sitting,
+   *  resting, asleep) or walking to, whoever holds them: the zoned rules
+   *  leave them be. One walking off its seat doesn't count. */
+  private occupiedSeats(asker: Character): Set<string> {
+    const uidAt = new Map<string, string>();
+    for (const [uid, seat] of this.seats) uidAt.set(tileKey(seat.seatCol, seat.seatRow), uid);
+    const out = new Set<string>();
+    for (const other of this.characters.values()) {
+      if (other === asker || other.matrixEffect === 'despawn') continue;
+      const end =
+        other.state === CharacterState.WALK
+          ? other.path[other.path.length - 1]
+          : { col: other.tileCol, row: other.tileRow };
+      const uid = end ? uidAt.get(tileKey(end.col, end.row)) : undefined;
+      if (uid) out.add(uid);
+    }
+    return out;
   }
 
   /** The town's seat rules for one character (see townSeatMove), plus room
@@ -1234,7 +1336,7 @@ export class OfficeState {
     if (!due) {
       if (seat !== null) {
         const zone = onLab ? town.labSeats : town.fieldSeats;
-        this.giveWideRoom(ch, seat, town, (uid) => zone.has(uid));
+        this.giveWideRoom(ch, seat, town, (uid) => zone.has(uid), true);
       }
       return;
     }
@@ -1243,14 +1345,19 @@ export class OfficeState {
       return;
     }
     const electronics = this.buildElectronicsTileSet();
+    const occupied = this.occupiedSeats(ch);
     const verdict = zonedSeatMove(
       ch,
-      this.seatHolders(),
+      this.seatHolders().map((s) => ({ ...s, occupied: occupied.has(s.uid) })),
       { lab: town.labSeats, field: town.fieldSeats },
       (free) => this.pickFromSeats(free, electronics),
     );
     if (verdict.kind === 'move') {
-      if (verdict.uid !== ch.seatId) this.moveTownSeat(ch, verdict.uid);
+      if (verdict.uid === ch.seatId) return;
+      // Still appearing (its team arrived with it): it starts at that seat
+      // instead of walking across the town to it.
+      if (ch.townSpawnGrace !== undefined) this.placeAtTownSeat(ch, verdict.uid);
+      else this.moveTownSeat(ch, verdict.uid);
     } else if (verdict.kind === 'release') {
       this.releaseTownSeat(ch);
     } else {
@@ -1266,23 +1373,28 @@ export class OfficeState {
     const seat = this.seats.get(ch.seatId);
     if (seat) seat.assigned = false;
     ch.seatId = null;
+    // Resting on the seat it gave up (a non-Lead's Lab desk): it gets up and
+    // goes now, so the seat is free for the one it was kept for.
+    if (seat && this.standsOnSeat(ch, seat)) this.leaveSeatNow(ch);
   }
 
   /** A wide Pokémon at a seat too close to a wall moves to a free seat with
-   *  room, among those `allowed` for it. */
+   *  room, among those `allowed` for it (and, `skipOccupied`, nobody is on). */
   private giveWideRoom(
     ch: Character,
     seatId: string,
     town: TownWorld,
     allowed: (uid: string) => boolean,
+    skipOccupied = false,
   ): void {
     const halfW = pokemonGeometryOf(ch)?.bodyHalfW;
     if (halfW === undefined) return;
     const need = townRoomNeeded(halfW);
     if (need <= (town.seatRoom.get(seatId) ?? 0)) return;
+    const occupied = skipOccupied ? this.occupiedSeats(ch) : null;
     const roomy: string[] = [];
     for (const [uid, seat] of this.seats) {
-      if (seat.assigned || !allowed(uid)) continue;
+      if (seat.assigned || !allowed(uid) || occupied?.has(uid)) continue;
       if ((town.seatRoom.get(uid) ?? 0) >= need) roomy.push(uid);
     }
     if (roomy.length === 0) return;
@@ -1497,8 +1609,13 @@ export class OfficeState {
         // Sentinel -1: signals turn just ended, skip next seat rest timer.
         // Prevents the WALK handler from setting a 2-4 min rest on arrival.
         ch.seatTimer = -1;
-        ch.path = [];
-        ch.moveProgress = 0;
+        // In a zoned town a turn that ends on the way to its seat finishes
+        // the walk, so it rests at its seat (and is there for its next turn)
+        // instead of standing wherever it was, out on the street.
+        if (!(this.town?.zoned && this.walkingToOwnSeat(ch))) {
+          ch.path = [];
+          ch.moveProgress = 0;
+        }
       }
       this.rebuildFurnitureInstances();
     }
@@ -2258,7 +2375,7 @@ export class OfficeState {
       if (town) this.stewardTownSeat(ch, town, dt);
       const goal = town ? townGoalFor(ch, town.roles) : null;
       if (town || ch.townGoal !== undefined) {
-        setTownGoal(ch, goal, town?.zoned ? TOWN_MEADOW_DELAY_ZONED_SEC : TOWN_MEADOW_DELAY_SEC);
+        setTownGoal(ch, goal, townMeadowDelay(town?.zoned === true, ch.isTeamLead === true));
       }
       if (goal !== 'center') leaveBed(ch);
       const restInPlace =
@@ -2269,11 +2386,20 @@ export class OfficeState {
         (ch.isErrored === true || drowsy);
       if (!holdStill && !restInPlace) {
         if (town && goal) {
+          // Fainted on the way to its seat (the walk kept when its turn
+          // ended): it finishes this step and heads for the Center from there.
+          if (goal === 'center' && town.zoned && this.walkingToOwnSeat(ch)) {
+            ch.path = ch.path.slice(0, 1);
+          }
+          const walking = ch.state === CharacterState.WALK;
           stepTownCharacter(ch, dt, goal, town, {
             asleep: drowsy,
             occupied: () => this.occupiedTiles(ch.id),
             fit: goal === 'center' ? this.townRestFit(ch) : NO_REST_FIT,
           });
+          // A turn that ended on the way to its seat: the walk ends there, and
+          // it rests facing the table, as one whose turn ends seated does.
+          if (walking && town.zoned && ch.state !== CharacterState.WALK) this.faceOwnSeat(ch);
         } else {
           // Temporarily unblock own seat so character can pathfind to it
           this.withOwnSeatUnblocked(ch, () =>

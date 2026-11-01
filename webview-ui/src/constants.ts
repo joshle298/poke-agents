@@ -26,6 +26,10 @@ export const TOWN_MEADOW_DELAY_SEC = 2.5;
  *  away: a session resting between turns stays at its seat, and only one that
  *  stays idle this long walks out. */
 export const TOWN_MEADOW_DELAY_ZONED_SEC = 15;
+/** …and for a Lead (an orchestrator) in a zoned town: its turns come with
+ *  long gaps while its sessions work, and its desk is in the Lab, the far end
+ *  of the town from the Meadow, so it waits at its desk longer. */
+export const TOWN_MEADOW_DELAY_LEAD_SEC = 45;
 /** Wait before trying again when no Meadow / Center tile could be reached. */
 export const TOWN_RETRY_SEC = 3.0;
 /** Random destinations tried per attempt before waiting TOWN_RETRY_SEC. */
@@ -48,6 +52,9 @@ export const TOWN_SPREAD_TILES = 2;
 export const TOWN_WANDER_RADIUS_TILES = 8;
 /** …and the walk out to the Meadow goes to one within this many tiles. */
 export const TOWN_MEADOW_NEAR_TILES = 14;
+/** A working session with no seat left stands in a field, else on a Meadow
+ *  tile within this many tiles (Chebyshev) of one, near the work. */
+export const TOWN_WORK_MEADOW_NEAR_TILES = 4;
 /** World px a sleeper's body may reach over the bottom edge of the bed above
  *  it before that bed counts as covered (the blanket's front drape). */
 export const TOWN_BED_OVERLAP_PX = 4;

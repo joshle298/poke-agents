@@ -15,6 +15,8 @@ import { afterEach, beforeAll, beforeEach, test } from 'vitest';
 
 import {
   AREA_DEFAULT_COLORS,
+  TOWN_MEADOW_DELAY_LEAD_SEC,
+  TOWN_MEADOW_DELAY_SEC,
   TOWN_MEADOW_DELAY_ZONED_SEC,
   TOWN_SPAWN_GRACE_SEC,
 } from '../src/constants.js';
@@ -25,6 +27,8 @@ import {
   pickMeadowTile,
   pickWorkTile,
   townGoalFor,
+  townMeadowDelay,
+  townWorkTiles,
   zonedSeatMove,
 } from '../src/office/engine/townBehavior.js';
 import {
@@ -195,26 +199,81 @@ test('zonedSeatMove: Leads in the Lab, everyone else outdoors', () => {
   assert.deepEqual(zonedSeatMove(elsewhere, withOther, zones, first), { kind: 'release' });
 });
 
-test('pickWorkTile: a free field tile apart from everyone, else the Meadow', () => {
-  const field = [
-    { col: 0, row: 0 },
-    { col: 1, row: 0 },
+test('zonedSeatMove: a seat someone is still on is never taken', () => {
+  const zones = { lab: new Set(['L1']), field: new Set(['F1', 'F2']) };
+  const first = (free: string[]) => free[0] ?? null;
+  const me = { id: 1, isActive: true, isTeamLead: false, seatId: null, isSubagent: false };
+  const resting = { id: 2, isActive: false, isTeamLead: false, townGoal: 'meadow' as const };
+  const busy = { id: 3, isActive: true, isTeamLead: false, townGoal: undefined };
+  // Its holder idle (resting there before the walk out, or asleep there): kept.
+  const onIt: SeatHolder[] = [
+    { uid: 'L1', holder: null },
+    { uid: 'F1', holder: resting, occupied: true },
+    { uid: 'F2', holder: busy },
   ];
-  const meadow = [{ col: 9, row: 9 }];
-  const world = { fieldTiles: field, meadowTiles: meadow };
-  assert.deepEqual(
-    pickWorkTile(world, new Set(['1,0']), () => 0),
-    { col: 9, row: 9 },
-    'spread',
-  );
-  assert.deepEqual(
-    pickWorkTile(world, new Set(['9,9', '5,5']), () => 0),
+  assert.deepEqual(zonedSeatMove(me, onIt, zones, first), { kind: 'keep' });
+  // Once it has walked off, its seat is free for a worker.
+  const left = onIt.map((s) => ({ ...s, occupied: false }));
+  assert.deepEqual(zonedSeatMove(me, left, zones, first), { kind: 'move', uid: 'F1' });
+  // A seat nobody holds but someone still sits on (its claim moved on) is
+  // not free either; nor is a Lab desk a non-Lead still sits at.
+  const stayed: SeatHolder[] = [
+    { uid: 'L1', holder: { ...busy, id: 4 }, occupied: true },
+    { uid: 'F1', holder: null, occupied: true },
+    { uid: 'F2', holder: busy },
+  ];
+  assert.deepEqual(zonedSeatMove(me, stayed, zones, first), { kind: 'keep' });
+  const lead = { ...me, isTeamLead: true, seatId: 'F2' };
+  assert.deepEqual(zonedSeatMove(lead, stayed, zones, first), { kind: 'keep' });
+});
+
+test("townWorkTiles: field tiles off the seats' sides, Meadow tiles near a field", () => {
+  // A field row with a seat at (2,0); the Meadow at cols 5 and 12.
+  const field = [0, 1, 3, 4].map((col) => ({ col, row: 0 }));
+  const meadow = [
+    { col: 5, row: 0 },
+    { col: 12, row: 0 },
+  ];
+  const tiles = townWorkTiles(field, meadow, new Set(['2,0']), 4);
+  assert.deepEqual(tiles.fieldStandTiles, [
     { col: 0, row: 0 },
-  );
+    { col: 4, row: 0 },
+  ]);
+  assert.deepEqual(tiles.meadowWorkTiles, [{ col: 5, row: 0 }]);
+});
+
+test('pickWorkTile: by the work, never scattered across the Meadow', () => {
+  const tile = (col: number, row = 0) => ({ col, row });
+  const world = {
+    fieldTiles: [tile(0), tile(1), tile(2), tile(3)],
+    fieldStandTiles: [tile(0), tile(2)],
+    meadowWorkTiles: [tile(6)],
+    meadowTiles: [tile(6), tile(20)],
+  };
+  const pick = (taken: string[]) => pickWorkTile(world, new Set(taken), () => 0);
+  // A stand tile two or more from everyone.
+  assert.deepEqual(pick(['9,9']), tile(0));
+  // Nobody that far apart: a stand tile with nobody beside it comes before
+  // the Meadow (seated workers sit two tiles apart, so this is the usual case).
+  assert.deepEqual(pick(['1,1']), tile(0));
   assert.deepEqual(
-    pickWorkTile(world, new Set(['0,0', '9,9']), () => 0),
-    { col: 1, row: 0 },
+    pick(['0,1', '3,0']),
+    tile(6),
+    'every stand tile has a neighbour: the Meadow by the work',
   );
+  // The stand tiles taken: the Meadow near a field, not the far Meadow.
+  assert.deepEqual(pick(['0,0', '2,0']), tile(6));
+  // Those taken too: any free field tile, and only then the far Meadow.
+  assert.deepEqual(pick(['0,0', '2,0', '6,0']), tile(1));
+  assert.deepEqual(pick(['0,0', '1,0', '2,0', '3,0', '6,0']), tile(20));
+});
+
+test('townMeadowDelay: longer in a zoned town, longest for a Lead there', () => {
+  assert.equal(townMeadowDelay(false, false), TOWN_MEADOW_DELAY_SEC);
+  assert.equal(townMeadowDelay(false, true), TOWN_MEADOW_DELAY_SEC, 'the v0.4 town as before');
+  assert.equal(townMeadowDelay(true, false), TOWN_MEADOW_DELAY_ZONED_SEC);
+  assert.equal(townMeadowDelay(true, true), TOWN_MEADOW_DELAY_LEAD_SEC);
+  assert.ok(TOWN_MEADOW_DELAY_LEAD_SEC > TOWN_MEADOW_DELAY_ZONED_SEC);
 });
 
 test('pickMeadowTile: in a zoned town a stroll stays in its part of the Meadow', () => {
@@ -257,6 +316,23 @@ test('the camera home is the middle of the Lab and the largest field', () => {
   assert.deepEqual(townCameraHome(layout), { col: 3, row: 0.5 });
 });
 
+test('the camera home keeps the Lab whole when the window is too narrow for both', () => {
+  const lab = areaRoleTiles(town)!.lab;
+  const cols = [...lab].map((k) => Number(k.split(',')[0]));
+  const labLo = Math.min(...cols);
+  const labHi = Math.max(...cols) + 1;
+  const wide = townCameraHome(town, { cols: 40, rows: 30 })!;
+  assert.deepEqual(wide, townCameraHome(town), 'room for both: the middle of both');
+  // 28 tiles (900 px at zoom 2): the Lab and a tile and a half beside it on
+  // screen, and the rest of the view on the Work Yard.
+  const narrow = townCameraHome(town, { cols: 28, rows: 22 })!;
+  assert.ok(narrow.col - 14 <= labLo - 1.5, `left edge ${narrow.col - 14}`);
+  assert.ok(narrow.col + 14 >= labHi + 1.5, `right edge ${narrow.col + 14}`);
+  assert.ok(narrow.col > (labLo + labHi) / 2, 'towards the Work Yard');
+  // Narrower than the Lab: the Lab's middle.
+  assert.equal(townCameraHome(town, { cols: 8, rows: 22 })!.col, (labLo + labHi) / 2);
+});
+
 // ── In the bundled town ─────────────────────────────────────────
 
 test('working sessions sit outdoors, never in the Lab; with no Leads the Lab stays empty', () => {
@@ -285,8 +361,12 @@ test('a working Lead walks to a Lab desk; when it rests, its desk waits for it',
   for (const id of [1, 3, 4]) {
     assert.ok(!t.labSeats.has(os.characters.get(id)!.seatId ?? ''), `${id} stays outdoors`);
   }
-  // Idle, it goes out to the Meadow; its claim stays put for its next turn.
+  // Idle for a while, it goes out to the Meadow; its claim stays put for its
+  // next turn.
   os.setAgentActive(2, false);
+  const deskSeat = os.seats.get(desk!)!;
+  run(os, TOWN_MEADOW_DELAY_LEAD_SEC - 5);
+  assert.equal(at(lead), tileKey(deskSeat.seatCol, deskSeat.seatRow), 'a Lead rests at its desk');
   run(os, 40);
   assert.ok(t.roles.meadow.has(at(lead)), 'in the Meadow');
   assert.equal(lead.seatId, desk);
@@ -295,10 +375,10 @@ test('a working Lead walks to a Lab desk; when it rests, its desk waits for it',
   assert.ok(seatedAt(os, lead) && lead.seatId === desk, 'back at its Lab desk');
 });
 
-test('more working sessions than outdoor seats: the rest work standing, never in the Lab', () => {
+test('more working sessions than outdoor seats: the rest work standing by the work, never in the Lab', () => {
   const os = new OfficeState(town);
   const t = os.town!;
-  const n = t.fieldSeats.size + 5;
+  const n = t.fieldSeats.size + 12;
   for (let id = 1; id <= n; id++) os.addAgent(id, 0, 0, undefined, true);
   run(os, 60);
   const chars = [...os.characters.values()];
@@ -309,13 +389,14 @@ test('more working sessions than outdoor seats: the rest work standing, never in
     seated.every((c) => t.fieldSeats.has(c.seatId!)),
     'outdoor seats only',
   );
-  assert.equal(standing.length, 5);
-  const fieldTiles = new Set(t.fieldTiles.map((x) => tileKey(x.col, x.row)));
+  assert.equal(standing.length, 12);
+  // In a field off the benches (there is room for all twelve), not out among
+  // the idle ones in the Meadow.
+  const standTiles = new Set(t.fieldStandTiles.map((x) => tileKey(x.col, x.row)));
   for (const ch of standing) {
     assert.equal(ch.townGoal, 'work');
     assert.equal(ch.state, CharacterState.TYPE, `${ch.id} works where it stands`);
-    assert.ok(fieldTiles.has(at(ch)) || t.roles.meadow.has(at(ch)), `${ch.id} on a work tile`);
-    assert.ok(!t.roles.lab.has(at(ch)), `${ch.id} not in the Lab`);
+    assert.ok(standTiles.has(at(ch)), `${ch.id} stands in a field, at ${at(ch)}`);
   }
   const spots = new Set(standing.map(at));
   assert.equal(spots.size, standing.length, 'each on its own tile');
@@ -327,6 +408,180 @@ test('more working sessions than outdoor seats: the rest work standing, never in
   const taker = standing.find((c) => c.seatId === freed);
   assert.ok(taker, 'a standing worker took the freed seat');
   assert.ok(seatedAt(os, taker), 'and sits there working');
+});
+
+test('a working session never takes a seat its idle holder is still resting on', () => {
+  const os = new OfficeState(town);
+  const t = os.town!;
+  for (let id = 1; id <= t.fieldSeats.size + 3; id++) os.addAgent(id, 0, 0, undefined, true);
+  run(os, 60);
+  const leaving = [...os.characters.values()].find((c) => seatedAt(os, c))!;
+  const uid = leaving.seatId!;
+  const seat = os.seats.get(uid)!;
+  const seatKey = tileKey(seat.seatCol, seat.seatRow);
+  const headingFor = (c: Character) => {
+    const end = c.path[c.path.length - 1];
+    return end ? tileKey(end.col, end.row) : at(c);
+  };
+  // It rests at its seat before walking out; meanwhile nobody comes to it.
+  os.setAgentActive(leaving.id, false);
+  for (let s = 0; s < TOWN_MEADOW_DELAY_ZONED_SEC - 1; s += DT) {
+    os.update(DT);
+    for (const c of os.characters.values()) {
+      if (c !== leaving) assert.notEqual(headingFor(c), seatKey, `${c.id} heads for it at ${s}s`);
+    }
+  }
+  assert.equal(at(leaving), seatKey, 'still resting there');
+  // Once it has walked off, a standing worker takes the seat.
+  run(os, 40);
+  assert.notEqual(at(leaving), seatKey);
+  const taker = [...os.characters.values()].find((c) => c.seatId === uid);
+  assert.ok(taker && taker !== leaving, 'a standing worker took it');
+  assert.ok(seatedAt(os, taker), 'and works there');
+});
+
+test('a Lead whose team arrives as it appears starts at a Lab desk, without the walk', () => {
+  const os = new OfficeState(town);
+  const t = os.town!;
+  os.addAgent(1, 0, 0, undefined, false);
+  const lead = os.characters.get(1)!;
+  assert.ok(t.fieldSeats.has(lead.seatId!), 'seated outdoors before its team is known');
+  os.setTeamInfo(1, undefined, undefined, true);
+  for (let s = 0; s < 3; s += DT) {
+    os.update(DT);
+    assert.notEqual(lead.state, CharacterState.WALK, `walking at ${s.toFixed(1)}s`);
+  }
+  assert.ok(t.labSeats.has(lead.seatId!), 'a Lab seat');
+  assert.ok(seatedAt(os, lead), 'and at it, working');
+  // Its team found later (past its first moments): it walks over, as before.
+  const late = worker(os, 2);
+  os.setTeamInfo(2, undefined, undefined, true);
+  run(os, 0.5);
+  assert.equal(late.state, CharacterState.WALK);
+});
+
+test('a teammate linked as it appears starts near its Lead, and idle it appears in the Meadow', () => {
+  const os = new OfficeState(town);
+  const t = os.town!;
+  const lead = worker(os, 1);
+  os.setTeamInfo(1, undefined, undefined, true);
+  run(os, 30);
+  assert.ok(t.labSeats.has(lead.seatId!));
+  // Restored at a seat in the Grove, far from its Lead; its link arrives.
+  const grove = [...t.fieldSeats].find((uid) => os.seats.get(uid)!.seatRow > 17)!;
+  os.addAgent(2, 0, 0, grove, true);
+  const mate = os.characters.get(2)!;
+  os.setTeamInfo(2, undefined, 'mate', false, 1);
+  const seat = os.seats.get(mate.seatId!)!;
+  assert.ok(seat.seatRow < 17, 'a seat nearer the Lab');
+  assert.equal(at(mate), tileKey(seat.seatCol, seat.seatRow), 'placed there, not walking');
+  assert.notEqual(mate.state, CharacterState.WALK);
+  // Its status says idle a moment later: it appears in the Meadow.
+  os.setAgentActive(2, false);
+  os.update(DT);
+  assert.ok(t.roles.meadow.has(at(mate)), `in the Meadow, at ${at(mate)}`);
+});
+
+test('a turn that ends on the way to its seat finishes the walk and rests there', () => {
+  const os = new OfficeState(town);
+  const ch = worker(os, 1);
+  run(os, 5);
+  const seat = os.seats.get(ch.seatId!)!;
+  os.setAgentActive(1, false);
+  run(os, TOWN_MEADOW_DELAY_ZONED_SEC + 30);
+  assert.ok(os.town!.roles.meadow.has(at(ch)), 'out in the Meadow');
+  // Back to work: on its way to the seat, the turn ends.
+  os.setAgentActive(1, true);
+  run(os, 1);
+  assert.equal(ch.state, CharacterState.WALK);
+  os.setAgentActive(1, false);
+  for (let s = 0; s < 30 && ch.state === CharacterState.WALK; s += DT) os.update(DT);
+  assert.equal(at(ch), tileKey(seat.seatCol, seat.seatRow), 'it walked on to its seat');
+  assert.equal(ch.dir, seat.facingDir, 'facing the table');
+  run(os, TOWN_MEADOW_DELAY_ZONED_SEC - 3);
+  assert.equal(at(ch), tileKey(seat.seatCol, seat.seatRow), 'and rests there');
+  // The next turn starts there.
+  os.setAgentActive(1, true);
+  run(os, 1);
+  assert.ok(seatedAt(os, ch));
+});
+
+test('one that faints on the way to its seat heads for the Center, not its seat', () => {
+  const os = new OfficeState(town);
+  const ch = worker(os, 1);
+  run(os, 5);
+  const seat = os.seats.get(ch.seatId!)!;
+  const seatKey = tileKey(seat.seatCol, seat.seatRow);
+  os.setAgentActive(1, false);
+  run(os, TOWN_MEADOW_DELAY_ZONED_SEC + 30);
+  // Back to work, then its turn fails on the way.
+  os.setAgentActive(1, true);
+  run(os, 1);
+  assert.equal(ch.state, CharacterState.WALK);
+  os.setAgentActive(1, false);
+  os.setAgentError(1, 'overloaded');
+  const visited = new Set<string>();
+  for (let s = 0; s < 40; s += DT) {
+    os.update(DT);
+    visited.add(at(ch));
+  }
+  assert.ok(!visited.has(seatKey), 'it never reached its seat');
+  assert.ok(os.town!.roles.center.has(at(ch)), `in the Center, at ${at(ch)}`);
+});
+
+test('one resting at a Lab desk it may no longer hold gets up and goes at once', () => {
+  const os = new OfficeState(town);
+  const t = os.town!;
+  const lead = worker(os, 1);
+  os.setTeamInfo(1, undefined, undefined, true);
+  run(os, 30);
+  assert.ok(t.labSeats.has(lead.seatId!) && seatedAt(os, lead));
+  const desk = os.seats.get(lead.seatId!)!;
+  const deskKey = tileKey(desk.seatCol, desk.seatRow);
+  // Every outdoor seat taken by a working session.
+  for (let id = 2; id <= t.fieldSeats.size + 1; id++) os.addAgent(id, 0, 0, undefined, true);
+  run(os, 60);
+  // Resting at its desk between turns, it stops being a Lead: nothing is free
+  // outdoors, so it gives the desk up, and leaves it now, not after its rest.
+  os.setAgentActive(1, false);
+  run(os, 2);
+  assert.equal(at(lead), deskKey, 'resting at its desk');
+  os.setTeamInfo(1, undefined, undefined, false);
+  run(os, 3);
+  assert.equal(lead.seatId, null, 'the Lab desk given up');
+  assert.notEqual(at(lead), deskKey, 'and left at once');
+});
+
+test('a teammate is never seated on a free seat someone still rests on', () => {
+  const os = new OfficeState(town);
+  const t = os.town!;
+  const lead = worker(os, 1);
+  os.setTeamInfo(1, undefined, undefined, true);
+  run(os, 30);
+  const anchor = os.seats.get(lead.seatId!)!;
+  const dist = (uid: string) => {
+    const s = os.seats.get(uid)!;
+    return Math.abs(s.seatCol - anchor.seatCol) + Math.abs(s.seatRow - anchor.seatRow);
+  };
+  // The outdoor seat nearest the Lead: someone rests on it whose claim has
+  // moved on, so nobody holds it.
+  const nearest = [...t.fieldSeats].sort((a, b) => dist(a) - dist(b))[0]!;
+  os.addAgent(2, 0, 0, nearest, true);
+  run(os, TOWN_SPAWN_GRACE_SEC + 1);
+  const resting = os.characters.get(2)!;
+  os.setAgentActive(2, false);
+  run(os, 1);
+  const seat = os.seats.get(nearest)!;
+  assert.equal(at(resting), tileKey(seat.seatCol, seat.seatRow), 'resting on it');
+  resting.seatId = null;
+  seat.assigned = false;
+  // A teammate linked as it appears goes to the next nearest seat instead.
+  const grove = [...t.fieldSeats].find((uid) => os.seats.get(uid)!.seatRow > 17)!;
+  os.addAgent(3, 0, 0, grove, true);
+  os.setTeamInfo(3, undefined, 'mate', false, 1);
+  const mate = os.characters.get(3)!;
+  assert.notEqual(mate.seatId, nearest);
+  assert.ok(dist(mate.seatId!) < dist(grove), 'still nearer its Lead');
 });
 
 test('a short rest between turns stays at its seat; a longer one walks out to the Meadow', () => {

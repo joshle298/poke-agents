@@ -79,6 +79,9 @@ interface EditorActions extends Omit<FurnitureColorActions, 'pickColorAt'> {
   /** Zoom to `zoom`, keeping the world point at `anchor` (device px from the
    *  canvas centre; default the centre) in place. */
   handleZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
+  /** The live zoom: set in the same call as the pan it was scaled for, so the
+   *  canvas draws and clamps that pan at its zoom before React re-renders. */
+  zoomRef: React.MutableRefObject<number>;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
   handleEditorSelectionChange: () => void;
@@ -559,7 +562,8 @@ export function useEditorActions(
   const handleEditorSelectionChange = bumpTick;
 
   // The zoom the pan was last scaled for: wheel and pinch steps can arrive
-  // faster than React re-renders with the new zoom.
+  // faster than React re-renders with the new zoom, and the canvas draws and
+  // clamps with this one, never a stale prop.
   const zoomRef = useRef(zoom);
   const handleZoomChange = useCallback(
     (newZoom: number, anchor?: { x: number; y: number }) => {
@@ -835,6 +839,7 @@ export function useEditorActions(
     handleReset,
     handleSave,
     handleZoomChange,
+    zoomRef,
     handleEditorTileAction,
     handleEditorEraseAction,
     handleEditorSelectionChange,

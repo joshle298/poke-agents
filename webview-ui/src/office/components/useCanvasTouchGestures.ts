@@ -11,7 +11,9 @@ interface CanvasTouchOptions {
    *  mousedown/mouseup and drives select/paint through the mouse handlers.
    *  (Touch *drags* don't paint — mobile hides the editor.) */
   enabled: boolean;
-  zoom: number;
+  /** The live zoom (see OfficeCanvas): a pinch step reads the zoom the
+   *  previous step set, not one React hasn't re-rendered with yet. */
+  zoomRef: { readonly current: number };
   onZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
   /** A client point as the zoom's anchor (device px from the canvas centre). */
   anchorAt?: (clientX: number, clientY: number) => { x: number; y: number } | undefined;
@@ -108,7 +110,7 @@ export function useCanvasTouchGestures(options: CanvasTouchOptions): void {
         // Second finger down: any pending tap/pan becomes a pinch.
         mode = 'pinch';
         pinchStartDist = distance(e.touches[0], e.touches[1]);
-        pinchStartZoom = latest.current.zoom;
+        pinchStartZoom = latest.current.zoomRef.current;
         anchorPan(midpoint(e.touches[0], e.touches[1]));
       }
     };
@@ -116,7 +118,8 @@ export function useCanvasTouchGestures(options: CanvasTouchOptions): void {
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       if (mode === 'pinch' && e.touches.length >= 2) {
-        const { zoom, onZoomChange, anchorAt } = latest.current;
+        const { zoomRef, onZoomChange, anchorAt } = latest.current;
+        const zoom = zoomRef.current;
         const proposed = Math.round(
           pinchStartZoom * (distance(e.touches[0], e.touches[1]) / pinchStartDist),
         );

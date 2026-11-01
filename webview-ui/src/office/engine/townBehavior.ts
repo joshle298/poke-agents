@@ -4,7 +4,7 @@
  *
  *   Active (working)            → its seat: the upstream FSM, unchanged
  *     … in a zoned town with no seat left for it → stands and works on a free
- *       field tile (else a Meadow tile): `work`
+ *       field tile (else a Meadow tile near a field): `work`
  *   Fainted (errored)           → walks to the Center and lies in a bed
  *   Needs you (awaiting input)  → stays where it is (seated at its desk)
  *   Idle                        → walks to the Meadow and wanders inside it
@@ -20,7 +20,9 @@
 import {
   POKEMON_GROUND_OFFSET_PX,
   TOWN_BED_OVERLAP_PX,
+  TOWN_MEADOW_DELAY_LEAD_SEC,
   TOWN_MEADOW_DELAY_SEC,
+  TOWN_MEADOW_DELAY_ZONED_SEC,
   TOWN_MEADOW_NEAR_TILES,
   TOWN_RETRY_SEC,
   TOWN_SPREAD_TILES,
@@ -85,7 +87,7 @@ export interface BedPlacement {
 }
 
 /** The layout facts the town step needs, rebuilt with the layout. */
-export interface TownWorld {
+export interface TownWorld extends WorkTiles {
   roles: AreaRoleTiles;
   /** Walkable Meadow tiles: where idle characters wander. */
   meadowTiles: Tile[];
@@ -141,9 +143,17 @@ export function townGoalFor(ch: GoalFacts, roles: AreaRoleTiles | null): TownGoa
   return 'meadow';
 }
 
+/** How long a session that stopped working waits before it walks out to the
+ *  Meadow: longer in a zoned town, whose Meadow is a walk away, and longest
+ *  for a Lead there (its desk is in the Lab, and its turns come with long
+ *  gaps while its sessions work). */
+export function townMeadowDelay(zoned: boolean, isTeamLead: boolean): number {
+  if (!zoned) return TOWN_MEADOW_DELAY_SEC;
+  return isTeamLead ? TOWN_MEADOW_DELAY_LEAD_SEC : TOWN_MEADOW_DELAY_ZONED_SEC;
+}
+
 /** Record this frame's goal. A new goal restarts the trip: at once for the
- *  Center, after a pause for the Meadow (`meadowDelay`: TOWN_MEADOW_DELAY_SEC,
- *  longer in a zoned town). */
+ *  Center, after a pause for the Meadow (`meadowDelay`: townMeadowDelay). */
 export function setTownGoal(
   ch: Character,
   goal: TownGoal | null,
@@ -188,17 +198,68 @@ function pickSpreadTile(
   return pickTieredTile([...groups.map(spread), ...groups], occupied, random);
 }
 
+/** A zoned town's places to stand and work, best first (see pickWorkTile). */
+export interface WorkTiles {
+  /** Field tiles not beside a seat: off the benches, out of the way of the
+   *  sitters' way in. */
+  fieldStandTiles: Tile[];
+  /** Meadow tiles within `near` (Chebyshev) of a field tile: by the work. */
+  meadowWorkTiles: Tile[];
+}
+
+/** The field tiles off the seats' sides and the Meadow tiles near a field,
+ *  from the walkable field and Meadow tiles and the seats' tiles. */
+export function townWorkTiles(
+  fieldTiles: readonly Tile[],
+  meadowTiles: readonly Tile[],
+  seatTiles: ReadonlySet<string>,
+  near: number,
+): WorkTiles {
+  const besideSeat = (t: Tile) =>
+    seatTiles.has(tileKey(t.col - 1, t.row)) ||
+    seatTiles.has(tileKey(t.col + 1, t.row)) ||
+    seatTiles.has(tileKey(t.col, t.row - 1)) ||
+    seatTiles.has(tileKey(t.col, t.row + 1));
+  return {
+    fieldStandTiles: fieldTiles.filter((t) => !besideSeat(t)),
+    meadowWorkTiles: meadowTiles.filter((m) =>
+      fieldTiles.some((f) => Math.max(Math.abs(f.col - m.col), Math.abs(f.row - m.row)) <= near),
+    ),
+  };
+}
+
 /**
- * Where a working session with no seat left stands and works: a free field
- * tile two or more from everyone, else such a Meadow tile, else any free field
- * tile, else any free Meadow tile.
+ * Where a working session with no seat left stands and works, so it stays by
+ * the work instead of among the idle ones in the Meadow: a free field tile
+ * off the seats' sides, two or more from everyone, else one with nobody next
+ * to it; else the same on the Meadow near a field; else any free one of
+ * those; else any free field tile, then any free Meadow tile.
  */
 export function pickWorkTile(
-  world: Pick<TownWorld, 'fieldTiles' | 'meadowTiles'>,
+  world: Pick<TownWorld, 'fieldTiles' | 'meadowTiles'> & WorkTiles,
   occupied: Occupancy,
   random: () => number = Math.random,
 ): Tile | null {
-  return pickSpreadTile([world.fieldTiles, world.meadowTiles], occupied, random);
+  const taken = Array.from(occupied.keys(), (key) => key.split(',').map(Number));
+  const apart = (min: number, metric: (dc: number, dr: number) => number) => (tiles: Tile[]) =>
+    tiles.filter((t) => taken.every(([c, r]) => metric(c - t.col, r - t.row) >= min));
+  const spread = apart(TOWN_SPREAD_TILES, (dc, dr) => Math.max(Math.abs(dc), Math.abs(dr)));
+  const roomy = apart(2, (dc, dr) => Math.abs(dc) + Math.abs(dr));
+  const { fieldStandTiles: stand, meadowWorkTiles: near } = world;
+  return pickTieredTile(
+    [
+      spread(stand),
+      roomy(stand),
+      spread(near),
+      roomy(near),
+      stand,
+      near,
+      world.fieldTiles,
+      world.meadowTiles,
+    ],
+    occupied,
+    random,
+  );
 }
 
 /**
@@ -221,12 +282,21 @@ export function pickMeadowTile(
   return pickSpreadTile([near, world.meadowTiles], occupied, random);
 }
 
-/** Whether (col, row) is a tile a seatless working session may work on. */
-function onWorkTile(ch: Pick<Character, 'tileCol' | 'tileRow'>, world: TownWorld): boolean {
-  const key = tileKey(ch.tileCol, ch.tileRow);
+/**
+ * Whether a seatless working session may work where it stands: on a field
+ * tile or a Meadow tile near one. One already working further out in the
+ * Meadow stays (it went there because nothing nearer was free); one that was
+ * idle out there walks over to the work first.
+ */
+function onWorkTile(
+  ch: Pick<Character, 'tileCol' | 'tileRow' | 'state'>,
+  world: TownWorld,
+): boolean {
+  const here = (t: Tile) => t.col === ch.tileCol && t.row === ch.tileRow;
   return (
-    world.fieldTiles.some((t) => t.col === ch.tileCol && t.row === ch.tileRow) ||
-    world.roles.meadow.has(key)
+    world.fieldTiles.some(here) ||
+    world.meadowWorkTiles.some(here) ||
+    (ch.state === CharacterState.TYPE && world.roles.meadow.has(tileKey(ch.tileCol, ch.tileRow)))
   );
 }
 
@@ -637,6 +707,11 @@ export function townRoomNeeded(halfW: number): number {
 export interface SeatHolder {
   uid: string;
   holder: Pick<Character, 'id' | 'isActive' | 'isTeamLead' | 'townGoal'> | null;
+  /** Someone other than the one asking is on the seat and staying there
+   *  (sitting, resting, asleep) or walking to it: its holder, or one whose
+   *  claim moved on while it stayed. The zoned rules never send anyone to
+   *  such a seat. */
+  occupied?: boolean;
 }
 
 /**
@@ -709,6 +784,9 @@ const KEEP: SeatMove = { kind: 'keep' };
  *     keeps no seat elsewhere).
  *   - A character that isn't working keeps its claim (it is in the Meadow, the
  *     Center or waiting at its seat); it moves when it next works.
+ *   - A seat someone else is on or walking to (`occupied`: resting there
+ *     between turns, asleep there) is never taken, whoever holds it: a
+ *     holder is only away once it has left the seat.
  *
  * `seats` lists every seat with its holder (null when free); `preferred`
  * picks one of the free seats it is given (the caller's usual choice).
@@ -723,10 +801,11 @@ export function zonedSeatMove(
   const seat = ch.seatId;
   const onLab = seat !== null && zones.lab.has(seat);
   const onField = seat !== null && zones.field.has(seat);
+  const open = seats.filter((s) => !s.occupied);
   const freeIn = (zone: ReadonlySet<string>) =>
-    seats.filter((s) => zone.has(s.uid) && s.holder === null).map((s) => s.uid);
+    open.filter((s) => zone.has(s.uid) && s.holder === null).map((s) => s.uid);
   const awayIn = (zone: ReadonlySet<string>) =>
-    seats.find(
+    open.find(
       (s) =>
         zone.has(s.uid) &&
         s.holder !== null &&
@@ -742,7 +821,7 @@ export function zonedSeatMove(
     const labSeat =
       move(preferred(freeIn(zones.lab))) ??
       move(
-        seats.find(
+        open.find(
           (s) =>
             zones.lab.has(s.uid) &&
             s.holder !== null &&

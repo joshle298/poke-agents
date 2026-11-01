@@ -11,9 +11,10 @@
  * Working Leads sit at the Lab's desks (Area role `lab`); every other working
  * session sits at a table outdoors, in the Work Yard or the Grove (Area role
  * `field`), seated on the benches and stumps around the tables (their seats
- * come from those chairs), each with a field terminal in front of it. Idle
- * sessions wander and nap in the Meadow and the pond garden (Area role
- * `meadow`), fainted ones rest on the Pokémon Center's beds (role `center`).
+ * come from those chairs), with two field terminals on each table, one facing
+ * each side. Idle sessions wander and nap in the Meadow and the pond garden
+ * (Area role `meadow`), fainted ones rest on the Pokémon Center's beds (role
+ * `center`).
  */
 
 import { LOW_WALL_BRIGHTNESS_LIFT, TALL_GRASS_VARIANT_COUNT } from './art.mjs';

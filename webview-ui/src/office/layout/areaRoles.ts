@@ -69,14 +69,50 @@ export function isZonedTown(roles: AreaRoleTiles | null): boolean {
   return roles !== null && (roles.lab.size > 0 || roles.field.size > 0);
 }
 
+/** Tiles of room kept around the Lab in the home view: its walls, and a
+ *  speech bubble or a name beside a Lead at an end desk. */
+const HOME_LAB_MARGIN_TILES = 1.5;
+
+/** Tile bounds: first and last col and row (inclusive). */
+interface TileBox {
+  minC: number;
+  maxC: number;
+  minR: number;
+  maxR: number;
+}
+
 /**
- * Where the camera starts in a town larger than the window: the middle of the
- * box around the Lab and the main work area (the `field` Area with the most
- * tiles), in world tiles (a half tile is a tile's centre). Null when the
- * layout has neither: the map stays centred, as before.
+ * Where on one axis the view's middle goes: the middle of the whole box
+ * (`lo`..`hi`, exclusive end) when it fits in `span` tiles; when it doesn't,
+ * as near that as keeps the Lab (`keepLo`..`keepHi`) and its margin in view;
+ * when even the Lab doesn't fit, the Lab's middle.
+ */
+function homeAxis(
+  lo: number,
+  hi: number,
+  keepLo: number,
+  keepHi: number,
+  span: number | undefined,
+): number {
+  const mid = (lo + hi) / 2;
+  if (span === undefined || hi - lo <= span) return mid;
+  const from = keepHi + HOME_LAB_MARGIN_TILES - span / 2;
+  const to = keepLo - HOME_LAB_MARGIN_TILES + span / 2;
+  if (from > to) return (keepLo + keepHi) / 2;
+  return Math.max(from, Math.min(to, mid));
+}
+
+/**
+ * Where the camera starts in a town larger than the window, in world tiles
+ * (a half tile is a tile's centre): the middle of the box around the Lab and
+ * the main work area (the `field` Area with the most tiles). When `view` (the
+ * window, in tiles) is too small for that box, the Lab stays whole and the
+ * work area fills the rest. Null when the layout has neither: the map stays
+ * centred, as before.
  */
 export function townCameraHome(
   layout: Pick<OfficeLayout, 'cols' | 'areas' | 'areaTiles'>,
+  view?: { cols: number; rows: number },
 ): { col: number; row: number } | null {
   const areas = layout.areas ?? [];
   const tiles = layout.areaTiles ?? [];
@@ -91,22 +127,30 @@ export function townCameraHome(
   for (const [label, n] of fieldCounts) {
     if (mainField === null || n > (fieldCounts.get(mainField) ?? 0)) mainField = label;
   }
-  let minC = Infinity;
-  let maxC = -Infinity;
-  let minR = Infinity;
-  let maxR = -Infinity;
-  for (let i = 0; i < tiles.length; i++) {
-    const label = tiles[i];
-    if (!label || (roleOf.get(label) !== 'lab' && label !== mainField)) continue;
-    const col = i % layout.cols;
-    const row = Math.floor(i / layout.cols);
-    minC = Math.min(minC, col);
-    maxC = Math.max(maxC, col);
-    minR = Math.min(minR, row);
-    maxR = Math.max(maxR, row);
-  }
-  if (minC === Infinity) return null;
-  return { col: (minC + maxC + 1) / 2, row: (minR + maxR + 1) / 2 };
+  const box = (keep: (label: string) => boolean): TileBox | null => {
+    let minC = Infinity;
+    let maxC = -Infinity;
+    let minR = Infinity;
+    let maxR = -Infinity;
+    for (let i = 0; i < tiles.length; i++) {
+      const label = tiles[i];
+      if (!label || !keep(label)) continue;
+      const col = i % layout.cols;
+      const row = Math.floor(i / layout.cols);
+      minC = Math.min(minC, col);
+      maxC = Math.max(maxC, col);
+      minR = Math.min(minR, row);
+      maxR = Math.max(maxR, row);
+    }
+    return minC === Infinity ? null : { minC, maxC, minR, maxR };
+  };
+  const all = box((label) => roleOf.get(label) === 'lab' || label === mainField);
+  if (!all) return null;
+  const lab = box((label) => roleOf.get(label) === 'lab') ?? all;
+  return {
+    col: homeAxis(all.minC, all.maxC + 1, lab.minC, lab.maxC + 1, view?.cols),
+    row: homeAxis(all.minR, all.maxR + 1, lab.minR, lab.maxR + 1, view?.rows),
+  };
 }
 
 /**
