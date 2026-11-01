@@ -101,6 +101,8 @@ export interface Toast {
   seq: number;
   text: string;
   tone: 'success' | 'error';
+  /** When it arrived (the store's clock): it leaves TOAST_VISIBLE_MS later. */
+  at: number;
 }
 
 /** The newest Conductor action outcome for one agent (the Pokédex shows it). */
@@ -393,7 +395,8 @@ export class ConductorStore {
   }
 
   private toast(state: ConductorState, text: string, tone: Toast['tone']): ConductorState {
-    const toasts = [...state.toasts, { seq: this.nextSeq(), text, tone }].slice(-TOAST_MAX_VISIBLE);
+    const toast: Toast = { seq: this.nextSeq(), text, tone, at: this.now() };
+    const toasts = [...state.toasts, toast].slice(-TOAST_MAX_VISIBLE);
     return { ...state, toasts };
   }
 

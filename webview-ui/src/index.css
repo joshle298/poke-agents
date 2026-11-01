@@ -418,16 +418,29 @@
   text-shadow: 1px 1px 0 var(--color-text-shadow);
 }
 
-/* The battle log's one-line dialog box (shown only under the Pokémon theme). */
-.battle-log {
+/* The message bar under the office (MessageBar): a strip that opens and
+   closes, and the text box in it, a GBA dialog under the Pokémon theme (light
+   fill, dark frame, light inner ring, text shadow) and the panel look without
+   it (the ring and shadow tokens are transparent). Its border width is set
+   inline (MESSAGE_BAR_BORDER_PX). */
+.message-bar-strip {
+  transition: height var(--message-bar-collapse, 140ms) ease-out;
+}
+.message-bar {
   background: var(--color-bg);
   color: var(--color-text);
-  border: 2px solid var(--color-border);
+  border-style: solid;
+  border-color: var(--color-border);
   box-shadow:
     inset 0 0 0 2px var(--color-panel-inner),
     var(--shadow-pixel);
   text-shadow: 1px 1px 0 var(--color-text-shadow);
-  transition: opacity var(--battle-log-fade, 500ms) linear;
+}
+.message-bar-line {
+  transition: opacity var(--message-bar-fade, 500ms) linear;
+}
+.message-bar-line[data-fading] {
+  opacity: 0;
 }
 
 /* A party slot whose session needs you blinks (hard steps, no easing). */
@@ -441,7 +454,8 @@
     outline: 2px solid var(--color-status-permission);
     outline-offset: -2px;
   }
-  .battle-log {
+  .message-bar-strip,
+  .message-bar-line {
     transition: none;
   }
 }

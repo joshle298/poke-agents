@@ -170,7 +170,7 @@ export const OFFICE_TOP_BAR_STACK_GAP_PX = 6;
  *  narrow windows move them down into the office. */
 export const OFFICE_TOP_PILLS_Z_INDEX = 46;
 /** The toolbar: above the pills, so its launch drawer opens over them; below
- *  the modals (50) and the toasts (60). */
+ *  the modals (50) and the message bar's chips (60). */
 export const OFFICE_TOOLBAR_Z_INDEX = 47;
 
 // ── Editor ───────────────────────────────────────────────────
@@ -995,28 +995,48 @@ export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;
  *  last 30 days (MAX_ACTIVE_WITHIN_HOURS in the Conductor provider). */
 export const CONDUCTOR_SCOPE_ALL_LABEL = 'All (30d)';
 export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
-/** Battle log: events kept, how long the newest stays up, and its fade. */
+/** Battle log: events kept, how long a line stays up, and its fade. */
 export const BATTLE_LOG_CAPACITY = 30;
 export const BATTLE_LOG_VISIBLE_MS = 4_000;
 export const BATTLE_LOG_FADE_MS = 500;
-/** The battle log's distance from the office's bottom edge, as a share of the
- *  office's height: it reads in the lower part of the office instead of
- *  hugging the window's bottom edge. */
-export const BATTLE_LOG_BOTTOM_FRACTION = 0.25;
-/** ...and at least this far from the office's edges and from what it keeps
- *  clear of (the layout editor's palette, the desktop top bar). */
-export const BATTLE_LOG_EDGE_GAP_PX = 10;
-export const BATTLE_LOG_MAX_WIDTH_PX = 520;
 /** Per-device preferences (localStorage, not synced through the server). */
 export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
-/** Toasts for Conductor action outcomes: lifetime and how many stack. */
+/** Toasts for Conductor action outcomes: lifetime and how many the store
+ *  keeps (the message bar shows up to this many chips at once). */
 export const TOAST_VISIBLE_MS = 4_000;
-export const TOAST_MAX_VISIBLE = 3;
+export const TOAST_MAX_VISIBLE = 2;
+/** The message bar's chips: above the modals (50), as the toasts were, so an
+ *  outcome of an action taken in a modal reads over its backdrop. */
 export const TOAST_Z_INDEX = 60;
-/** Desktop: toasts stack right-aligned under the toolbar, this wide at most
- *  (longer text wraps), so they stay under it rather than reaching across
- *  the top of the office. */
-export const TOAST_MAX_WIDTH_PX = 320;
+/** The message bar under the office (MessageBar): a text box in the strip
+ *  below the map, never over it. The box sits this far inside the strip... */
+export const MESSAGE_BAR_MARGIN_PX = 6;
+/** ...with this frame (border) and padding... */
+export const MESSAGE_BAR_BORDER_PX = 2;
+export const MESSAGE_BAR_PAD_X_PX = 12;
+export const MESSAGE_BAR_PAD_Y_PX = 5;
+/** ...around one or two rows this tall (a battle-log line or a chip), this
+ *  far apart. */
+export const MESSAGE_BAR_ROW_PX = 26;
+export const MESSAGE_BAR_ROW_GAP_PX = 2;
+/** An office page shorter than this (a landscape phone, a short VS Code
+ *  panel) gets a one-row bar. */
+export const MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX = 520;
+/** A bar narrower than this puts its newest chip over the top row instead of
+ *  in a column beside the lines (phones). */
+export const MESSAGE_BAR_SIDE_CHIPS_MIN_PX = 600;
+/** A chip is at most this wide (beside the lines, half the bar); longer
+ *  text is cut with an ellipsis, the whole of it in the chip's tooltip. Chips
+ *  side by side in one row are this far apart. */
+export const MESSAGE_BAR_CHIP_MAX_WIDTH_PX = 440;
+export const MESSAGE_BAR_CHIP_GAP_PX = 6;
+/** Typewriter reveal of the newest line: this long per character, the whole
+ *  line in at most MESSAGE_BAR_TYPE_MAX_MS. */
+export const MESSAGE_BAR_TYPE_MS_PER_CHAR = 18;
+export const MESSAGE_BAR_TYPE_MAX_MS = 600;
+/** The bar opening and closing (only when the battle log is off: a toast
+ *  opens it, the last one leaving closes it). */
+export const MESSAGE_BAR_COLLAPSE_MS = 140;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
 /** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */

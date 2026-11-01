@@ -1,4 +1,4 @@
-import type { CSSProperties, Ref } from 'react';
+import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '../../components/ui/Button.js';
@@ -92,8 +92,6 @@ interface EditorToolbarProps {
   /** What covers the office's right edge, as a CSS length (the Pokédex
    *  drawer, the upstream card column): the palette stays left of it. */
   rightInset: string;
-  /** The palette's outer box (App keeps the battle log above it). */
-  ref?: Ref<HTMLDivElement>;
 }
 
 const THUMB_ZOOM = 2;
@@ -142,7 +140,6 @@ export function EditorToolbar({
   onAreaMappingChange,
   onLoadBundledLayout,
   rightInset,
-  ref,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurniturePanelCategory>('desks');
   // The Templates panel belongs to the Select tool (no other tool panel shows
@@ -261,12 +258,12 @@ export function EditorToolbar({
   };
 
   return (
-    // Bottom-left of the office, growing upward; capped to the office left of
+    // Bottom-left of the office, growing upward, above the message bar (the
+    // office region ends where the bar starts); capped to the office left of
     // what covers its right edge (the party bar and a docked Pokédex sit
     // outside the office), so its tool row wraps rather than slide under the
     // Pokédex drawer.
     <div
-      ref={ref}
       className="absolute pixel-panel p-4 flex flex-col-reverse gap-4"
       style={{
         zIndex: EDITOR_PALETTE_Z_INDEX,

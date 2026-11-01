@@ -244,8 +244,12 @@ A question a cloud session has put to the user and not yet had answered: an AskU
 _Avoid_: prompt (that's the task text), permission request (a plan approval is one, but most are tool approvals, not questions), popup, dialog
 
 **Battle log**:
-The optional one-line ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), shown in the lower part of the office. It lives in the office UI only and keeps the last 30 events.
+The optional ticker of office events in the style of a Pokémon game ("Pikachu used Bash!"), typed into the message bar under the office, the newest line under the one before it. It lives in the office UI only and keeps the last 30 events.
 _Avoid_: activity feed, event log
+
+**Message bar**:
+The text box in a strip under the office's map, like the one under a GBA game's screen: the battle log on its left, the outcomes of the user's Conductor actions ("Message sent to …", a refusal) as chips on its right. It never covers the map; with the battle log off it opens only while an outcome shows.
+_Avoid_: status bar, footer, notification area
 
 **Level**:
 The `Lv` number on a Pokémon character, derived from its session's activity: the message count of a cloud session, otherwise its tool calls. A species evolves at Lv 16 and Lv 36 when its line has later stages. It measures activity, not quality or progress.

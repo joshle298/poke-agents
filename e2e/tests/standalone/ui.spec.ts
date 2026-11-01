@@ -315,3 +315,60 @@ test.describe('Standalone / layout editor beside the Pokédex drawer', () => {
     await expect(page.getByTestId('templates-panel')).toBeVisible();
   });
 });
+
+test.describe('Standalone / message bar under the office', () => {
+  test.use({ standaloneOptions: { viewport: { width: 1100, height: 800 } } });
+
+  test('the battle log reads in a bar under the map, clear of the palette, and closes when off @area:standalone', async ({
+    page,
+    standalone,
+  }) => {
+    await setSettings(page, { hooksEnabled: true, watchAllSessions: true, debugView: false });
+    const bar = page.getByTestId('message-bar');
+    const canvas = page.getByTestId('office-canvas');
+    const bottomOf = async (locator: typeof bar) => {
+      const box = (await locator.boundingBox())!;
+      return box.y + box.height;
+    };
+
+    // The bar runs along the window's bottom edge, under the canvas: the map
+    // ends where the bar starts.
+    await expect
+      .poll(async () => {
+        const barBox = await bar.boundingBox();
+        return barBox !== null && barBox.height > 0 && barBox.y + barBox.height;
+      })
+      .toBe(800);
+    expect(await bottomOf(canvas)).toBeLessThanOrEqual((await bar.boundingBox())!.y);
+
+    // A tool start writes "… used Read!" in the bar.
+    const sessionId = 'standalone-message-bar-session';
+    await sendHookEvent(
+      standalone.hookServerConfig,
+      sessionStartStartup(sessionId, standalone.workspaceDir),
+    );
+    await sendHookEvent(standalone.hookServerConfig, {
+      session_id: sessionId,
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Read',
+      tool_input: { file_path: path.join(standalone.workspaceDir, 'bar.ts') },
+    });
+    // Up for BATTLE_LOG_VISIBLE_MS (4 s), read out by the bar's live region.
+    await expect(bar.getByRole('status')).toContainText('used Read!');
+
+    // The layout editor's palette stands on top of the bar.
+    await page.getByRole('button', { name: 'Layout', exact: true }).click();
+    const palette = page.locator('.pixel-panel', {
+      has: page.getByRole('button', { name: 'Furniture', exact: true }),
+    });
+    await expect(palette).toBeVisible();
+    expect(await bottomOf(palette)).toBeLessThanOrEqual((await bar.boundingBox())!.y);
+    await page.getByRole('button', { name: 'Layout', exact: true }).click();
+    await expect(palette).toBeHidden();
+
+    // Battle Log off: the bar closes and the map takes the room back.
+    await setSettings(page, { battleLog: false });
+    await expect.poll(async () => (await bar.boundingBox())?.height ?? 0).toBe(0);
+    await expect.poll(() => bottomOf(canvas)).toBe(800);
+  });
+});

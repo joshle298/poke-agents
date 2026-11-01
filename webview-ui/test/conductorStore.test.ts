@@ -316,6 +316,9 @@ describe('ConductorStore', () => {
         ['Message sent to Lead', 'success'],
         ["Couldn't stop the session: Session not found", 'error'],
       ]);
+      // Stamped with the store's clock: the message bar expires each one
+      // TOAST_VISIBLE_MS after it arrived, shown or not.
+      expect(toasts.map((t) => t.at)).toEqual([clock, clock]);
       expect(store.getState().actionOutcomes[1]).toMatchObject({
         action: 'stopSession',
         ok: false,

@@ -35,7 +35,7 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **PC Box.** Archived sessions, with their Pokémon's portraits. **Withdraw** brings one back into the town.
 - **Sessions.** Choose which sessions appear: your workspaces or the whole organization, an activity window, idle sessions on or off, a cap, and per-session hide and pin, with search.
 - **Party bar.** Each visible session as a party slot with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks while its session needs you.
-- **Battle log.** An optional one-line ticker of events such as "Pichu used Bash!" or "Torchic fainted!".
+- **Battle log.** An optional ticker of events such as "Pichu used Bash!" or "Torchic fainted!", typed into a text box under the town, where the outcomes of your actions ("Message sent to …") also appear. It never covers the map.
 - **Sounds.** Each Pokémon's cry when its session needs you, faints, arrives or evolves, and original chiptune effects for level-ups, capsules and messages. See [Sounds](#sounds).
 - **Jukebox.** Background music: Poke Agents Radio, a built-in station of freely licensed retro game tracks, or your own music. See [Music](#music).
 - **Mac app.** The same office in its own window, with notifications when a session needs you or faints and a Dock badge counting the sessions waiting on you. See [Mac App](#mac-app).

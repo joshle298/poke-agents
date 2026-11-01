@@ -1,24 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Rect, TopBarSizes } from '../src/components/topBarLayout.js';
+import type { TopBarSizes } from '../src/components/topBarLayout.js';
+import { balancedRowWidth, officeRightCover, placeTopBar } from '../src/components/topBarLayout.js';
 import {
-  balancedRowWidth,
-  officeRightCover,
-  placeBattleLog,
-  placeTopBar,
-} from '../src/components/topBarLayout.js';
-import {
-  BATTLE_LOG_EDGE_GAP_PX,
   OFFICE_TOP_BAR_EDGE_PX,
   OFFICE_TOP_BAR_GAP_PX,
-  TOAST_MAX_WIDTH_PX,
   ZOOM_CONTROLS_BOTTOM_PX,
   ZOOM_CONTROLS_RIGHT_PX,
 } from '../src/constants.js';
 
 // Sizes measured in the demo office: the Conductor toolbar (Sessions, PC,
 // Music, Layout, Settings) is 448 × 61; EditActionBar is 268 × 53.
-const TOOLBAR = { toolbarWidth: 448, columnWidth: 448, columnHeight: 61 };
+const TOOLBAR = { toolbarWidth: 448, columnHeight: 61 };
 const EDIT_ACTIONS = { laneWidth: 268, laneHeight: 53 };
 const edge = OFFICE_TOP_BAR_EDGE_PX;
 const gap = OFFICE_TOP_BAR_GAP_PX;
@@ -27,7 +20,6 @@ function sizes(overrides: Partial<TopBarSizes>): TopBarSizes {
   return {
     areaWidth: 1200,
     toolbarWidth: 0,
-    columnWidth: 0,
     columnHeight: 0,
     laneWidth: 0,
     laneHeight: 0,
@@ -72,7 +64,6 @@ describe('placeTopBar', () => {
     const s = sizes({
       areaWidth: 300,
       toolbarWidth: 236,
-      columnWidth: 236,
       columnHeight: 40,
       ...EDIT_ACTIONS,
     });
@@ -88,42 +79,6 @@ describe('placeTopBar', () => {
 
   it('keeps an empty lane at the top', () => {
     expect(placeTopBar(sizes({ areaWidth: 400, ...TOOLBAR })).laneTop).toBe(edge);
-  });
-
-  it('stacks toasts under the toolbar column', () => {
-    expect(placeTopBar(sizes({ ...TOOLBAR })).toastsTop).toBe(edge + TOOLBAR.columnHeight + gap);
-    expect(placeTopBar(sizes({ ...TOOLBAR, columnHeight: 105 })).toastsTop).toBe(edge + 105 + gap);
-  });
-
-  it('stacks toasts under the centre pills when those moved into the toasts strip', () => {
-    const s = sizes({ areaWidth: 900, ...TOOLBAR, ...EDIT_ACTIONS });
-    const { laneTop, toastsTop } = placeTopBar(s);
-    // The bar spans 316..584 and the toasts strip starts at 900 - 8 - 320.
-    expect(spans(s).lane[1]).toBeGreaterThan(s.areaWidth - edge - TOAST_MAX_WIDTH_PX);
-    expect(toastsTop).toBe(laneTop + EDIT_ACTIONS.laneHeight + gap);
-  });
-
-  it('leaves toasts under the toolbar when the pills sit clear of their strip', () => {
-    const s = sizes({ ...TOOLBAR, ...EDIT_ACTIONS });
-    expect(placeTopBar(s).toastsTop).toBe(edge + TOOLBAR.columnHeight + gap);
-  });
-
-  it('puts toasts at the top edge of a read-only office (no toolbar)', () => {
-    expect(placeTopBar(sizes({})).toastsTop).toBe(edge);
-  });
-
-  it('reports the zoom buttons, the toolbar column and the moved pills as occupied', () => {
-    const s = sizes({ areaWidth: 900, ...TOOLBAR, ...EDIT_ACTIONS });
-    const { laneTop, occupied } = placeTopBar(s);
-    expect(occupied).toEqual([
-      { left: 0, top: 0, right: ZOOM_CONTROLS_RIGHT_PX, bottom: ZOOM_CONTROLS_BOTTOM_PX },
-      { left: 900 - edge - 448, top: edge, right: 900 - edge, bottom: edge + 61 },
-      { left: 316, top: laneTop, right: 584, bottom: laneTop + EDIT_ACTIONS.laneHeight },
-    ]);
-  });
-
-  it('reports only the zoom buttons in an office with nothing at its top edge', () => {
-    expect(placeTopBar(sizes({})).occupied).toHaveLength(1);
   });
 });
 
@@ -162,51 +117,6 @@ describe('balancedRowWidth', () => {
 
   it('is 0 with no buttons', () => {
     expect(balancedRowWidth([], BUTTON_GAP, 300)).toBe(0);
-  });
-});
-
-describe('placeBattleLog', () => {
-  const LOG = { logWidth: 300, logHeight: 49 };
-  const gapLog = BATTLE_LOG_EDGE_GAP_PX;
-  const place = (areaHeight: number, obstacles: Rect[], areaWidth = 900) =>
-    placeBattleLog({ areaWidth, areaHeight, ...LOG, obstacles });
-
-  it('sits a quarter of the office height above the bottom edge', () => {
-    expect(place(900, [])).toBe(900 * 0.75 - LOG.logHeight);
-  });
-
-  it('moves above the layout editor palette when that reaches the spot', () => {
-    const palette = { left: 10, top: 500, right: 600, bottom: 890 };
-    expect(place(900, [palette])).toBe(500 - gapLog - LOG.logHeight);
-  });
-
-  it('ignores what is beside it rather than across its width', () => {
-    // The log spans 300..600; a column at the right edge doesn't move it.
-    const column = { left: 640, top: 8, right: 892, bottom: 800 };
-    expect(place(900, [column])).toBe(900 * 0.75 - LOG.logHeight);
-  });
-
-  it('moves below the top chrome on a short window', () => {
-    // 300 px tall: the quarter spot (176) is inside pills that end at 200.
-    const pills = { left: 316, top: 77, right: 584, bottom: 200 };
-    expect(place(300, [pills])).toBe(200 + gapLog);
-  });
-
-  it('hides when nothing between the palette and the top bar is clear', () => {
-    // 1100 × 300 in the layout editor: the toolbar column, EditActionBar
-    // under it ending at 130, and the palette from 150.
-    const column = { left: 444, top: 8, right: 892, bottom: 69 };
-    const pills = { left: 316, top: 77, right: 584, bottom: 130 };
-    const palette = { left: 10, top: 150, right: 600, bottom: 290 };
-    expect(place(300, [column, pills, palette])).toBeNull();
-    // Without the palette its own spot is clear again.
-    expect(place(300, [column, pills])).toBe(300 * 0.75 - LOG.logHeight);
-  });
-
-  it('is null until measured', () => {
-    expect(
-      placeBattleLog({ areaWidth: 0, areaHeight: 0, logWidth: 0, logHeight: 0, obstacles: [] }),
-    ).toBeNull();
   });
 });
 
