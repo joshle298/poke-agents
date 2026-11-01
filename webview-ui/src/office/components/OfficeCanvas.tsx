@@ -14,6 +14,7 @@ import { transport } from '../../transport/index.js';
 import { furnitureAt } from '../editor/editorActions.js';
 import { buildEditorRenderState } from '../editor/editorRenderState.js';
 import type { EditorState } from '../editor/editorState.js';
+import type { GameLoopCallbacks } from '../engine/gameLoop.js';
 import { startGameLoop } from '../engine/gameLoop.js';
 import type { OfficeState } from '../engine/officeState.js';
 import { isPokemonThemeEnabled } from '../engine/pokemonTheme.js';
@@ -129,18 +130,26 @@ export function OfficeCanvas({
     [officeState, zoom, isEditMode],
   );
 
-  // Resize canvas backing store to device pixels (no DPR transform on ctx)
-  const resizeCanvas = useCallback(() => {
+  // Resize canvas backing store to device pixels (no DPR transform on ctx).
+  // Assigning canvas.width/height clears the canvas even when the value is
+  // unchanged, so only assign on a real change, and report it: the caller
+  // redraws in the same frame, or every resize step would paint one blank
+  // frame (the flicker while dragging a window edge).
+  const resizeCanvas = useCallback((): boolean => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container) return;
+    if (!canvas || !container) return false;
     const rect = container.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.round(rect.width * dpr);
-    canvas.height = Math.round(rect.height * dpr);
+    const width = Math.round(rect.width * dpr);
+    const height = Math.round(rect.height * dpr);
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
+    if (canvas.width === width && canvas.height === height) return false;
+    canvas.width = width;
+    canvas.height = height;
     // No ctx.scale(dpr) — we render directly in device pixels
+    return true;
   }, []);
 
   useEffect(() => {
@@ -149,12 +158,7 @@ export function OfficeCanvas({
 
     resizeCanvas();
 
-    const observer = new ResizeObserver(() => resizeCanvas());
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    const stop = startGameLoop(canvas, {
+    const callbacks: GameLoopCallbacks = {
       update: (dt) => {
         officeState.update(dt);
       },
@@ -264,7 +268,22 @@ export function OfficeCanvas({
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;
         rotateButtonBoundsRef.current = editorRender?.rotateButtonBounds ?? null;
       },
+    };
+    const stop = startGameLoop(canvas, callbacks);
+
+    // Redraw inside the ResizeObserver callback. It runs after layout and
+    // before paint, so a canvas just cleared by a size change is drawn again
+    // before the browser shows it, instead of flashing blank until the next
+    // animation frame.
+    const ctx = canvas.getContext('2d');
+    const observer = new ResizeObserver(() => {
+      if (!resizeCanvas() || !ctx) return;
+      ctx.imageSmoothingEnabled = false;
+      callbacks.render(ctx);
     });
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
 
     return () => {
       stop();
