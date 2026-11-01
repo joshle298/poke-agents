@@ -20,15 +20,28 @@ interface Fill {
   y: number;
 }
 
-/** Just enough of a 2D context to record the link's pixels. */
+/** Just enough of a 2D context to record the link's pixels: squares filled
+ *  one by one, or added to a path and filled together. */
 function recordingContext(): { ctx: CanvasRenderingContext2D; fills: Fill[] } {
   const fills: Fill[] = [];
   const state = { fillStyle: '', globalAlpha: 1 };
+  let path: Array<{ x: number; y: number }> = [];
   const ctx = {
+    canvas: { width: 1000, height: 1000 },
     save() {},
     restore() {},
     fillRect(x: number, y: number) {
       fills.push({ style: state.fillStyle, alpha: state.globalAlpha, x, y });
+    },
+    beginPath() {
+      path = [];
+    },
+    rect(x: number, y: number) {
+      path.push({ x, y });
+    },
+    fill() {
+      for (const p of path) fills.push({ style: state.fillStyle, alpha: state.globalAlpha, ...p });
+      path = [];
     },
     set fillStyle(v: string) {
       state.fillStyle = v;
@@ -62,6 +75,17 @@ test('every lit pixel of a link sits on a casing pixel drawn before it', () => {
     );
     assert.ok(under >= 0 && under < fills.indexOf(p), `casing under (${p.x},${p.y})`);
   }
+});
+
+test('the pixels of a link off the canvas are not drawn', () => {
+  const { ctx, fills } = recordingContext();
+  // From inside the 1000×1000 canvas to far beyond its right edge.
+  renderLinks(ctx, [{ from: at(900, 8), to: at(3000, 8), kind: 'spawned' }], 0, 0, 0, 1);
+  assert.ok(fills.length > 10, 'the part in view is drawn');
+  assert.ok(
+    fills.every((f) => f.x < 1000),
+    'nothing past the edge',
+  );
 });
 
 test('a faint link is drawn at LINK_DIM_ALPHA, casing included; a lit one at full strength', () => {

@@ -67,6 +67,7 @@ import {
 import { createDemoProvider } from './providers/stream/demo/demo.js';
 import { PixelAgentsServer, type ServerConfig } from './server.js';
 import { PtySessionManager } from './terminal/ptySessionManager.js';
+import { upgradeSavedTown } from './townUpgrade.js';
 import { isLoopbackHost } from './wsAuth.js';
 
 export interface StandaloneOptions {
@@ -590,6 +591,10 @@ export async function startStandalone(opts: StandaloneOptions): Promise<Standalo
   currentConfig = { port: config.port, token: config.token };
   ownsServer = server.isOwner();
   officePort = config.port;
+
+  // A saved town an earlier version shipped, unchanged, becomes the new town
+  // (kept as a backup next to layout.json) before any window loads it.
+  if (ownsServer) upgradeSavedTown(assetCache.defaultLayout);
 
   // ── Conductor: poll only from the process that owns the server (a reused
   // server already runs its own poller). Started without awaiting, so the

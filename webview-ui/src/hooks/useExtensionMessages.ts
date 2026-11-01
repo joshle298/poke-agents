@@ -422,7 +422,17 @@ export function useExtensionMessages(
         const rawLayout = msg.layout as OfficeLayout | null;
         const layout = rawLayout && rawLayout.version === 1 ? migrateLayoutColors(rawLayout) : null;
         if (layout) {
+          const before = os.getLayout();
           os.rebuildFromLayout(layout);
+          // The first layout, or one of another size: start at its home view
+          // (in a town larger than the window, the Lab and its work area).
+          if (
+            !layoutReadyRef.current ||
+            before.cols !== layout.cols ||
+            before.rows !== layout.rows
+          ) {
+            os.requestCameraHome();
+          }
           onLayoutLoaded?.(layout);
         } else {
           // Default layout — snapshot whatever OfficeState built

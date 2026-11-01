@@ -12,7 +12,8 @@
  *                                         Center's tiles (14), grass in a patch's
  *                                         shadow (18)
  *   carpets/carpet_3.png                  an auto-tiled dirt path
- *   furniture/<ID>/                       outdoor items, the Center's and the Lab's furniture
+ *   furniture/<ID>/                       outdoor items, the Center's and the Lab's furniture,
+ *                                         the work areas' tables, seats and field terminals
  *   layouts/pokemon-town.json             the town (the standalone default layout)
  *
  * Every pixel is drawn by scripts/world/art.mjs (discs, ellipses, hand-placed
@@ -173,6 +174,75 @@ rotationPair(
   2,
   2,
 );
+
+// The outdoor work areas: tables (desks) and the seats that go with them
+// (chairs, so the office's seat logic seats sessions on them).
+item('PICNIC_TABLE', 'Picnic Table', 'desks', art.picnicTable(), 3, 2, 1);
+item('PICNIC_BENCH', 'Picnic Bench', 'chairs', art.picnicBench(), 1, 1, 0);
+item('LOG_TABLE', 'Log Table', 'desks', art.logTable(), 3, 2, 1);
+item('TREE_STUMP', 'Tree Stump', 'chairs', art.treeStump(), 1, 1, 0);
+
+// The field terminal stands on a table: R turns its screen toward us (front)
+// or away (back). Each side has an off and an on state; a session working in
+// front of it switches it on, and the front's cursor blinks.
+{
+  furnitureCount++;
+  const id = 'FIELD_TERMINAL';
+  const asset = (name, canvas, extra) => {
+    write(`furniture/${id}/${name}.png`, canvas.png());
+    return {
+      type: 'asset',
+      id: name,
+      file: `${name}.png`,
+      width: canvas.w,
+      height: canvas.h,
+      footprintW: 1,
+      footprintH: 1,
+      ...extra,
+    };
+  };
+  writeJson(`furniture/${id}/manifest.json`, {
+    id,
+    name: 'Field Terminal',
+    category: 'electronics',
+    type: 'group',
+    groupType: 'rotation',
+    ...NO_FLAGS,
+    canPlaceOnSurfaces: true,
+    backgroundTiles: 0,
+    members: [
+      {
+        type: 'group',
+        groupType: 'state',
+        orientation: 'front',
+        members: [
+          {
+            type: 'group',
+            groupType: 'animation',
+            state: 'on',
+            members: [0, 1].map((frame) =>
+              asset(
+                `${id}_FRONT_ON_${frame + 1}`,
+                art.fieldTerminal('front', { on: true, frame }),
+                { frame },
+              ),
+            ),
+          },
+          asset(`${id}_FRONT_OFF`, art.fieldTerminal('front'), { state: 'off' }),
+        ],
+      },
+      {
+        type: 'group',
+        groupType: 'state',
+        orientation: 'back',
+        members: [
+          asset(`${id}_BACK_ON`, art.fieldTerminal('back', { on: true }), { state: 'on' }),
+          asset(`${id}_BACK_OFF`, art.fieldTerminal('back'), { state: 'off' }),
+        ],
+      },
+    ],
+  });
+}
 
 // A fence turns: R swaps the horizontal run for the vertical one.
 rotationPair('FENCE', 'Fence', 'outdoor', [art.fenceFront(), art.fenceSide()], 1, 1, 0);

@@ -1,0 +1,13 @@
+{
+  "id": "LOG_TABLE",
+  "name": "Log Table",
+  "category": "desks",
+  "type": "asset",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "width": 48,
+  "height": 32,
+  "footprintW": 3,
+  "footprintH": 2
+}

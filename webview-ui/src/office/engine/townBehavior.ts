@@ -3,29 +3,37 @@
  * per-frame step that takes them there. Pure and DOM-free (Node-tested).
  *
  *   Active (working)            → its seat: the upstream FSM, unchanged
+ *     … in a zoned town with no seat left for it → stands and works on a free
+ *       field tile (else a Meadow tile near a field): `work`
  *   Fainted (errored)           → walks to the Center and lies in a bed
  *   Needs you (awaiting input)  → stays where it is (seated at its desk)
  *   Idle                        → walks to the Meadow and wanders inside it
  *   About to sleep              → walks to the Meadow if it isn't there, then
  *                                 stays put; asleep it never moves
  *
- * A layout without the matching role, sub-agents and active agents get `null`:
- * the caller runs the upstream FSM exactly as before.
+ * Which seat a working character takes is the seat steward's (townSeatMove,
+ * or zonedSeatMove in a town with a Lab or fields: Leads in the Lab, everyone
+ * else outdoors). A layout without the matching role, sub-agents and seated
+ * active agents get `null`: the caller runs the upstream FSM exactly as before.
  */
 
 import {
   POKEMON_GROUND_OFFSET_PX,
   TOWN_BED_OVERLAP_PX,
+  TOWN_MEADOW_DELAY_LEAD_SEC,
   TOWN_MEADOW_DELAY_SEC,
+  TOWN_MEADOW_DELAY_ZONED_SEC,
+  TOWN_MEADOW_NEAR_TILES,
   TOWN_RETRY_SEC,
   TOWN_SPREAD_TILES,
   TOWN_TARGET_TRIES,
   TOWN_WALL_OVERLAP_PX,
+  TOWN_WANDER_RADIUS_TILES,
   WANDER_PAUSE_MAX_SEC,
   WANDER_PAUSE_MIN_SEC,
 } from '../../constants.js';
 import type { AreaRoleTiles } from '../layout/areaRoles.js';
-import { tileKey } from '../layout/areaRoles.js';
+import { isZonedTown, tileKey } from '../layout/areaRoles.js';
 import { findPath } from '../layout/tileMap.js';
 import type { BedRest, Character, Seat, TileType as TileTypeVal, TownGoal } from '../types.js';
 import { CharacterState, Direction, TILE_SIZE, TileType } from '../types.js';
@@ -79,7 +87,7 @@ export interface BedPlacement {
 }
 
 /** The layout facts the town step needs, rebuilt with the layout. */
-export interface TownWorld {
+export interface TownWorld extends WorkTiles {
   roles: AreaRoleTiles;
   /** Walkable Meadow tiles: where idle characters wander. */
   meadowTiles: Tile[];
@@ -93,6 +101,19 @@ export interface TownWorld {
   centerClearance: ReadonlyMap<string, number>;
   /** Seat uids on the lectern: kept for Leads. */
   lecternSeats: ReadonlySet<string>;
+  /** A Lab or a field exists: Leads work in the Lab, everyone else outdoors
+   *  (zonedSeatMove); otherwise townSeatMove's desk rules. */
+  zoned: boolean;
+  /** Seat uids in the Lab (zoned): for working Leads only. */
+  labSeats: ReadonlySet<string>;
+  /** Seat uids in a field (zoned): where every other working session sits. */
+  fieldSeats: ReadonlySet<string>;
+  /** Seats an ordinary free-seat pick never takes: the lectern's, and in a
+   *  zoned town every seat outside a field. */
+  reservedSeats: ReadonlySet<string>;
+  /** Walkable field tiles off the walk-behind rows: where a working session
+   *  with no seat left stands and works. */
+  fieldTiles: Tile[];
   /** Per seat, how many open tiles lie between it and the nearer side wall. */
   seatRoom: ReadonlyMap<string, number>;
   tileMap: TileTypeVal[][];
@@ -105,24 +126,43 @@ export interface TownWorld {
 type GoalFacts = Pick<
   Character,
   'isActive' | 'isSubagent' | 'isErrored' | 'awaitingInput' | 'bubbleType'
->;
+> &
+  Partial<Pick<Character, 'seatId'>>;
 
-/** Where an inactive character belongs, or null to leave it to the upstream FSM. */
+/**
+ * Where a character belongs, or null to leave it to the upstream FSM. A
+ * working one only gets a goal (`work`) in a zoned town when it has no seat:
+ * the steward found none free for it.
+ */
 export function townGoalFor(ch: GoalFacts, roles: AreaRoleTiles | null): TownGoal | null {
-  if (!roles || ch.isSubagent || ch.isActive) return null;
+  if (!roles || ch.isSubagent) return null;
+  if (ch.isActive) return isZonedTown(roles) && !ch.seatId ? 'work' : null;
   if (ch.isErrored) return roles.center.size > 0 ? 'center' : null;
   if (roles.meadow.size === 0) return null;
   if (ch.awaitingInput || ch.bubbleType === 'permission') return 'stay';
   return 'meadow';
 }
 
+/** How long a session that stopped working waits before it walks out to the
+ *  Meadow: longer in a zoned town, whose Meadow is a walk away, and longest
+ *  for a Lead there (its desk is in the Lab, and its turns come with long
+ *  gaps while its sessions work). */
+export function townMeadowDelay(zoned: boolean, isTeamLead: boolean): number {
+  if (!zoned) return TOWN_MEADOW_DELAY_SEC;
+  return isTeamLead ? TOWN_MEADOW_DELAY_LEAD_SEC : TOWN_MEADOW_DELAY_ZONED_SEC;
+}
+
 /** Record this frame's goal. A new goal restarts the trip: at once for the
- *  Center, after a short pause for the Meadow. */
-export function setTownGoal(ch: Character, goal: TownGoal | null): void {
+ *  Center, after a pause for the Meadow (`meadowDelay`: townMeadowDelay). */
+export function setTownGoal(
+  ch: Character,
+  goal: TownGoal | null,
+  meadowDelay = TOWN_MEADOW_DELAY_SEC,
+): void {
   const next = goal ?? undefined;
   if (ch.townGoal === next) return;
   ch.townGoal = next;
-  ch.townRetryTimer = goal === 'meadow' ? TOWN_MEADOW_DELAY_SEC : 0;
+  ch.townRetryTimer = goal === 'meadow' ? meadowDelay : 0;
 }
 
 /**
@@ -135,13 +175,129 @@ export function pickTownTile(
   occupied: Occupancy,
   random: () => number = Math.random,
 ): Tile | null {
+  return pickSpreadTile([candidates], occupied, random);
+}
+
+/**
+ * pickTownTile over groups of candidates, best first: a spread-out free tile of
+ * the first group that has one, then of the next…, then any free tile of the
+ * first group that has one, and so on.
+ */
+function pickSpreadTile(
+  groups: ReadonlyArray<readonly Tile[]>,
+  occupied: Occupancy,
+  random: () => number,
+): Tile | null {
   const taken = Array.from(occupied.keys(), (key) => key.split(',').map(Number));
-  const spread = candidates.filter((t) =>
-    taken.every(
-      ([col, row]) => Math.max(Math.abs(col - t.col), Math.abs(row - t.row)) >= TOWN_SPREAD_TILES,
+  const spread = (tiles: readonly Tile[]) =>
+    tiles.filter((t) =>
+      taken.every(
+        ([col, row]) => Math.max(Math.abs(col - t.col), Math.abs(row - t.row)) >= TOWN_SPREAD_TILES,
+      ),
+    );
+  return pickTieredTile([...groups.map(spread), ...groups], occupied, random);
+}
+
+/** A zoned town's places to stand and work, best first (see pickWorkTile). */
+export interface WorkTiles {
+  /** Field tiles not beside a seat: off the benches, out of the way of the
+   *  sitters' way in. */
+  fieldStandTiles: Tile[];
+  /** Meadow tiles within `near` (Chebyshev) of a field tile: by the work. */
+  meadowWorkTiles: Tile[];
+}
+
+/** The field tiles off the seats' sides and the Meadow tiles near a field,
+ *  from the walkable field and Meadow tiles and the seats' tiles. */
+export function townWorkTiles(
+  fieldTiles: readonly Tile[],
+  meadowTiles: readonly Tile[],
+  seatTiles: ReadonlySet<string>,
+  near: number,
+): WorkTiles {
+  const besideSeat = (t: Tile) =>
+    seatTiles.has(tileKey(t.col - 1, t.row)) ||
+    seatTiles.has(tileKey(t.col + 1, t.row)) ||
+    seatTiles.has(tileKey(t.col, t.row - 1)) ||
+    seatTiles.has(tileKey(t.col, t.row + 1));
+  return {
+    fieldStandTiles: fieldTiles.filter((t) => !besideSeat(t)),
+    meadowWorkTiles: meadowTiles.filter((m) =>
+      fieldTiles.some((f) => Math.max(Math.abs(f.col - m.col), Math.abs(f.row - m.row)) <= near),
     ),
+  };
+}
+
+/**
+ * Where a working session with no seat left stands and works, so it stays by
+ * the work instead of among the idle ones in the Meadow: a free field tile
+ * off the seats' sides, two or more from everyone, else one with nobody next
+ * to it; else the same on the Meadow near a field; else any free one of
+ * those; else any free field tile, then any free Meadow tile.
+ */
+export function pickWorkTile(
+  world: Pick<TownWorld, 'fieldTiles' | 'meadowTiles'> & WorkTiles,
+  occupied: Occupancy,
+  random: () => number = Math.random,
+): Tile | null {
+  const taken = Array.from(occupied.keys(), (key) => key.split(',').map(Number));
+  const apart = (min: number, metric: (dc: number, dr: number) => number) => (tiles: Tile[]) =>
+    tiles.filter((t) => taken.every(([c, r]) => metric(c - t.col, r - t.row) >= min));
+  const spread = apart(TOWN_SPREAD_TILES, (dc, dr) => Math.max(Math.abs(dc), Math.abs(dr)));
+  const roomy = apart(2, (dc, dr) => Math.abs(dc) + Math.abs(dr));
+  const { fieldStandTiles: stand, meadowWorkTiles: near } = world;
+  return pickTieredTile(
+    [
+      spread(stand),
+      roomy(stand),
+      spread(near),
+      roomy(near),
+      stand,
+      near,
+      world.fieldTiles,
+      world.meadowTiles,
+    ],
+    occupied,
+    random,
   );
-  return pickTieredTile([spread, candidates], occupied, random);
+}
+
+/**
+ * A Meadow destination for an idle character at `from`. In a zoned town the
+ * Meadow is large and in parts, so tiles within `radius` (Chebyshev) of it
+ * come first and it stays in its part of the Meadow instead of crossing the
+ * town; elsewhere any Meadow tile, as before.
+ */
+export function pickMeadowTile(
+  world: Pick<TownWorld, 'meadowTiles' | 'zoned'>,
+  from: Tile,
+  radius: number,
+  occupied: Occupancy,
+  random: () => number = Math.random,
+): Tile | null {
+  if (!world.zoned) return pickTownTile(world.meadowTiles, occupied, random);
+  const near = world.meadowTiles.filter(
+    (t) => Math.max(Math.abs(t.col - from.col), Math.abs(t.row - from.row)) <= radius,
+  );
+  return pickSpreadTile([near, world.meadowTiles], occupied, random);
+}
+
+/**
+ * Whether a seatless working session may work where it stands: on a field
+ * tile or a Meadow tile near one. One already working further out in the
+ * Meadow stays (it went there because nothing nearer was free); one that was
+ * idle out there walks over to the work first.
+ */
+function onWorkTile(
+  ch: Pick<Character, 'tileCol' | 'tileRow' | 'state'>,
+  world: TownWorld,
+): boolean {
+  const here = (t: Tile) => t.col === ch.tileCol && t.row === ch.tileRow;
+  return (
+    world.fieldTiles.some(here) ||
+    world.meadowWorkTiles.some(here) ||
+    (ch.state === CharacterState.TYPE && world.roles.meadow.has(tileKey(ch.tileCol, ch.tileRow)))
+  );
 }
 
 /**
@@ -386,8 +542,8 @@ export interface TownStepOptions {
 
 /**
  * Where a character just placed in the town should appear for `goal`: a free
- * Meadow tile, or a Center bed that fits it. Null for other goals (it stays
- * where it was put: its seat).
+ * Meadow tile, a free work tile (a field, else the Meadow), or a Center bed
+ * that fits it. Null for other goals (it stays where it was put: its seat).
  */
 export function townSpawnTile(
   goal: TownGoal | null,
@@ -397,6 +553,7 @@ export function townSpawnTile(
   random: () => number = Math.random,
 ): Tile | null {
   if (goal === 'meadow') return pickTownTile(world.meadowTiles, occupied, random);
+  if (goal === 'work') return pickWorkTile(world, occupied, random);
   if (goal === 'center') {
     return pickTieredTile(centerRestTiers(world, fit, occupied), occupied, random);
   }
@@ -416,10 +573,48 @@ function wanderMeadow(
   ch.wanderTimer -= dt;
   if (ch.wanderTimer > 0) return;
   ch.wanderTimer = WANDER_PAUSE_MIN_SEC + random() * (WANDER_PAUSE_MAX_SEC - WANDER_PAUSE_MIN_SEC);
-  const target = pickTownTile(world.meadowTiles, occupied(), random);
+  const here = { col: ch.tileCol, row: ch.tileRow };
+  const target = pickMeadowTile(world, here, TOWN_WANDER_RADIUS_TILES, occupied(), random);
   if (!target) return;
   const path = townPath(ch, target, world);
   if (path.length > 0) startWalk(ch, path);
+}
+
+/**
+ * A working session with no seat left for it: walk to a free work tile (a
+ * field, else the Meadow) and work standing there (TYPE with no seat: the
+ * calm working pose, no chair); stand up first if it is still in a seat it
+ * lost. The FSM finishes walks (and, arriving with no seat, starts working).
+ */
+function stepWorkInPlace(
+  ch: Character,
+  dt: number,
+  world: TownWorld,
+  occupied: () => Occupancy,
+  random: () => number,
+  fsm: () => void,
+): void {
+  if (ch.state === CharacterState.WALK) {
+    fsm();
+    return;
+  }
+  if (onWorkTile(ch, world)) {
+    if (ch.state !== CharacterState.TYPE) {
+      ch.state = CharacterState.TYPE;
+      ch.frame = 0;
+      ch.frameTimer = 0;
+    }
+    fsm(); // the working pose's frames
+    return;
+  }
+  if (ch.state === CharacterState.TYPE) {
+    // still in a seat it no longer holds: stand up, then head out
+    ch.state = CharacterState.IDLE;
+    ch.frame = 0;
+    ch.frameTimer = 0;
+    ch.townRetryTimer = 0;
+  }
+  headTo(ch, dt, (taken) => pickWorkTile(world, taken, random), world, occupied);
 }
 
 /**
@@ -442,6 +637,10 @@ export function stepTownCharacter(
     // Holds the pose its turn ended in (seated at its desk); a walk already
     // under way still finishes.
     if (ch.state === CharacterState.WALK) fsm();
+    return;
+  }
+  if (goal === 'work') {
+    stepWorkInPlace(ch, dt, world, opts.occupied, random, fsm);
     return;
   }
   // Mid-walk, or still seated (standing up first): the FSM handles both.
@@ -472,7 +671,14 @@ export function stepTownCharacter(
     wanderMeadow(ch, dt, world, opts.occupied, random);
     return;
   }
-  headTo(ch, dt, (taken) => pickTownTile(world.meadowTiles, taken, random), world, opts.occupied);
+  const here = { col: ch.tileCol, row: ch.tileRow };
+  headTo(
+    ch,
+    dt,
+    (taken) => pickMeadowTile(world, here, TOWN_MEADOW_NEAR_TILES, taken, random),
+    world,
+    opts.occupied,
+  );
 }
 
 /**
@@ -501,6 +707,11 @@ export function townRoomNeeded(halfW: number): number {
 export interface SeatHolder {
   uid: string;
   holder: Pick<Character, 'id' | 'isActive' | 'isTeamLead' | 'townGoal'> | null;
+  /** Someone other than the one asking is on the seat and staying there
+   *  (sitting, resting, asleep) or walking to it: its holder, or one whose
+   *  claim moved on while it stayed. The zoned rules never send anyone to
+   *  such a seat. */
+  occupied?: boolean;
 }
 
 /**
@@ -547,4 +758,84 @@ export function townSeatMove(
     if (away) return away.uid;
   }
   return null;
+}
+
+/** What the seat steward does with a character's seat in a zoned town. */
+export type SeatMove =
+  | { kind: 'keep' }
+  | { kind: 'move'; uid: string }
+  /** Give the seat up (it may not sit there) with no other seat to go to:
+   *  a working character then stands and works on a free work tile. */
+  | { kind: 'release' };
+
+const KEEP: SeatMove = { kind: 'keep' };
+
+/**
+ * The seat rules of a zoned town (one with a Lab or fields). Pure: the caller
+ * applies the move.
+ *
+ *   - A working Lead takes a Lab seat: a free one, else one a non-Lead holds,
+ *     else one whose holder is away (in the Meadow or the Center). With the
+ *     Lab full of working Leads it works outdoors like everyone else.
+ *   - Nobody else ever sits in the Lab: a non-Lead on a Lab seat moves to a
+ *     free field seat, or gives the seat up.
+ *   - A working non-Lead sits in a field: a free field seat, else the field
+ *     seat of a character that is away; with none, it works standing (it
+ *     keeps no seat elsewhere).
+ *   - A character that isn't working keeps its claim (it is in the Meadow, the
+ *     Center or waiting at its seat); it moves when it next works.
+ *   - A seat someone else is on or walking to (`occupied`: resting there
+ *     between turns, asleep there) is never taken, whoever holds it: a
+ *     holder is only away once it has left the seat.
+ *
+ * `seats` lists every seat with its holder (null when free); `preferred`
+ * picks one of the free seats it is given (the caller's usual choice).
+ */
+export function zonedSeatMove(
+  ch: Pick<Character, 'id' | 'isActive' | 'isTeamLead' | 'seatId' | 'isSubagent'>,
+  seats: readonly SeatHolder[],
+  zones: { lab: ReadonlySet<string>; field: ReadonlySet<string> },
+  preferred: (free: string[]) => string | null,
+): SeatMove {
+  if (ch.isSubagent) return KEEP;
+  const seat = ch.seatId;
+  const onLab = seat !== null && zones.lab.has(seat);
+  const onField = seat !== null && zones.field.has(seat);
+  const open = seats.filter((s) => !s.occupied);
+  const freeIn = (zone: ReadonlySet<string>) =>
+    open.filter((s) => zone.has(s.uid) && s.holder === null).map((s) => s.uid);
+  const awayIn = (zone: ReadonlySet<string>) =>
+    open.find(
+      (s) =>
+        zone.has(s.uid) &&
+        s.holder !== null &&
+        s.holder.id !== ch.id &&
+        !s.holder.isActive &&
+        (s.holder.townGoal === 'meadow' || s.holder.townGoal === 'center'),
+    );
+  const move = (uid: string | null | undefined): SeatMove | null =>
+    uid ? { kind: 'move', uid } : null;
+
+  if (ch.isTeamLead) {
+    if (onLab || !ch.isActive) return KEEP;
+    const labSeat =
+      move(preferred(freeIn(zones.lab))) ??
+      move(
+        open.find(
+          (s) =>
+            zones.lab.has(s.uid) &&
+            s.holder !== null &&
+            s.holder.id !== ch.id &&
+            !s.holder.isTeamLead,
+        )?.uid,
+      ) ??
+      move(awayIn(zones.lab)?.uid);
+    if (labSeat) return labSeat;
+  } else if (onLab) {
+    return move(preferred(freeIn(zones.field))) ?? { kind: 'release' };
+  }
+  if (!ch.isActive || onField) return KEEP;
+  const fieldSeat = move(preferred(freeIn(zones.field))) ?? move(awayIn(zones.field)?.uid);
+  if (fieldSeat) return fieldSeat;
+  return seat === null ? KEEP : { kind: 'release' };
 }

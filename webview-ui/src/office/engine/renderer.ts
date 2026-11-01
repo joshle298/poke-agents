@@ -33,6 +33,8 @@ import {
   GHOST_VALID_TINT,
   GRID_LINE_COLOR,
   GROUND_CACHE_MAX_PIXELS,
+  GROUND_CHUNK_POOL_MAX,
+  GROUND_CHUNK_PX,
   HEADLESS_CHARACTER_ALPHA,
   HOVERED_OUTLINE_ALPHA,
   OUTLINE_Z_SORT_OFFSET,
@@ -173,6 +175,7 @@ export function renderCarpetLayer(
   offsetX: number,
   offsetY: number,
   zoom: number,
+  range?: { c0: number; r0: number; c1: number; r1: number },
 ): void {
   if (!hasCarpetSprites()) return;
   if (!carpetTiles || carpetTiles.length === 0) return;
@@ -180,8 +183,12 @@ export function renderCarpetLayer(
   const s = TILE_SIZE * zoom;
   const halfS = s / 2;
 
-  for (let jy = 0; jy <= rows; jy++) {
-    for (let jx = 0; jx <= cols; jx++) {
+  // A junction's piece spans half a tile either side of it: the junctions
+  // from a range's first tile to one past its last reach into it.
+  const jyEnd = Math.min(rows, (range?.r1 ?? rows - 1) + 1);
+  const jxEnd = Math.min(cols, (range?.c1 ?? cols - 1) + 1);
+  for (let jy = Math.max(0, range?.r0 ?? 0); jy <= jyEnd; jy++) {
+    for (let jx = Math.max(0, range?.c0 ?? 0); jx <= jxEnd; jx++) {
       const localGroups = new Map<
         string,
         {
@@ -368,9 +375,8 @@ function wallTileKey(wall: FurnitureInstance): string {
   return `${Math.round(wall.x / TILE_SIZE)},${Math.round(wall.zY / TILE_SIZE) - 1}`;
 }
 
-/** The ground drawn once into an offscreen canvas, and what it was drawn from. */
-interface GroundCache {
-  canvas: HTMLCanvasElement;
+/** What the cached ground was drawn from: any change redraws it. */
+interface GroundKey {
   tileMap: TileTypeVal[][];
   tileColors: Array<ColorValue | null> | undefined;
   carpetTiles: Array<CarpetTile | null> | undefined;
@@ -381,6 +387,44 @@ interface GroundCache {
   carpetVersion: number;
   staticVersion: number;
   wallVersion: number;
+}
+
+function sameGroundKey(a: GroundKey, b: GroundKey): boolean {
+  return (
+    a.tileMap === b.tileMap &&
+    a.tileColors === b.tileColors &&
+    a.carpetTiles === b.carpetTiles &&
+    a.cols === b.cols &&
+    a.rows === b.rows &&
+    a.zoom === b.zoom &&
+    a.floorVersion === b.floorVersion &&
+    a.carpetVersion === b.carpetVersion &&
+    a.staticVersion === b.staticVersion &&
+    a.wallVersion === b.wallVersion
+  );
+}
+
+/** One square of the ground, `size` tiles a side, drawn once. */
+interface GroundChunk {
+  canvas: HTMLCanvasElement;
+  /** The frame it was last drawn on screen (eviction picks the oldest). */
+  used: number;
+}
+
+/**
+ * The ground cut into square chunks of about GROUND_CHUNK_PX device px, each
+ * drawn once when it first comes into view and kept while the cached pixels
+ * stay under GROUND_CACHE_MAX_PIXELS (chunks on screen are never dropped). A
+ * town larger than the window, at any zoom, only ever draws what is in view.
+ */
+interface GroundCache {
+  key: GroundKey;
+  /** Tiles per chunk side at this zoom. */
+  size: number;
+  chunks: Map<number, GroundChunk>;
+  /** The static layer's walls and items in draw order, with their boxes. */
+  layer: Array<{ f: FurnitureInstance; x: number; y: number; w: number; h: number }>;
+  frame: number;
 }
 
 /** Draw one placed item (mirrored side variants flipped) at device px (x, y). */
@@ -404,12 +448,51 @@ function drawFurnitureAt(
 }
 
 let groundCache: GroundCache | null = null;
+/** Canvases of dropped chunks (their pixels released), reused for new ones. */
+const groundChunkPool: HTMLCanvasElement[] = [];
+
+/** Release a dropped chunk's pixels and keep its canvas for reuse. */
+function poolGroundChunk(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
+  if (groundChunkPool.length < GROUND_CHUNK_POOL_MAX) groundChunkPool.push(canvas);
+}
+
+/** Tiles per chunk side: about GROUND_CHUNK_PX device px, at least one tile. */
+export function groundChunkTiles(zoom: number): number {
+  return Math.max(1, Math.round(GROUND_CHUNK_PX / (TILE_SIZE * zoom)));
+}
 
 /**
- * Floor tiles, the wall base color and carpets never change between layout
- * edits, but a large layout is thousands of drawImage calls a frame. Draw
- * them once per (layout arrays, zoom, sprite sets) into an offscreen canvas
- * and blit that; a layout too large at this zoom is drawn directly instead.
+ * The chunks (column and row of chunks, inclusive) a view of `viewW`×`viewH`
+ * device px shows with the map's top-left at (offsetX, offsetY). Pure.
+ */
+export function visibleGroundChunks(
+  offsetX: number,
+  offsetY: number,
+  viewW: number,
+  viewH: number,
+  cols: number,
+  rows: number,
+  zoom: number,
+  size: number,
+): { c0: number; r0: number; c1: number; r1: number } | null {
+  const chunkPx = size * TILE_SIZE * zoom;
+  const lastC = Math.ceil(cols / size) - 1;
+  const lastR = Math.ceil(rows / size) - 1;
+  const c0 = Math.max(0, Math.floor(-offsetX / chunkPx));
+  const r0 = Math.max(0, Math.floor(-offsetY / chunkPx));
+  const c1 = Math.min(lastC, Math.floor((viewW - 1 - offsetX) / chunkPx));
+  const r1 = Math.min(lastR, Math.floor((viewH - 1 - offsetY) / chunkPx));
+  if (c1 < c0 || r1 < r0) return null;
+  return { c0, r0, c1, r1 };
+}
+
+/**
+ * Floor tiles, the wall base color, carpets and the town's static layer never
+ * change between layout edits, but a large layout is thousands of drawImage
+ * calls a frame. Draw them once per (layout arrays, zoom, sprite sets) into
+ * chunks and blit the chunks in view.
  */
 function renderGround(
   ctx: CanvasRenderingContext2D,
@@ -423,74 +506,128 @@ function renderGround(
   zoom: number,
   staticLayer: StaticLayerState | undefined,
 ): void {
-  const drawGround = (target: CanvasRenderingContext2D, x: number, y: number) => {
-    renderTileGrid(target, tileMap, x, y, zoom, tileColors, cols);
-    if (carpetTiles && carpetTiles.length > 0) {
-      renderCarpetLayer(target, carpetTiles, cols, rows, x, y, zoom);
-    }
-    if (!staticLayer) return;
+  if (cols <= 0 || rows <= 0) return;
+  const key: GroundKey = {
+    tileMap,
+    tileColors,
+    carpetTiles,
+    cols,
+    rows,
+    zoom,
+    floorVersion: getFloorSpritesVersion(),
+    carpetVersion: getCarpetSpritesVersion(),
+    staticVersion: staticLayer?.version ?? -1,
+    wallVersion: getWallSpritesVersion(),
+  };
+  let cache = groundCache;
+  if (!cache || !sameGroundKey(cache.key, key)) {
+    if (cache) for (const chunk of cache.chunks.values()) poolGroundChunk(chunk.canvas);
     // The static walls and items, in their z order (a wall first on a tie).
     const walls =
-      staticLayer.walls.size > 0 && hasWallSprites()
+      staticLayer && staticLayer.walls.size > 0 && hasWallSprites()
         ? getWallInstances(tileMap, tileColors, cols).filter((w) =>
             staticLayer.walls.has(wallTileKey(w)),
           )
         : [];
-    const layer = [...walls, ...staticLayer.items]
+    const layer = [...walls, ...(staticLayer?.items ?? [])]
       .map((f, i) => ({ f, i }))
-      .sort((a, b) => a.f.zY - b.f.zY || a.i - b.i);
-    for (const { f } of layer) drawFurnitureAt(target, f, x + f.x * zoom, y + f.y * zoom, zoom);
-  };
-  const width = cols * TILE_SIZE * zoom;
-  const height = rows * TILE_SIZE * zoom;
-  if (width <= 0 || height <= 0 || width * height > GROUND_CACHE_MAX_PIXELS) {
-    drawGround(ctx, offsetX, offsetY);
-    return;
-  }
-  const floorVersion = getFloorSpritesVersion();
-  const carpetVersion = getCarpetSpritesVersion();
-  const staticVersion = staticLayer?.version ?? -1;
-  const wallVersion = getWallSpritesVersion();
-  let cache = groundCache;
-  if (
-    !cache ||
-    cache.tileMap !== tileMap ||
-    cache.tileColors !== tileColors ||
-    cache.carpetTiles !== carpetTiles ||
-    cache.cols !== cols ||
-    cache.rows !== rows ||
-    cache.zoom !== zoom ||
-    cache.floorVersion !== floorVersion ||
-    cache.carpetVersion !== carpetVersion ||
-    cache.staticVersion !== staticVersion ||
-    cache.wallVersion !== wallVersion
-  ) {
-    const canvas = cache?.canvas ?? document.createElement('canvas');
-    canvas.width = width; // also clears it
-    canvas.height = height;
-    const target = canvas.getContext('2d');
-    if (!target) {
-      drawGround(ctx, offsetX, offsetY);
-      return;
-    }
-    target.imageSmoothingEnabled = false;
-    drawGround(target, 0, 0);
-    cache = {
-      canvas,
-      tileMap,
-      tileColors,
-      carpetTiles,
-      cols,
-      rows,
-      zoom,
-      floorVersion,
-      carpetVersion,
-      staticVersion,
-      wallVersion,
-    };
+      .sort((a, b) => a.f.zY - b.f.zY || a.i - b.i)
+      .map(({ f }) => ({
+        f,
+        x: f.x * zoom,
+        y: f.y * zoom,
+        w: (f.sprite[0]?.length ?? 0) * zoom,
+        h: f.sprite.length * zoom,
+      }));
+    cache = { key, size: groundChunkTiles(zoom), chunks: new Map(), layer, frame: 0 };
     groundCache = cache;
   }
-  ctx.drawImage(cache.canvas, offsetX, offsetY);
+  const frame = ++cache.frame;
+  const s = TILE_SIZE * zoom;
+  const size = cache.size;
+  const chunkPx = size * s;
+  const view = visibleGroundChunks(
+    offsetX,
+    offsetY,
+    ctx.canvas.width,
+    ctx.canvas.height,
+    cols,
+    rows,
+    zoom,
+    size,
+  );
+  if (!view) return;
+  const perRow = Math.ceil(cols / size);
+  for (let cr = view.r0; cr <= view.r1; cr++) {
+    for (let cc = view.c0; cc <= view.c1; cc++) {
+      const id = cr * perRow + cc;
+      let chunk = cache.chunks.get(id);
+      if (!chunk) {
+        const canvas = drawGroundChunk(cache, cc, cr, s);
+        if (!canvas) continue;
+        chunk = { canvas, used: frame };
+        cache.chunks.set(id, chunk);
+      }
+      chunk.used = frame;
+      ctx.drawImage(chunk.canvas, offsetX + cc * chunkPx, offsetY + cr * chunkPx);
+    }
+  }
+  evictGroundChunks(cache, frame);
+}
+
+/** Draw chunk (cc, cr) of the cached ground: its tiles, carpets and the
+ *  static items that reach into it. Null when no canvas could be made. */
+function drawGroundChunk(
+  cache: GroundCache,
+  cc: number,
+  cr: number,
+  s: number,
+): HTMLCanvasElement | null {
+  const { tileMap, tileColors, carpetTiles, cols, rows, zoom } = cache.key;
+  const size = cache.size;
+  const c0 = cc * size;
+  const r0 = cr * size;
+  const c1 = Math.min(cols, c0 + size) - 1;
+  const r1 = Math.min(rows, r0 + size) - 1;
+  const canvas = groundChunkPool.pop() ?? document.createElement('canvas');
+  canvas.width = (c1 - c0 + 1) * s; // also clears it
+  canvas.height = (r1 - r0 + 1) * s;
+  const target = canvas.getContext('2d');
+  if (!target) return null;
+  target.imageSmoothingEnabled = false;
+  const ox = -c0 * s;
+  const oy = -r0 * s;
+  const range = { c0, r0, c1, r1 };
+  renderTileGrid(target, tileMap, ox, oy, zoom, tileColors, cols, range);
+  if (carpetTiles && carpetTiles.length > 0) {
+    renderCarpetLayer(target, carpetTiles, cols, rows, ox, oy, zoom, range);
+  }
+  const x0 = c0 * s;
+  const y0 = r0 * s;
+  const x1 = (c1 + 1) * s;
+  const y1 = (r1 + 1) * s;
+  for (const item of cache.layer) {
+    if (item.x >= x1 || item.y >= y1 || item.x + item.w <= x0 || item.y + item.h <= y0) continue;
+    drawFurnitureAt(target, item.f, item.x - x0, item.y - y0, zoom);
+  }
+  return canvas;
+}
+
+/** Drop the least recently shown chunks while the cache is over its pixel
+ *  budget; chunks shown this frame always stay. */
+function evictGroundChunks(cache: GroundCache, frame: number): void {
+  let pixels = 0;
+  for (const chunk of cache.chunks.values()) pixels += chunk.canvas.width * chunk.canvas.height;
+  if (pixels <= GROUND_CACHE_MAX_PIXELS) return;
+  const old = [...cache.chunks.entries()]
+    .filter(([, chunk]) => chunk.used !== frame)
+    .sort((a, b) => a[1].used - b[1].used);
+  for (const [id, chunk] of old) {
+    if (pixels <= GROUND_CACHE_MAX_PIXELS) break;
+    pixels -= chunk.canvas.width * chunk.canvas.height;
+    cache.chunks.delete(id);
+    poolGroundChunk(chunk.canvas);
+  }
 }
 
 /**
@@ -560,6 +697,14 @@ function foregroundEntityOf(ch: Character): ForegroundEntity {
 }
 
 /** @internal */
+/** An inclusive range of tiles to draw (a ground chunk). */
+interface TileRange {
+  c0: number;
+  r0: number;
+  c1: number;
+  r1: number;
+}
+
 export function renderTileGrid(
   ctx: CanvasRenderingContext2D,
   tileMap: TileTypeVal[][],
@@ -568,6 +713,7 @@ export function renderTileGrid(
   zoom: number,
   tileColors?: Array<ColorValue | null>,
   cols?: number,
+  range?: TileRange,
 ): void {
   const s = TILE_SIZE * zoom;
   const useSpriteFloors = hasFloorSprites();
@@ -576,8 +722,10 @@ export function renderTileGrid(
   const layoutCols = cols ?? tmCols;
 
   // Floor tiles + wall base color
-  for (let r = 0; r < tmRows; r++) {
-    for (let c = 0; c < tmCols; c++) {
+  const rEnd = Math.min(tmRows - 1, range?.r1 ?? tmRows - 1);
+  const cEnd = Math.min(tmCols - 1, range?.c1 ?? tmCols - 1);
+  for (let r = Math.max(0, range?.r0 ?? 0); r <= rEnd; r++) {
+    for (let c = Math.max(0, range?.c0 ?? 0); c <= cEnd; c++) {
       const tile = tileMap[r][c];
 
       // Skip VOID tiles entirely (transparent)
@@ -685,10 +833,16 @@ export function renderScene(
 ): void {
   const drawables: ZDrawable[] = [...extra];
 
-  // Furniture
+  // Furniture, skipping what lies wholly outside the canvas (a town larger
+  // than the window keeps half of its trees and tables out of view).
+  const viewW = ctx.canvas?.width ?? Infinity;
+  const viewH = ctx.canvas?.height ?? Infinity;
   for (const f of furniture) {
     const fx = offsetX + f.x * zoom;
     const fy = offsetY + f.y * zoom;
+    const fw = (f.sprite[0]?.length ?? 0) * zoom;
+    const fh = f.sprite.length * zoom;
+    if (fx >= viewW || fy >= viewH || fx + fw <= 0 || fy + fh <= 0) continue;
     drawables.push({ zY: f.zY, draw: (c) => drawFurnitureAt(c, f, fx, fy, zoom) });
   }
 
@@ -1294,6 +1448,43 @@ export interface SelectionRenderState {
   characters: Map<number, Character>;
 }
 
+/** The walls z-sorted with everyone (those not in the static layer), kept
+ *  until the layout, its colours, the wall sprites or the layer change. */
+let wallMemo: {
+  tileMap: TileTypeVal[][];
+  tileColors: Array<ColorValue | null> | undefined;
+  cols: number | undefined;
+  version: number;
+  staticWalls: ReadonlySet<string> | undefined;
+  walls: FurnitureInstance[];
+} | null = null;
+
+function zSortedWalls(
+  tileMap: TileTypeVal[][],
+  tileColors: Array<ColorValue | null> | undefined,
+  cols: number | undefined,
+  staticWalls: ReadonlySet<string> | undefined,
+): FurnitureInstance[] {
+  if (!hasWallSprites()) return [];
+  const version = getWallSpritesVersion();
+  const m = wallMemo;
+  if (
+    m &&
+    m.tileMap === tileMap &&
+    m.tileColors === tileColors &&
+    m.cols === cols &&
+    m.version === version &&
+    m.staticWalls === staticWalls
+  ) {
+    return m.walls;
+  }
+  const walls = getWallInstances(tileMap, tileColors, cols).filter(
+    (w) => !staticWalls?.has(wallTileKey(w)),
+  );
+  wallMemo = { tileMap, tileColors, cols, version, staticWalls, walls };
+  return walls;
+}
+
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -1369,12 +1560,7 @@ export function renderFrame(
 
   // Build wall instances for z-sorting with furniture and characters (the
   // static layer's walls were drawn with the ground)
-  const staticWalls = staticLayer?.walls;
-  const wallInstances = hasWallSprites()
-    ? getWallInstances(tileMap, tileColors, layoutCols).filter(
-        (w) => !staticWalls?.has(wallTileKey(w)),
-      )
-    : [];
+  const wallInstances = zSortedWalls(tileMap, tileColors, layoutCols, staticLayer?.walls);
   const allFurniture = wallInstances.length > 0 ? [...wallInstances, ...furniture] : furniture;
 
   // Tall grass in front of whoever stands in it

@@ -10,6 +10,7 @@ import {
   ZOOM_SCROLL_THRESHOLD,
 } from '../../constants.js';
 import { unlockAudio } from '../../notificationSound.js';
+import { withinTapSlop } from '../../touch/touchPrimitives.js';
 import { transport } from '../../transport/index.js';
 import { furnitureAt } from '../editor/editorActions.js';
 import { buildEditorRenderState } from '../editor/editorRenderState.js';
@@ -26,7 +27,8 @@ import type {
   SelectionRenderState,
 } from '../engine/renderer.js';
 import { renderFrame } from '../engine/renderer.js';
-import { clampManualPan, clampPanAxis } from '../projection.js';
+import { townCameraHome } from '../layout/areaRoles.js';
+import { clampManualPan, clampPanAxis, panToCentre } from '../projection.js';
 import { getShowConnections } from '../showConnections.js';
 import { EditTool, TILE_SIZE } from '../types.js';
 import { computeNormalModeCursor } from './officeCanvasCursor.js';
@@ -40,6 +42,22 @@ import { useCanvasTouchGestures } from './useCanvasTouchGestures.js';
  */
 function dragMoveCursor(editorState: EditorState): string {
   return editorState.dragDuplicate ? 'copy' : 'grabbing';
+}
+
+/** A client point as device px from the canvas centre: where a wheel or
+ *  pinch zoom is anchored. */
+function canvasAnchor(
+  canvas: HTMLCanvasElement | null,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } | undefined {
+  if (!canvas) return undefined;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  return {
+    x: (clientX - rect.left) * dpr - canvas.width / 2,
+    y: (clientY - rect.top) * dpr - canvas.height / 2,
+  };
 }
 
 /** How a character was clicked: `meta` = ⌘/Ctrl held, `double` = a
@@ -66,8 +84,13 @@ interface OfficeCanvasProps {
    *  `duplicate` when Alt was held. The handler decides what that commits. */
   onDrop: (uid: string, col: number, row: number, opts: { duplicate: boolean }) => void;
   editorTick: number;
-  zoom: number;
-  onZoomChange: (zoom: number) => void;
+  /** The live zoom, updated with the pan in the same call (onZoomChange):
+   *  every frame draws and clamps at this one, so a zoom about the pointer
+   *  never meets a pan clamped for the zoom before it. */
+  zoomRef: { readonly current: number };
+  /** Zoom to `zoom`, keeping the world point at `anchor` (device px from the
+   *  canvas centre; default the centre) in place. */
+  onZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
   panRef: React.MutableRefObject<{ x: number; y: number }>;
   /** Whether the area overlay + labels should render (settings toggle OR active edit). */
   showAreas: boolean;
@@ -92,7 +115,7 @@ export function OfficeCanvas({
   onRotateSelected,
   onDrop,
   editorTick: _editorTick,
-  zoom,
+  zoomRef,
   onZoomChange,
   panRef,
   showAreas,
@@ -101,10 +124,16 @@ export function OfficeCanvas({
 }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const offsetRef = useRef({ x: 0, y: 0 });
+  // Where the last frame drew the map, and at which zoom (clicks map back
+  // through the frame on screen).
+  const offsetRef = useRef({ x: 0, y: 0, zoom: zoomRef.current });
   // Middle-mouse pan state (imperative, no re-renders)
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 });
+  // Left-button drag on the ground (not on a character): pending until the
+  // pointer leaves the tap slop, then it pans; the click that ends it is eaten.
+  const groundDragRef = useRef<{ mouseX: number; mouseY: number; panning: boolean } | null>(null);
+  const swallowClickRef = useRef(false);
   // Delete/rotate button bounds (updated each frame by renderer)
   const deleteButtonBoundsRef = useRef<DeleteButtonBounds | null>(null);
   const rotateButtonBoundsRef = useRef<RotateButtonBounds | null>(null);
@@ -120,6 +149,7 @@ export function OfficeCanvas({
       const canvas = canvasRef.current;
       if (!canvas) return { x: px, y: py };
       const layout = officeState.getLayout();
+      const zoom = zoomRef.current;
       return clampManualPan(
         { x: px, y: py },
         { w: layout.cols * TILE_SIZE * zoom, h: layout.rows * TILE_SIZE * zoom },
@@ -127,7 +157,7 @@ export function OfficeCanvas({
         { tight: officeState.town !== null && !isEditMode, marginFraction: PAN_MARGIN_FRACTION },
       );
     },
-    [officeState, zoom, isEditMode],
+    [officeState, zoomRef, isEditMode],
   );
 
   // Resize canvas backing store to device pixels (no DPR transform on ctx).
@@ -166,6 +196,25 @@ export function OfficeCanvas({
         // Canvas dimensions are in device pixels
         const w = canvas.width;
         const h = canvas.height;
+        const zoom = zoomRef.current;
+
+        // A layout just arrived (or one of another size replaced it): start at
+        // its home view, the Lab and its work area in a town larger than the
+        // window; a layout without them stays centred, as before.
+        if (officeState.cameraHomePending && w > 0 && h > 0) {
+          officeState.cameraHomePending = false;
+          const layout = officeState.getLayout();
+          const home = townCameraHome(layout, {
+            cols: w / (TILE_SIZE * zoom),
+            rows: h / (TILE_SIZE * zoom),
+          });
+          panRef.current = home
+            ? panToCentre({ x: home.col * TILE_SIZE, y: home.row * TILE_SIZE }, layout, zoom, {
+                w,
+                h,
+              })
+            : { x: 0, y: 0 };
+        }
 
         const editorRender: EditorRenderState | undefined = isEditMode
           ? buildEditorRenderState(editorState, officeState.getLayout())
@@ -262,7 +311,7 @@ export function OfficeCanvas({
             version: officeState.staticLayerVersion,
           },
         );
-        offsetRef.current = { x: offsetX, y: offsetY };
+        offsetRef.current = { x: offsetX, y: offsetY, zoom };
 
         // Store delete/rotate button bounds for hit-testing
         deleteButtonBoundsRef.current = editorRender?.deleteButtonBounds ?? null;
@@ -295,32 +344,30 @@ export function OfficeCanvas({
     isEditMode,
     editorState,
     _editorTick,
-    zoom,
+    zoomRef,
     panRef,
     showAreas,
     activeAreaLabel,
   ]);
 
   // Convert CSS mouse coords to world (sprite pixel) coords
-  const screenToWorld = useCallback(
-    (clientX: number, clientY: number) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      // CSS coords relative to canvas
-      const cssX = clientX - rect.left;
-      const cssY = clientY - rect.top;
-      // Convert to device pixels
-      const deviceX = cssX * dpr;
-      const deviceY = cssY * dpr;
-      // Convert to world (sprite pixel) coords
-      const worldX = (deviceX - offsetRef.current.x) / zoom;
-      const worldY = (deviceY - offsetRef.current.y) / zoom;
-      return { worldX, worldY, screenX: cssX, screenY: cssY, deviceX, deviceY };
-    },
-    [zoom],
-  );
+  const screenToWorld = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    // CSS coords relative to canvas
+    const cssX = clientX - rect.left;
+    const cssY = clientY - rect.top;
+    // Convert to device pixels
+    const deviceX = cssX * dpr;
+    const deviceY = cssY * dpr;
+    // Convert to world (sprite pixel) coords, through the frame on screen
+    const { x, y, zoom } = offsetRef.current;
+    const worldX = (deviceX - x) / zoom;
+    const worldY = (deviceY - y) / zoom;
+    return { worldX, worldY, screenX: cssX, screenY: cssY, deviceX, deviceY };
+  }, []);
 
   const screenToTile = useCallback(
     (clientX: number, clientY: number): { col: number; row: number } | null => {
@@ -365,7 +412,18 @@ export function OfficeCanvas({
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      // Handle middle-mouse panning
+      // A left press on the ground becomes a pan once it leaves the tap slop.
+      const ground = groundDragRef.current;
+      if (ground && !ground.panning && (e.buttons & 1) === 1) {
+        if (!withinTapSlop(e.clientX - ground.mouseX, e.clientY - ground.mouseY)) {
+          ground.panning = true;
+          officeState.breakCameraFollow();
+          isPanningRef.current = true;
+          const canvas = canvasRef.current;
+          if (canvas) canvas.style.cursor = 'grabbing';
+        }
+      }
+      // Handle middle-mouse (or ground-drag) panning
       if (isPanningRef.current) {
         const dpr = window.devicePixelRatio || 1;
         const dx = (e.clientX - panStartRef.current.mouseX) * dpr;
@@ -528,6 +586,24 @@ export function OfficeCanvas({
         return;
       }
 
+      // Left press on the ground (not a character), outside the editor: a
+      // drag from here pans the map; a press that stays put is still a click.
+      if (e.button === 0 && !isEditMode) {
+        const pos = screenToWorld(e.clientX, e.clientY);
+        const onCharacter =
+          pos !== null && officeState.getCharacterAt(pos.worldX, pos.worldY) !== null;
+        groundDragRef.current = onCharacter
+          ? null
+          : { mouseX: e.clientX, mouseY: e.clientY, panning: false };
+        panStartRef.current = {
+          mouseX: e.clientX,
+          mouseY: e.clientY,
+          panX: panRef.current.x,
+          panY: panRef.current.y,
+        };
+        return;
+      }
+
       // Right-click in edit mode for erasing
       if (e.button === 2 && isEditMode) {
         const tile = screenToTile(e.clientX, e.clientY);
@@ -613,6 +689,18 @@ export function OfficeCanvas({
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      if (e.button === 0 && groundDragRef.current) {
+        const panned = groundDragRef.current.panning;
+        groundDragRef.current = null;
+        if (panned) {
+          // The click this release fires ends the drag, not a tap.
+          swallowClickRef.current = true;
+          isPanningRef.current = false;
+          const canvas = canvasRef.current;
+          if (canvas) canvas.style.cursor = 'default';
+          return;
+        }
+      }
       if (e.button === 1) {
         isPanningRef.current = false;
         const canvas = canvasRef.current;
@@ -749,6 +837,10 @@ export function OfficeCanvas({
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (swallowClickRef.current) {
+        swallowClickRef.current = false;
+        return;
+      }
       if (isEditMode) return; // handled by mouseDown/mouseUp
       performTap(e.clientX, e.clientY, { meta: e.metaKey || e.ctrlKey, double: false });
     },
@@ -774,6 +866,7 @@ export function OfficeCanvas({
 
   const handleMouseLeave = useCallback(() => {
     isPanningRef.current = false;
+    groundDragRef.current = null;
     isEraseDraggingRef.current = false;
     editorState.isDragging = false;
     editorState.endStroke();
@@ -827,7 +920,8 @@ export function OfficeCanvas({
     [isEditMode, officeState, screenToTile],
   );
 
-  // Wheel: Ctrl+wheel to zoom, plain wheel/trackpad to pan
+  // Wheel: Ctrl/⌘+wheel (and a trackpad pinch, which arrives as Ctrl+wheel)
+  // zooms about the cursor; a plain wheel or two-finger trackpad scroll pans.
   const handleWheel = useCallback(
     (e: WheelEvent) => {
       e.preventDefault();
@@ -837,9 +931,10 @@ export function OfficeCanvas({
         if (Math.abs(zoomAccumulatorRef.current) >= ZOOM_SCROLL_THRESHOLD) {
           const delta = zoomAccumulatorRef.current < 0 ? 1 : -1;
           zoomAccumulatorRef.current = 0;
+          const zoom = zoomRef.current;
           const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom + delta));
           if (newZoom !== zoom) {
-            onZoomChange(newZoom);
+            onZoomChange(newZoom, canvasAnchor(canvasRef.current, e.clientX, e.clientY));
           }
         }
       } else {
@@ -852,7 +947,7 @@ export function OfficeCanvas({
         );
       }
     },
-    [zoom, onZoomChange, officeState, panRef, clampPan],
+    [zoomRef, onZoomChange, officeState, panRef, clampPan],
   );
 
   // Attach wheel listener with { passive: false } so preventDefault() works.
@@ -864,11 +959,42 @@ export function OfficeCanvas({
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  // Safari sends a trackpad pinch as gesture events, not Ctrl+wheel: zoom
+  // about the fingers, and keep the page itself from zooming.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    let startZoom = zoomRef.current;
+    const onStart = (e: Event) => {
+      e.preventDefault();
+      startZoom = zoomRef.current;
+    };
+    const onChange = (e: Event) => {
+      e.preventDefault();
+      const g = e as Event & { scale?: number; clientX?: number; clientY?: number };
+      if (typeof g.scale !== 'number') return;
+      const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Math.round(startZoom * g.scale)));
+      if (next === zoomRef.current) return;
+      const anchor =
+        g.clientX !== undefined && g.clientY !== undefined
+          ? canvasAnchor(canvas, g.clientX, g.clientY)
+          : undefined;
+      onZoomChange(next, anchor);
+    };
+    canvas.addEventListener('gesturestart', onStart);
+    canvas.addEventListener('gesturechange', onChange);
+    return () => {
+      canvas.removeEventListener('gesturestart', onStart);
+      canvas.removeEventListener('gesturechange', onChange);
+    };
+  }, [onZoomChange, zoomRef]);
+
   // Touch: one-finger pan, two-finger pinch zoom, short tap = click.
   useCanvasTouchGestures({
+    anchorAt: (clientX, clientY) => canvasAnchor(canvasRef.current, clientX, clientY),
     canvasRef,
     enabled: !isEditMode,
-    zoom,
+    zoomRef,
     onZoomChange,
     panRef,
     clampPan,

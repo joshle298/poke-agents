@@ -22,6 +22,14 @@ export const SEAT_REST_MAX_SEC = 240.0;
 /** Pause between a turn ending and the walk out to the Meadow, so a session
  *  that goes idle for a moment between turns doesn't bounce out of the Lab. */
 export const TOWN_MEADOW_DELAY_SEC = 2.5;
+/** The same pause in a zoned town (a Lab and fields), whose Meadow is a walk
+ *  away: a session resting between turns stays at its seat, and only one that
+ *  stays idle this long walks out. */
+export const TOWN_MEADOW_DELAY_ZONED_SEC = 15;
+/** …and for a Lead (an orchestrator) in a zoned town: its turns come with
+ *  long gaps while its sessions work, and its desk is in the Lab, the far end
+ *  of the town from the Meadow, so it waits at its desk longer. */
+export const TOWN_MEADOW_DELAY_LEAD_SEC = 45;
 /** Wait before trying again when no Meadow / Center tile could be reached. */
 export const TOWN_RETRY_SEC = 3.0;
 /** Random destinations tried per attempt before waiting TOWN_RETRY_SEC. */
@@ -38,6 +46,15 @@ export const TOWN_SPAWN_GRACE_SEC = 1.5;
 /** Meadow destinations prefer tiles at least this many tiles (Chebyshev) from
  *  every other character's tile and destination, so wanderers spread out. */
 export const TOWN_SPREAD_TILES = 2;
+/** In a zoned town (a Lab or fields), an idle character's next stroll goes to
+ *  a Meadow tile within this many tiles (Chebyshev) of it when one is free, so
+ *  wanderers stay in their part of the Meadow instead of crossing the town. */
+export const TOWN_WANDER_RADIUS_TILES = 8;
+/** …and the walk out to the Meadow goes to one within this many tiles. */
+export const TOWN_MEADOW_NEAR_TILES = 14;
+/** A working session with no seat left stands in a field, else on a Meadow
+ *  tile within this many tiles (Chebyshev) of one, near the work. */
+export const TOWN_WORK_MEADOW_NEAR_TILES = 4;
 /** World px a sleeper's body may reach over the bottom edge of the bed above
  *  it before that bed counts as covered (the blanket's front drape). */
 export const TOWN_BED_OVERLAP_PX = 4;
@@ -94,9 +111,13 @@ export const FLOOR_FOREGROUND_Z_OFFSET = 0.75;
  *  generous: wide and tall Pokémon, attack poses): the town's static layer
  *  only takes items no such sprite can be drawn behind. */
 export const STATIC_LAYER_REACH = { halfW: 40, rise: 64, below: 8 } as const;
-/** Largest ground layer (device pixels) kept as one cached canvas; bigger
- *  layouts at high zoom draw their floor and carpets tile by tile. */
+/** Device pixels of cached ground chunks kept at once (chunks on screen are
+ *  always kept, whatever the budget). */
 export const GROUND_CACHE_MAX_PIXELS = 12_000_000;
+/** About how many device pixels a side of a cached ground chunk is. */
+export const GROUND_CHUNK_PX = 1024;
+/** Dropped chunks' canvases kept (empty) for reuse. */
+export const GROUND_CHUNK_POOL_MAX = 32;
 export const OUTLINE_Z_SORT_OFFSET = 0.001;
 export const SELECTED_OUTLINE_ALPHA = 1.0;
 export const HOVERED_OUTLINE_ALPHA = 0.5;

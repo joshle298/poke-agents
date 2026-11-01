@@ -79,7 +79,9 @@ interface ToolOverlayProps {
   subagentTools: Record<number, Record<string, ToolActivity[]>>;
   subagentCharacters: SubagentCharacter[];
   containerRef: React.RefObject<HTMLDivElement | null>;
-  zoom: number;
+  /** The live zoom (see OfficeCanvas), read every frame with the pan, so the
+   *  labels never lag the canvas during a zoom about the pointer. */
+  zoomRef: { readonly current: number };
   panRef: React.RefObject<{ x: number; y: number }>;
   onCloseAgent: (id: number) => void;
   alwaysShowOverlay: boolean;
@@ -530,7 +532,7 @@ export function ToolOverlay({
   subagentTools,
   subagentCharacters,
   containerRef,
-  zoom,
+  zoomRef,
   panRef,
   onCloseAgent,
   alwaysShowOverlay,
@@ -548,6 +550,7 @@ export function ToolOverlay({
 
   const el = containerRef.current;
   if (!el) return null;
+  const zoom = zoomRef.current;
   // dpr is also needed to size the bubble canvases in CSS px (OverlayBubble).
   const dpr = window.devicePixelRatio || 1;
   const project = overlayProjection(

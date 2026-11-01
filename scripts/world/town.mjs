@@ -2,22 +2,25 @@
  * The Pokémon Town layout, built in code so it stays consistent with the art
  * (floor and carpet indices, footprints) and can be regenerated after a tweak.
  *
- *   ┌ forest: two staggered rows of tall trees ─────────────────────┐
- *   │ The Lab: lectern (Leads) + 18 desk seats │ │ Pokémon Center   │
- *   │ ═══════ main street ══════════════════════╧═╧═════════════════ │
- *   │ The Meadow (tall grass, flowers)  ║  fenced pond garden        │
- *   └ forest ────────────────────── south exit ─────────────────────┘
+ *   ┌ forest: two staggered rows of tall trees ───────────────────────────────┐
+ *   │ The Lab (Leads)  │ the Work Yard: picnic and log tables │ Pokémon Center │
+ *   │ ══════════ main street ═════════════════════════════════════════════════ │
+ *   │ The Meadow (tall grass, a route)  ║ the Grove: tables  │ pond garden     │
+ *   └ forest ─────────────────────── south exit ──────────────────────────────┘
  *
- * Working sessions sit at the Lab's desks (seats come from its chairs and
- * benches; the two lectern seats are kept for Leads, Area role `lectern`),
- * idle ones wander and nap in the Meadow (Area role `meadow`), fainted ones
- * rest on the Pokémon Center's beds (Area role `center`).
+ * Working Leads sit at the Lab's desks (Area role `lab`); every other working
+ * session sits at a table outdoors, in the Work Yard or the Grove (Area role
+ * `field`), seated on the benches and stumps around the tables (their seats
+ * come from those chairs), with two field terminals on each table, one facing
+ * each side. Idle sessions wander and nap in the Meadow and the pond garden
+ * (Area role `meadow`), fainted ones rest on the Pokémon Center's beds (role
+ * `center`).
  */
 
 import { LOW_WALL_BRIGHTNESS_LIFT, TALL_GRASS_VARIANT_COUNT } from './art.mjs';
 
-export const TOWN_COLS = 37;
-export const TOWN_ROWS = 27;
+export const TOWN_COLS = 56;
+export const TOWN_ROWS = 38;
 
 const WALL = 0;
 const VOID = 255;
@@ -48,6 +51,8 @@ export const COLOR = {
   // coloured like the grass and match the patch by lightness alone.
   tallGrass: { h: 98, s: 50, b: -10, c: 14 },
   cobble: { h: 32, s: 14, b: 8, c: -10 },
+  /** The Work Yard's paving: warmer and a little lighter than the street cobbles. */
+  yard: { h: 36, s: 22, b: 14, c: -14 },
   labFloor: { h: 200, s: 18, b: 26, c: -58 },
   labWall: { h: 212, s: 24, b: -26, c: -50 },
   labRoof: { h: 214, s: 34, b: -34, c: 0 },
@@ -161,14 +166,36 @@ export function buildTown() {
   /** Tall broadleaf trees and pines, mixed by position. */
   const forestTree = (col, row) =>
     place(hash(col + 17, row + 3) < 0.3 ? 'PINE_TREE' : 'TALL_TREE', col, row);
+  const flowerBed = (spots) => {
+    for (const [c, r] of spots) place((c + r) % 3 === 0 ? 'WILDFLOWERS' : 'FLOWERS', c, r);
+  };
+  /**
+   * An outdoor work table, 3 wide and 2 deep at (c, r), with a seat at each
+   * end of both long sides (two tiles apart, so neighbours never overlap) and
+   * two field terminals on its far half, one turned toward each side.
+   * `kind` picks the set: a picnic table with benches, or a log table with
+   * tree stumps.
+   */
+  const workTable = (kind, c, r) => {
+    const [table, seat] =
+      kind === 'picnic' ? ['PICNIC_TABLE', 'PICNIC_BENCH'] : ['LOG_TABLE', 'TREE_STUMP'];
+    place(table, c, r);
+    for (const dc of [0, 2]) {
+      place(seat, c + dc, r - 1);
+      place(seat, c + dc, r + 2);
+    }
+    place('FIELD_TERMINAL_FRONT_OFF', c, r);
+    place('FIELD_TERMINAL_BACK_OFF', c + 2, r);
+  };
 
-  // ── The Lab: cols 2..23, rows 4..14, door at cols 12-13 ──
-  room(2, 4, 23, 14, FLOOR.labTiles, COLOR.labFloor, COLOR.labWall, COLOR.labRoof, [12, 13]);
-  // The lectern under the whiteboard: the two seats behind it are for Leads.
-  place('CUSHIONED_CHAIR_FRONT', 11, 5);
-  place('CUSHIONED_CHAIR_FRONT', 14, 5);
-  place('PROFESSOR_DESK', 11, 6);
-  // Desks with a PC per seat: two either side of the lectern, five below.
+  // ── The Lab: cols 3..18, rows 4..13, door at cols 10-11. Only Leads work
+  // here: the lectern and four desks, a PC at every seat. ──
+  room(3, 4, 18, 13, FLOOR.labTiles, COLOR.labFloor, COLOR.labWall, COLOR.labRoof, [10, 11]);
+  // The lectern under the whiteboard: two seats behind the professor's desk.
+  place('CUSHIONED_CHAIR_FRONT', 9, 5);
+  place('CUSHIONED_CHAIR_FRONT', 12, 5);
+  place('PROFESSOR_DESK', 9, 6);
+  /** A desk with a PC per seat, the seats on benches below it. */
   const deskWithPcs = (c, row) => {
     place('DESK_FRONT', c, row);
     place('PC_FRONT_OFF', c, row);
@@ -176,58 +203,62 @@ export function buildTown() {
     place('CUSHIONED_BENCH', c, row + 2);
     place('CUSHIONED_BENCH', c + 2, row + 2);
   };
-  for (const c of [3, 7, 16, 20]) deskWithPcs(c, 5);
-  for (const c of [3, 7, 11, 15, 19]) deskWithPcs(c, 9);
-  // between the PCs, a little variety: microscopes and paperwork
-  place('MICROSCOPE', 8, 5);
-  place('MICROSCOPE', 16, 9);
-  place('PAPER_STACK', 17, 5);
-  place('PAPER_STACK', 4, 9);
-  place('PAPER_STACK', 20, 9);
-  place('LAB_MACHINE', 3, 12);
-  place('LAB_MACHINE', 20, 12);
-  place('PLANT', 22, 12);
-  place('BIN', 19, 13);
-  place('DOORMAT', 12, 14);
+  for (const c of [4, 14]) {
+    deskWithPcs(c, 6);
+    deskWithPcs(c, 9);
+  }
+  // between the PCs: microscopes and paperwork
+  place('MICROSCOPE', 5, 6);
+  place('PAPER_STACK', 15, 6);
+  place('PAPER_STACK', 5, 9);
+  place('MICROSCOPE', 15, 9);
+  // research machines either side of the walk from the door
+  place('LAB_MACHINE', 8, 9);
+  place('LAB_MACHINE', 12, 9);
+  place('PLANT', 17, 9);
+  place('BIN', 8, 12);
+  place('DOORMAT', 10, 13);
   // on the back wall
-  place('BOOKSHELF', 3, 4);
-  place('BOOKSHELF', 7, 4);
-  place('CLOCK', 9, 3);
-  place('WHITEBOARD', 12, 3);
-  place('SPECIMEN_CABINET', 16, 3);
-  place('BOOKSHELF', 20, 4);
+  place('BOOKSHELF', 4, 4);
+  place('CLOCK', 7, 3);
+  place('WHITEBOARD', 10, 3);
+  place('SPECIMEN_CABINET', 13, 3);
+  place('BOOKSHELF', 16, 4);
 
-  // ── The Pokémon Center: cols 25..34, rows 4..13, door at cols 29-30 ──
+  // ── The Pokémon Center: cols 37..52, rows 4..13, door at cols 44-45 ──
   room(
-    25,
+    37,
     4,
-    34,
+    52,
     13,
     FLOOR.centerTiles,
     COLOR.centerFloor,
     COLOR.centerWall,
     COLOR.centerRoof,
-    [29, 30],
+    [44, 45],
   );
-  place('COUNTER', 28, 5);
-  place('HEALING_MACHINE', 28, 5);
-  place('PC_FRONT_OFF', 31, 5);
-  place('PLANT', 26, 5);
-  place('PLANT', 33, 5);
+  place('COUNTER', 43, 5);
+  place('HEALING_MACHINE', 44, 5);
+  place('PC_FRONT_OFF', 46, 5);
+  place('PLANT', 38, 5);
+  place('PLANT', 51, 5);
   // the back wall: a wainscot, two pairs of windows and a poster
-  for (let c = 26; c <= 33; c++) {
+  for (let c = 38; c <= 51; c++) {
     place('WAINSCOT', c, 4, { color: facadeOf(COLOR.centerWall) });
   }
-  for (const c of [26, 27, 32, 33]) place('WALL_WINDOW', c, 3);
-  place('CENTER_POSTER', 29, 3);
-  // Beds along the side walls, pillows to the wall: fainted Pokémon rest here.
-  place('CENTER_BED_FRONT', 26, 7);
-  place('CENTER_BED_FRONT', 26, 10);
-  place('CENTER_BED_SIDE', 31, 7);
-  place('CENTER_BED_SIDE', 31, 10);
-  place('DOORMAT', 29, 13);
+  for (const c of [39, 40, 49, 50]) place('WALL_WINDOW', c, 3);
+  place('CENTER_POSTER', 44, 3);
+  // Eight beds in two wards either side of the aisle, pillows toward the
+  // side walls: fainted Pokémon rest here.
+  for (const r of [7, 10]) {
+    place('CENTER_BED_FRONT', 38, r);
+    place('CENTER_BED_FRONT', 41, r);
+    place('CENTER_BED_SIDE', 46, r);
+    place('CENTER_BED_SIDE', 49, r);
+  }
+  place('DOORMAT', 44, 13);
   for (let r = 7; r <= 12; r++) {
-    for (const c of [29, 30]) {
+    for (const c of [44, 45]) {
       carpetTiles[at(c, r)] = {
         variant: CARPET.rug,
         color: { ...COLOR.rugMain },
@@ -236,28 +267,119 @@ export function buildTown() {
     }
   }
 
-  // ── Streets: the main street, the Center's walk, the south exit ──
-  path(2, 15, 34, 16);
-  path(29, 14, 30, 14);
-  path(23, 17, 24, 26);
-  // cobbles in front of the Center, lamps either side of its door, signs outside
-  floorRect(25, 14, 28, 14, FLOOR.cobble, COLOR.cobble);
-  floorRect(31, 14, 34, 14, FLOOR.cobble, COLOR.cobble);
-  place('LAMP_POST', 28, 13);
-  place('LAMP_POST', 31, 13);
-  place('CENTER_SIGN', 32, 13);
-  place('LAB_SIGN', 9, 14);
-  place('SIGNPOST', 25, 17);
-  // the alley between the buildings
-  place('BUSH', 24, 5);
-  place('FLOWERS', 24, 8);
-  place('WILDFLOWERS', 24, 11);
+  // ── The Work Yard: cols 20..35, rows 4..14, a cobbled yard between the Lab
+  // and the Center. Six tables: picnic tables in front, log tables behind. ──
+  floorRect(20, 4, 35, 14, FLOOR.cobble, COLOR.yard);
+  for (const c of [21, 26, 31]) {
+    workTable('picnic', c, 6);
+    workTable('log', c, 11);
+  }
+  place('LAMP_POST', 20, 8);
+  place('LAMP_POST', 35, 8);
+  place('BUSH', 19, 5);
+  place('BUSH', 36, 5);
+  flowerBed([
+    [19, 9],
+    [19, 12],
+    [36, 10],
+    [36, 13],
+  ]);
 
-  // ── The Meadow: cols 3..22, rows 17..22 ──
-  tallGrass(3, 17, 8, 20);
-  tallGrass(4, 21, 7, 22);
-  tallGrass(14, 18, 19, 22);
-  tallGrass(13, 19, 13, 21);
+  // ── Streets: the main street, the doors' walks, the south exit ──
+  path(2, 15, 53, 16);
+  path(10, 14, 11, 14);
+  path(44, 14, 45, 14);
+  path(27, 17, 28, rows - 1);
+  // a route into the Meadow: down from the street, then east to the south path
+  path(12, 17, 13, 25);
+  path(12, 26, 26, 26);
+  // cobbles in front of the Center, lamps either side of its door, signs outside
+  floorRect(38, 14, 43, 14, FLOOR.cobble, COLOR.cobble);
+  floorRect(46, 14, 51, 14, FLOOR.cobble, COLOR.cobble);
+  place('LAMP_POST', 43, 13);
+  place('LAMP_POST', 46, 13);
+  place('CENTER_SIGN', 47, 13);
+  place('LAB_SIGN', 7, 13);
+  place('SIGNPOST', 26, 17);
+  place('SIGNPOST', 39, 17);
+
+  // ── The Meadow: cols 3..25, rows 18..33, either side of the route ──
+  tallGrass(3, 18, 9, 22);
+  tallGrass(4, 23, 8, 24);
+  tallGrass(16, 19, 22, 23);
+  tallGrass(15, 20, 15, 22);
+  tallGrass(4, 29, 11, 32);
+  tallGrass(17, 28, 23, 31);
+  tallGrass(18, 32, 21, 32);
+  place('TREE', 10, 18);
+  place('TREE', 23, 18);
+  place('TREE', 14, 28);
+  place('TREE', 3, 26);
+  place('ROCK', 2, 24);
+  place('ROCK', 11, 23);
+  place('ROCK', 24, 32);
+  place('BUSH', 25, 22);
+  place('BUSH', 15, 33);
+  place('PARK_BENCH', 18, 25);
+  place('PARK_BENCH', 6, 27);
+  flowerBed([
+    [2, 18],
+    [10, 21],
+    [14, 18],
+    [11, 31],
+    [2, 31],
+    [21, 21],
+    [24, 24],
+    [16, 31],
+    [9, 26],
+    [20, 27],
+    [25, 30],
+    [14, 22],
+    [5, 33],
+  ]);
+
+  // ── The Grove: cols 30..38, rows 18..29, four log and picnic tables under
+  // the trees beside the south path ──
+  workTable('log', 31, 20);
+  workTable('log', 35, 20);
+  workTable('picnic', 31, 26);
+  workTable('picnic', 35, 26);
+  place('TREE', 30, 30);
+  place('TREE', 36, 30);
+  place('TREE', 33, 31);
+  place('LAMP_POST', 34, 22);
+  flowerBed([
+    [30, 18],
+    [38, 18],
+    [30, 23],
+    [38, 24],
+    [32, 30],
+  ]);
+
+  // ── The pond garden: fenced along the street (a gate at cols 44-45, in
+  // line with the Center's door) and on the Grove's side below the signpost,
+  // which marks the side entrance; the forest closes the other two sides.
+  for (let c = 40; c <= 52; c++) if (c !== 44 && c !== 45) place('FENCE_FRONT', c, 17);
+  for (let r = 20; r <= 33; r++) place('FENCE_SIDE', 39, r);
+  place('POND_1', 43, 21);
+  tallGrass(47, 26, 51, 30);
+  tallGrass(41, 28, 43, 30);
+  place('PARK_BENCH', 44, 25);
+  place('TREE', 49, 19);
+  place('ROCK', 51, 23);
+  place('ROCK', 41, 33);
+  place('BUSH', 52, 33);
+  place('BUSH', 40, 19);
+  flowerBed([
+    [41, 22],
+    [48, 23],
+    [52, 21],
+    [42, 25],
+    [46, 31],
+    [50, 32],
+    [44, 33],
+  ]);
+
   // Patch edges, coloured like the grass around them: shorter, ragged blades
   // along each patch's top row, a ragged side where it meets the lawn on the
   // left or right, and the patch's shadow on the grass under its bottom row.
@@ -283,77 +405,43 @@ export function buildTown() {
     tileColors[i] = { ...COLOR.grass };
   }
   for (const i of shadows) tiles[i] = FLOOR.grassShadowed;
-  place('TREE', 10, 17);
-  place('TREE', 20, 17);
-  place('ROCK', 2, 22);
-  place('ROCK', 12, 22);
-  place('BUSH', 21, 22);
-  place('PARK_BENCH', 9, 22);
-  for (const [c, r] of [
-    [2, 17],
-    [12, 19],
-    [9, 20],
-    [11, 21],
-    [2, 20],
-    [20, 20],
-    [16, 17],
-  ]) {
-    place('FLOWERS', c, r);
-  }
-  place('WILDFLOWERS', 9, 18);
-  place('WILDFLOWERS', 17, 17);
-  place('WILDFLOWERS', 10, 19);
-  place('WILDFLOWERS', 21, 19);
-
-  // ── The pond garden: fenced along the street (a gate at cols 29-30, in
-  // line with the Center's door) and on the path side below the signpost,
-  // which marks the side entrance; the forest closes the other two sides.
-  for (const c of [26, 27, 28, 31, 32, 33, 34]) place('FENCE_FRONT', c, 17);
-  for (let r = 20; r <= 22; r++) place('FENCE_SIDE', 25, r);
-  place('POND_1', 28, 19);
-  place('BUSH', 34, 22);
-  place('ROCK', 33, 18);
-  for (const [c, r] of [
-    [26, 21],
-    [33, 21],
-    [34, 20],
-    [27, 18],
-    [31, 22],
-  ]) {
-    place(c % 2 ? 'WILDFLOWERS' : 'FLOWERS', c, r);
-  }
 
   // ── The forest edge: tall trees in two staggered rows on every side ──
   // Top: a back row on row 0 and a front row on row 1. A front tree's trunk
-  // row is a wall item's top row on the Lab's back wall, so it skips those.
-  const wallItemCols = new Set([9, 12, 13]);
+  // row is the top row of an item hanging on a building's back wall, so it
+  // skips those columns.
+  const wallItemCols = new Set();
+  for (const f of furniture) if (f.row === 3) wallItemCols.add(f.col).add(f.col + 1);
   for (let c = 1; c < cols - 1; c += 2) forestTree(c, 0);
   for (let c = 0; c < cols - 1; c += 2) {
     if (!wallItemCols.has(c) && !wallItemCols.has(c + 1)) forestTree(c, 1);
   }
   // Sides: a column of trees every two rows down to the bottom band.
-  for (let r = 3; r <= 21; r += 2) {
+  for (let r = 3; r <= rows - 6; r += 2) {
     forestTree(0, r);
     forestTree(cols - 2, r);
   }
-  // Bottom: a back row on row 23 and a front row on row 24, with a gap for the
-  // south exit (cols 23-24).
-  const exit = (c) => c + 1 >= 23 && c <= 24;
+  // Bottom: a back row and a front row, with a gap for the south exit.
+  const exit = (c) => c + 1 >= 27 && c <= 28;
   for (let c = 1; c < cols - 1; c += 2) if (!exit(c)) forestTree(c, rows - 4);
   for (let c = 0; c < cols - 1; c += 2) if (!exit(c)) forestTree(c, rows - 3);
 
   // ── Areas with roles ──
   const areas = [
+    { label: 'Lab', color: '#7aa6ff', role: 'lab' },
+    { label: 'Work Yard', color: '#f2a65a', role: 'field' },
+    { label: 'Grove', color: '#c9a227', role: 'field' },
     { label: 'Meadow', color: '#7ed957', role: 'meadow' },
     { label: 'Pokémon Center', color: '#ff7a8a', role: 'center' },
-    { label: 'Lectern', color: '#ffd166', role: 'lectern' },
   ];
+  area('Lab', 4, 5, 17, 12);
+  area('Work Yard', 20, 4, 35, 14);
+  area('Grove', 30, 18, 38, 29);
   // Not the columns beside the side forest: a wide sprite there would stand
   // in the trees.
-  area('Meadow', 3, 17, 22, 22);
-  area('Meadow', 26, 18, 33, 22);
-  area('Pokémon Center', 26, 7, 33, 12);
-  area('Lectern', 11, 5, 14, 7);
+  area('Meadow', 3, 18, 25, 33);
+  area('Meadow', 40, 18, 52, 33);
+  area('Pokémon Center', 38, 7, 51, 12);
 
   // Nothing may sit on a VOID tile (none here, but keep the invariant visible).
   for (let i = 0; i < tiles.length; i++) if (tiles[i] === VOID) tileColors[i] = null;

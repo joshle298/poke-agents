@@ -26,7 +26,7 @@ declare global {
         /** Current tile, and where a town Area role sends it (undefined outside the town). */
         col: number;
         row: number;
-        townGoal?: 'meadow' | 'center' | 'stay';
+        townGoal?: 'meadow' | 'center' | 'stay' | 'work';
         /** World position (px), the FSM state, and whether it works. */
         x: number;
         y: number;

@@ -39,6 +39,7 @@ import type { OfficeState } from '../office/engine/officeState.js';
 import type { BundledLayoutId } from '../office/layout/bundledLayouts.js';
 import { BUNDLED_LAYOUTS, prepareBundledLayout } from '../office/layout/bundledLayouts.js';
 import { getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js';
+import { panForZoom } from '../office/projection.js';
 import type {
   EditTool as EditToolType,
   OfficeLayout,
@@ -75,7 +76,12 @@ interface EditorActions extends Omit<FurnitureColorActions, 'pickColorAt'> {
   handleRedo: () => void;
   handleReset: () => void;
   handleSave: () => void;
-  handleZoomChange: (zoom: number) => void;
+  /** Zoom to `zoom`, keeping the world point at `anchor` (device px from the
+   *  canvas centre; default the centre) in place. */
+  handleZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
+  /** The live zoom: set in the same call as the pan it was scaled for, so the
+   *  canvas draws and clamps that pan at its zoom before React re-renders. */
+  zoomRef: React.MutableRefObject<number>;
   handleEditorTileAction: (col: number, row: number) => void;
   handleEditorEraseAction: (col: number, row: number) => void;
   handleEditorSelectionChange: () => void;
@@ -463,13 +469,15 @@ export function useEditorActions(
   /**
    * After a layout of another size replaced the current one (a template, or
    * undoing one): nobody may stand inside a wall or the void, and the camera
-   * re-centers on the new layout.
+   * goes to the new layout's home view.
    */
   const settleResizedLayout = useCallback(
     (before: OfficeLayout, after: OfficeLayout) => {
       if (before.cols === after.cols && before.rows === after.rows) return;
-      getOfficeState().relocateStrandedCharacters();
-      panRef.current = { x: 0, y: 0 };
+      const os = getOfficeState();
+      os.relocateStrandedCharacters();
+      // The town's home view (the Lab and its work area), else the map centred.
+      os.requestCameraHome();
     },
     [getOfficeState],
   );
@@ -553,9 +561,22 @@ export function useEditorActions(
   // Notify React that imperative editor selection changed (e.g., from OfficeCanvas mouseUp)
   const handleEditorSelectionChange = bumpTick;
 
-  const handleZoomChange = useCallback((newZoom: number) => {
-    setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom)));
-  }, []);
+  // The zoom the pan was last scaled for: wheel and pinch steps can arrive
+  // faster than React re-renders with the new zoom, and the canvas draws and
+  // clamps with this one, never a stale prop.
+  const zoomRef = useRef(zoom);
+  const handleZoomChange = useCallback(
+    (newZoom: number, anchor?: { x: number; y: number }) => {
+      const to = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom));
+      const from = zoomRef.current;
+      if (to === from) return;
+      // Keep the point under the cursor (or the view's centre) where it is.
+      panRef.current = panForZoom(panRef.current, from, to, anchor);
+      zoomRef.current = to;
+      setZoom(to);
+    },
+    [panRef],
+  );
 
   /**
    * A furniture drag released at (col,row): validate, commit, and settle the
@@ -818,6 +839,7 @@ export function useEditorActions(
     handleReset,
     handleSave,
     handleZoomChange,
+    zoomRef,
     handleEditorTileAction,
     handleEditorEraseAction,
     handleEditorSelectionChange,

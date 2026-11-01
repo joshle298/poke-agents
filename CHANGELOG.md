@@ -2,12 +2,22 @@
 
 ## Unreleased
 
+A bigger town, with the work moved outdoors.
+
+### Features
+
+- **A town twice the size.** The Pokémon Town is now 56×38 tiles, at the same zoom: the Lab and the Pokémon Center along the top, a cobbled Work Yard between them, and south of the main street a larger Meadow with a route through its tall grass, the Grove and the fenced pond garden. The Center has eight beds.
+- **The Lab is for Leads.** A working Lead sits at one of the Lab's desks. Every other working session sits at a picnic table or a log table outdoors, in the Work Yard or the Grove, on a bench or a tree stump; each table has two field terminals, one facing each side, that light up while someone works there. When every outdoor seat is taken, the rest work standing in a work area or at the edge of the Meadow beside one, and take a seat once its last sitter has walked off. With no Leads the Lab stays empty. A session resting between turns stays at its seat (a Lead longer), and one whose turn ends on its way to its seat walks on and rests there; one idle for longer still wanders and naps in the Meadow, now in the part nearest it. Fainted ones still rest in the Center, and asleep ones stay put.
+- **Look around a town larger than the window.** Scroll with two fingers or the mouse wheel to move around, drag the ground with the mouse (in the classic office too), and pinch or Ctrl/⌘-scroll to zoom: the zoom now stays on the point under the pointer (the zoom buttons keep the middle of the view). The office opens on the Lab and the Work Yard (in a narrow window, the whole Lab and as much of the Work Yard as fits), and the camera stops at the town's edges.
+
 ### Changes
 
 - **Hide sessions idle longer than.** The Sessions modal's activity window says what it does, with shorter choices: 15 min, 30 min, 1 h, 6 h, 24 h, 3 days or Never. A session with no activity for longer leaves the town by itself. **Never** says that it still stops at 30 days, the furthest back Poke Agents looks. **Show idle sessions** sits right under it and says what turning it off leaves: working, waiting and errored sessions.
 - **Archive instead of PC.** The toolbar's **PC** button is now **Archive** and opens **Archived sessions**, which says what it lists. **Withdraw** is now **Restore**, and the Pokédex's **Deposit in PC** is now **Archive**.
 - **The catch orb.** Sessions are now thrown out of and recalled into Poke Agents' own catch orb, and messages fly between them as one, instead of the teal-and-cream capsule: a glossy teal-to-indigo sphere inside a gold C for Conductor, open on the right with a small latch. The C spins round it while it flies and comes to rest as it lands, then the orb cracks open with a slit of light and a flash before the Pokémon appears. A session whose sprites are loading waits as the closed orb, and the party bar, the Pokédex, the archived sessions and the empty office show it where there is no portrait.
 - **A new app icon:** the catch orb on the night tile, with two sparkles, in the Mac app, the favicon and the installed web app. At 16 and 48 px it is drawn without outlines or sparkles.
+- A saved Pokémon Town from an earlier version that was never edited becomes the new town when the office starts, keeping the pets placed in it; the old one is kept as `~/.pixel-agents/layout.json.town-….bak`. A town you edited stays as it is (Layout → Templates → Pokémon Town loads the new one), and the classic office and your own layouts are never touched.
+- The floor, the paths and the forest are drawn once in pieces as they come into view, so a big town costs what the window shows, at any zoom.
 
 ### Fixes
 

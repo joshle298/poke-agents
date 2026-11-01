@@ -72,6 +72,42 @@ export function clampManualPan(
   };
 }
 
+/**
+ * The pan after a zoom from `from` to `to` that keeps the world point under
+ * `anchor` where it is on screen. `anchor` is device px from the canvas
+ * centre (the cursor for a wheel or pinch zoom); the default, the centre,
+ * is what the zoom buttons use. Without this the view would jump on a map
+ * panned far from its middle.
+ */
+export function panForZoom(
+  pan: { x: number; y: number },
+  from: number,
+  to: number,
+  anchor: { x: number; y: number } = { x: 0, y: 0 },
+): { x: number; y: number } {
+  const k = to / from;
+  return { x: anchor.x - k * (anchor.x - pan.x), y: anchor.y - k * (anchor.y - pan.y) };
+}
+
+/**
+ * The pan that puts world point (`x`, `y`) (world px) in the middle of the
+ * view, clamped per axis like a follow (clampPanAxis): the camera's start in
+ * a town larger than the window. Device px.
+ */
+export function panToCentre(
+  point: { x: number; y: number },
+  layout: { cols: number; rows: number },
+  zoom: number,
+  view: { w: number; h: number },
+): { x: number; y: number } {
+  const mapW = layout.cols * TILE_SIZE * zoom;
+  const mapH = layout.rows * TILE_SIZE * zoom;
+  return {
+    x: clampPanAxis(mapW / 2 - point.x * zoom, mapW, view.w),
+    y: clampPanAxis(mapH / 2 - point.y * zoom, mapH, view.h),
+  };
+}
+
 /** Projects world points into CSS pixels within the overlay container that
  *  sits on top of the canvas. */
 export interface OverlayProjection {

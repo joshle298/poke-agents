@@ -15,11 +15,14 @@ import { BUNDLED_LAYOUTS, prepareBundledLayout } from '../src/office/layout/bund
 import {
   getActiveCategories,
   getAmbientAnimationFrames,
+  getAnimationFrames,
   getCatalogByCategory,
   getCatalogEntry,
+  getOnStateType,
   getRotatedType,
 } from '../src/office/layout/furnitureCatalog.js';
-import { TILE_SIZE } from '../src/office/types.js';
+import { layoutToSeats } from '../src/office/layout/layoutSerializer.js';
+import { Direction, TILE_SIZE } from '../src/office/types.js';
 import { loadBundledCatalog, readBundledLayout, TOWN_LAYOUT_PATH } from './worldFixtures.js';
 
 beforeAll(() => {
@@ -64,6 +67,48 @@ test('the editor palette has an Outdoor category with the town’s outdoor items
   assert.equal(trim?.backgroundTiles, trim?.footprintH, 'and never blocks what is there');
 });
 
+test('the work areas’ tables are desks, their benches and stumps are seats', () => {
+  for (const type of ['PICNIC_TABLE', 'LOG_TABLE']) {
+    const entry = getCatalogEntry(type)!;
+    assert.equal(entry.isDesk, true, `${type} is a desk`);
+    assert.deepEqual([entry.footprintW, entry.footprintH, entry.backgroundTiles], [3, 2, 1]);
+  }
+  const chairs = getCatalogByCategory('chairs').map((e) => e.type);
+  for (const type of ['PICNIC_BENCH', 'TREE_STUMP']) {
+    assert.ok(chairs.includes(type), `${type} is in Chairs`);
+    assert.deepEqual(
+      [getCatalogEntry(type)!.footprintW, getCatalogEntry(type)!.footprintH],
+      [1, 1],
+    );
+  }
+  // A seat at each end of a table's long sides, facing it.
+  const placed = [
+    { uid: 't', type: 'PICNIC_TABLE', col: 2, row: 2 },
+    { uid: 'n', type: 'PICNIC_BENCH', col: 2, row: 1 },
+    { uid: 's', type: 'TREE_STUMP', col: 4, row: 4 },
+  ];
+  const seats = layoutToSeats(placed);
+  assert.equal(seats.get('n')?.facingDir, Direction.DOWN);
+  assert.equal(seats.get('s')?.facingDir, Direction.UP);
+});
+
+test('the field terminal stands on a table, turns front/back and lights up when on', () => {
+  const front = getCatalogEntry('FIELD_TERMINAL_FRONT_OFF')!;
+  assert.equal(front.canPlaceOnSurfaces, true, 'a surface item');
+  assert.equal(front.category, 'electronics', 'an electronic: seats facing it come first');
+  assert.equal(getRotatedType('FIELD_TERMINAL_FRONT_OFF', 'cw'), 'FIELD_TERMINAL_BACK_OFF');
+  assert.equal(getRotatedType('FIELD_TERMINAL_BACK_OFF', 'cw'), 'FIELD_TERMINAL_FRONT_OFF');
+  assert.equal(getOnStateType('FIELD_TERMINAL_FRONT_OFF'), 'FIELD_TERMINAL_FRONT_ON_1');
+  assert.equal(getOnStateType('FIELD_TERMINAL_BACK_OFF'), 'FIELD_TERMINAL_BACK_ON');
+  assert.deepEqual(getAnimationFrames('FIELD_TERMINAL_FRONT_ON_1'), [
+    'FIELD_TERMINAL_FRONT_ON_1',
+    'FIELD_TERMINAL_FRONT_ON_2',
+  ]);
+  const electronics = getCatalogByCategory('electronics').map((e) => e.type);
+  assert.ok(electronics.includes('FIELD_TERMINAL_FRONT_OFF'), 'in the palette');
+  assert.ok(!electronics.includes('FIELD_TERMINAL_BACK_OFF'), 'one terminal; R turns it');
+});
+
 test('the fence turns between its horizontal and vertical runs; a bed swaps its pillow', () => {
   assert.equal(getRotatedType('FENCE_FRONT', 'cw'), 'FENCE_SIDE');
   assert.equal(getRotatedType('FENCE_SIDE', 'cw'), 'FENCE_FRONT');
@@ -97,7 +142,7 @@ test('both bundled maps load, and loading one keeps the pets already placed', as
   const ids = BUNDLED_LAYOUTS.map((l) => l.id);
   assert.deepEqual(ids, ['town', 'classic']);
   const [town, classic] = await Promise.all(BUNDLED_LAYOUTS.map((l) => l.load()));
-  assert.equal(town.cols, 37);
+  assert.equal(town.cols, 56);
   assert.ok(town.areas?.some((a) => a.role === 'meadow'));
   assert.equal(classic.areas, undefined, 'the classic office has no roles');
 

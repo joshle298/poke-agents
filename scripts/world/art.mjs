@@ -1550,3 +1550,258 @@ export function pathCarpet() {
   }
   return sheet;
 }
+
+// ── The outdoor work areas ───────────────────────────────────
+
+/** Sun-bleached wood for the outdoor tables and benches: greyer than the
+ *  Lab's desks, so the work areas read as weathered garden furniture. */
+const TIMBER = ['#5B4636', '#7A604B', '#987C62', '#B89C7F', '#D6BFA2'].map((c) => hex(c));
+const TIMBER_OUT = hex('#33261C');
+/** A sawn log's cut face: pale heartwood with darker growth rings. */
+const HEARTWOOD = ['#8A5F38', '#B07F4E', '#CFA06A', '#E6C08A'].map((c) => hex(c));
+/** The field terminal's rugged casing: olive-green enamel over dark rubber. */
+const CASING = ['#2A3324', '#3F4C35', '#5A6B48', '#7E9264', '#A9BB8A'].map((c) => hex(c));
+const SCREEN_OFF = ['#1A2422', '#24332F', '#33463F'].map((c) => hex(c));
+const SCREEN_ON = ['#123A2C', '#1E6B4C', '#3FBF7F', '#A8F0C6'].map((c) => hex(c));
+const LED_ON = hex('#F2C94C');
+const LED_OFF = hex('#5C5A3A');
+
+/**
+ * A picnic table, 3×2 tiles (a desk: field terminals stand on it): a slatted
+ * top of three long planks seen from above, reaching the top of its tiles so
+ * whoever sits on the far bench sits right at it, its front edge, and A-frame
+ * legs at both ends. The top row is walk-behind; the benches are separate
+ * seats (PICNIC_BENCH), above and below.
+ */
+export function picnicTable() {
+  const c = new Canvas(48, 32);
+  c.rect(3, 27, 42, 3, SHADOW_SOFT);
+  // A-frame legs: two splayed boards at each end, under the top
+  const legs = new Canvas(48, 32);
+  for (const [x, dir] of [
+    [6, -1],
+    [10, 1],
+    [37, -1],
+    [41, 1],
+  ]) {
+    for (let y = 20; y <= 29; y++) {
+      const dx = Math.round(((y - 20) / 9) * 2) * dir;
+      legs.hline(x + dx, x + dx + 1, y, y === 29 ? TIMBER[0] : TIMBER[1]);
+    }
+  }
+  legs.hline(7, 11, 24, TIMBER[0]);
+  legs.hline(38, 42, 24, TIMBER[0]);
+  legs.outline(TIMBER_OUT, { where: (x, y) => y >= 20 });
+  c.blit(legs, 0, 0);
+  const top = new Canvas(48, 32);
+  // three planks running the table's length, with dark gaps between them
+  const planks = [
+    { y0: 1, y1: 5 },
+    { y0: 7, y1: 11 },
+    { y0: 13, y1: 17 },
+  ];
+  planks.forEach(({ y0, y1 }, i) => {
+    top.rect(1, y0, 46, y1 - y0 + 1, TIMBER[2]);
+    top.hline(1, 46, y0, TIMBER[3]);
+    top.hline(1, 46, y1, TIMBER[1]);
+    // end grain and a nail head near each end
+    top.vline(1, y0, y1, TIMBER[3]);
+    top.vline(46, y0, y1, TIMBER[1]);
+    for (const x of [4, 43]) top.set(x, y0 + 2, TIMBER[0]);
+    // knots and grain, a little different on each plank
+    const knots = [
+      [14, 31],
+      [22, 36],
+      [9, 27],
+    ][i];
+    for (const x of knots) {
+      top.set(x, y0 + 1, TIMBER[1]);
+      top.set(x + 1, y0 + 2, TIMBER[1]);
+    }
+    top.hline(18 + i * 5, 25 + i * 5, y0 + 2, TIMBER[3]);
+  });
+  for (const y of [6, 12]) top.hline(1, 46, y, TIMBER[0]);
+  // the front edge: the near plank's thickness
+  top.rect(1, 18, 46, 2, TIMBER[1]);
+  top.hline(1, 46, 19, TIMBER[0]);
+  top.outline(TIMBER_OUT);
+  c.blit(top, 0, 0);
+  return c;
+}
+
+/**
+ * A picnic bench seat, one tile (a chair: whoever sits here works at the
+ * table beside it): a short slatted plank on two legs, as wide as one sitter,
+ * low in its tile so the far bench meets the table's edge.
+ */
+export function picnicBench() {
+  const c = new Canvas(16, 16);
+  c.rect(1, 15, 14, 1, SHADOW_SOFT);
+  const b = new Canvas(16, 16);
+  // legs
+  for (const x of [3, 11]) {
+    b.rect(x, 13, 2, 2, TIMBER[1]);
+    b.set(x, 13, TIMBER[2]);
+  }
+  // the seat: two slats seen from above, then the front edge
+  b.rect(1, 8, 14, 2, TIMBER[2]);
+  b.hline(1, 14, 8, TIMBER[3]);
+  b.rect(1, 11, 14, 1, TIMBER[2]);
+  b.hline(1, 14, 10, TIMBER[0]);
+  b.hline(1, 14, 12, TIMBER[1]);
+  b.set(2, 9, TIMBER[0]);
+  b.set(13, 11, TIMBER[0]);
+  b.outline(TIMBER_OUT);
+  c.blit(b, 0, 0);
+  return c;
+}
+
+/** The cut face of a log or stump: an ellipse of heartwood with rings. */
+function sawnFace(c, cx, cy, rx, ry, { rings = 2 } = {}) {
+  c.ellipse(cx, cy, rx, ry, HEARTWOOD[2]);
+  c.fillWhere(
+    (px, py) => ((px - cx) / rx) ** 2 + ((py - cy) / ry) ** 2 <= 1 && py < cy - ry * 0.35,
+    HEARTWOOD[3],
+  );
+  for (let i = 1; i <= rings; i++) {
+    const f = i / (rings + 1);
+    const rrx = rx * f;
+    const rry = ry * f;
+    c.fillWhere((px, py) => {
+      const d = ((px - cx) / rrx) ** 2 + ((py - cy) / rry) ** 2;
+      return d <= 1 && d > 0.55;
+    }, HEARTWOOD[1]);
+  }
+  c.set(Math.round(cx - 0.5), Math.round(cy - 0.5), HEARTWOOD[0]);
+}
+
+/**
+ * A log table, 3×2 tiles (a desk): a thick split-log slab on two short
+ * stumps, its flat top grained end to end and reaching the top of its tiles,
+ * its sawn ends showing their rings inside a band of bark. Goes with
+ * TREE_STUMP seats.
+ */
+export function logTable() {
+  const c = new Canvas(48, 32);
+  c.ellipse(24.5, 27.5, 21, 2.6, SHADOW_SOFT);
+  // the stumps it rests on
+  const stumps = new Canvas(48, 32);
+  for (const x of [8, 34]) {
+    stumps.rect(x, 18, 6, 9, BARK[1]);
+    stumps.vline(x + 1, 18, 26, BARK[2]);
+    stumps.vline(x + 4, 19, 26, BARK[0]);
+    stumps.hline(x - 1, x + 6, 26, BARK[1]);
+  }
+  stumps.outline(BARK_OUT);
+  c.blit(stumps, 0, 0);
+  const log = new Canvas(48, 32);
+  // the flat, split face: long grain running end to end
+  log.rect(5, 1, 38, 13, HEARTWOOD[2]);
+  log.hline(5, 42, 1, HEARTWOOD[3]);
+  log.hline(5, 42, 2, HEARTWOOD[3]);
+  for (const [x0, x1, y] of [
+    [8, 20, 4],
+    [24, 39, 4],
+    [9, 27, 7],
+    [31, 41, 8],
+    [7, 16, 10],
+    [21, 37, 11],
+  ]) {
+    log.hline(x0, x1, y, HEARTWOOD[1]);
+  }
+  log.set(29, 6, HEARTWOOD[0]);
+  log.set(30, 6, HEARTWOOD[1]);
+  // the slab's thickness: bark along its front
+  log.rect(5, 14, 38, 3, BARK[2]);
+  log.hline(5, 42, 14, BARK[3]);
+  log.hline(5, 42, 16, BARK[1]);
+  for (let x = 8; x < 42; x += 5) log.set(x, 15, BARK[1]);
+  // sawn ends: a ring of bark around rings of heartwood
+  for (const cx of [4.5, 43.5]) {
+    log.ellipse(cx, 8.5, 4, 8, BARK[1]);
+    log.ellipse(cx, 8.5, 3, 6.6, HEARTWOOD[2]);
+    log.fillWhere((px, py) => {
+      const d = ((px - cx) / 2) ** 2 + ((py - 8.5) / 4.4) ** 2;
+      return d <= 1 && d > 0.45;
+    }, HEARTWOOD[1]);
+    log.set(Math.floor(cx), 8, HEARTWOOD[0]);
+    log.set(Math.floor(cx) - 1, 3, HEARTWOOD[3]);
+  }
+  log.outline(BARK_OUT);
+  c.blit(log, 0, 0);
+  return c;
+}
+
+/** A tree stump to sit on, one tile (a chair): rings on top, bark around,
+ *  two roots at its foot, low in its tile so a stump above a table meets it. */
+export function treeStump() {
+  const c = new Canvas(16, 16);
+  c.ellipse(8.5, 14.5, 6.5, 1.6, SHADOW);
+  const s = new Canvas(16, 16);
+  // bark sides
+  s.rect(3, 9, 10, 5, BARK[1]);
+  s.vline(4, 10, 13, BARK[2]);
+  s.vline(7, 11, 13, BARK[0]);
+  s.vline(10, 10, 13, BARK[2]);
+  s.vline(12, 10, 13, BARK[0]);
+  // roots
+  s.hline(1, 3, 13, BARK[1]);
+  s.set(2, 12, BARK[2]);
+  s.hline(12, 14, 13, BARK[0]);
+  s.set(13, 12, BARK[1]);
+  // the sawn top
+  sawnFace(s, 8, 9, 5, 2.6, { rings: 1 });
+  s.outline(BARK_OUT);
+  c.blit(s, 0, 0);
+  return c;
+}
+
+/**
+ * The field terminal, one tile, on a table's far half (a surface item): our
+ * own rugged little console — an olive casing with a stubby antenna and a
+ * status light, standing on the planks with its screen up. `side` 'front'
+ * shows the screen and the keys (a prompt and a cursor; `on` lights it,
+ * `frame` blinks the cursor), 'back' shows the lid's ridged grip (`on`
+ * lights the antenna and spills the screen's glow over the top edge).
+ */
+export function fieldTerminal(side = 'front', { on = false, frame = 0 } = {}) {
+  const c = new Canvas(16, 16);
+  c.rect(3, 15, 10, 1, SHADOW_SOFT);
+  const t = new Canvas(16, 16);
+  // antenna: a short mast on the right with a light on top
+  t.vline(11, 3, 5, CASING[1]);
+  t.set(11, 2, on ? LED_ON : LED_OFF);
+  if (side === 'front') {
+    // the screen housing, standing up
+    t.rect(3, 6, 10, 6, CASING[2]);
+    t.hline(3, 12, 6, CASING[3]);
+    t.vline(3, 6, 11, CASING[3]);
+    // the screen and its prompt
+    const s = on ? SCREEN_ON : SCREEN_OFF;
+    t.rect(5, 7, 6, 4, s[0]);
+    t.hline(5, 10, 7, s[1]);
+    if (on) {
+      t.pattern(6, 8, ['p.', '.p'], { p: s[3] });
+      t.hline(8, 9, 9, frame === 0 ? s[3] : s[2]);
+    } else {
+      t.set(6, 8, s[2]);
+    }
+    // the keys in front of it, lying on the table
+    t.rect(3, 12, 10, 2, CASING[3]);
+    t.hline(3, 12, 12, CASING[4]);
+    for (let x = 4; x <= 11; x += 2) t.set(x, 13, CASING[2]);
+  } else {
+    // the lid seen from behind: ridged grip and a tag
+    t.rect(3, 6, 10, 7, CASING[2]);
+    t.hline(3, 12, 6, CASING[3]);
+    t.vline(3, 6, 12, CASING[3]);
+    for (const y of [8, 10]) t.hline(5, 10, y, CASING[1]);
+    t.rect(6, 11, 4, 1, CASING[4]);
+    t.hline(3, 12, 13, CASING[1]);
+    // the lit screen spills a glow past the lid's top edge
+    if (on) t.hline(5, 10, 5, SCREEN_ON[2]);
+  }
+  t.outline(CASING[0]);
+  c.blit(t, 0, 0);
+  return c;
+}

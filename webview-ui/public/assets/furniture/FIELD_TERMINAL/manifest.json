@@ -1,0 +1,83 @@
+{
+  "id": "FIELD_TERMINAL",
+  "name": "Field Terminal",
+  "category": "electronics",
+  "type": "group",
+  "groupType": "rotation",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": true,
+  "backgroundTiles": 0,
+  "members": [
+    {
+      "type": "group",
+      "groupType": "state",
+      "orientation": "front",
+      "members": [
+        {
+          "type": "group",
+          "groupType": "animation",
+          "state": "on",
+          "members": [
+            {
+              "type": "asset",
+              "id": "FIELD_TERMINAL_FRONT_ON_1",
+              "file": "FIELD_TERMINAL_FRONT_ON_1.png",
+              "width": 16,
+              "height": 16,
+              "footprintW": 1,
+              "footprintH": 1,
+              "frame": 0
+            },
+            {
+              "type": "asset",
+              "id": "FIELD_TERMINAL_FRONT_ON_2",
+              "file": "FIELD_TERMINAL_FRONT_ON_2.png",
+              "width": 16,
+              "height": 16,
+              "footprintW": 1,
+              "footprintH": 1,
+              "frame": 1
+            }
+          ]
+        },
+        {
+          "type": "asset",
+          "id": "FIELD_TERMINAL_FRONT_OFF",
+          "file": "FIELD_TERMINAL_FRONT_OFF.png",
+          "width": 16,
+          "height": 16,
+          "footprintW": 1,
+          "footprintH": 1,
+          "state": "off"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "groupType": "state",
+      "orientation": "back",
+      "members": [
+        {
+          "type": "asset",
+          "id": "FIELD_TERMINAL_BACK_ON",
+          "file": "FIELD_TERMINAL_BACK_ON.png",
+          "width": 16,
+          "height": 16,
+          "footprintW": 1,
+          "footprintH": 1,
+          "state": "on"
+        },
+        {
+          "type": "asset",
+          "id": "FIELD_TERMINAL_BACK_OFF",
+          "file": "FIELD_TERMINAL_BACK_OFF.png",
+          "width": 16,
+          "height": 16,
+          "footprintW": 1,
+          "footprintH": 1,
+          "state": "off"
+        }
+      ]
+    }
+  ]
+}

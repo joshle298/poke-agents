@@ -397,7 +397,7 @@ function App() {
       const projection = overlayProjection(
         getOfficeState().getLayout(),
         canvas.getBoundingClientRect(),
-        editor.zoom,
+        editor.zoomRef.current,
         editor.panRef.current,
         window.devicePixelRatio || 1,
       );
@@ -411,7 +411,7 @@ function App() {
     editor.handleEditorTileAction,
     editor.handleEditorEraseAction,
     editor.handleDrop,
-    editor.zoom,
+    editor.zoomRef,
     editor.panRef,
     effectiveShowAreas,
   ]);
@@ -771,7 +771,7 @@ function App() {
         onRotateSelected={editor.handleRotateSelected}
         onDrop={editor.handleDrop}
         editorTick={editor.editorTick}
-        zoom={editor.zoom}
+        zoomRef={editor.zoomRef}
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
         showAreas={effectiveShowAreas}
@@ -913,7 +913,7 @@ function App() {
             subagentTools={subagentTools}
             subagentCharacters={subagentCharacters}
             containerRef={containerRef}
-            zoom={editor.zoom}
+            zoomRef={editor.zoomRef}
             panRef={editor.panRef}
             onCloseAgent={handleCloseAgent}
             alwaysShowOverlay={alwaysShowOverlay}

@@ -11,8 +11,12 @@ interface CanvasTouchOptions {
    *  mousedown/mouseup and drives select/paint through the mouse handlers.
    *  (Touch *drags* don't paint — mobile hides the editor.) */
   enabled: boolean;
-  zoom: number;
-  onZoomChange: (zoom: number) => void;
+  /** The live zoom (see OfficeCanvas): a pinch step reads the zoom the
+   *  previous step set, not one React hasn't re-rendered with yet. */
+  zoomRef: { readonly current: number };
+  onZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
+  /** A client point as the zoom's anchor (device px from the canvas centre). */
+  anchorAt?: (clientX: number, clientY: number) => { x: number; y: number } | undefined;
   panRef: { current: { x: number; y: number } };
   clampPan: (x: number, y: number) => { x: number; y: number };
   /** A pan began — the camera stops following anything automatically. */
@@ -106,7 +110,7 @@ export function useCanvasTouchGestures(options: CanvasTouchOptions): void {
         // Second finger down: any pending tap/pan becomes a pinch.
         mode = 'pinch';
         pinchStartDist = distance(e.touches[0], e.touches[1]);
-        pinchStartZoom = latest.current.zoom;
+        pinchStartZoom = latest.current.zoomRef.current;
         anchorPan(midpoint(e.touches[0], e.touches[1]));
       }
     };
@@ -114,12 +118,18 @@ export function useCanvasTouchGestures(options: CanvasTouchOptions): void {
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       if (mode === 'pinch' && e.touches.length >= 2) {
-        const { zoom, onZoomChange } = latest.current;
+        const { zoomRef, onZoomChange, anchorAt } = latest.current;
+        const zoom = zoomRef.current;
         const proposed = Math.round(
           pinchStartZoom * (distance(e.touches[0], e.touches[1]) / pinchStartDist),
         );
         const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, proposed));
-        if (next !== zoom) onZoomChange(next);
+        if (next !== zoom) {
+          // Zoom about the fingers, then pan on from the pan that zoom left.
+          const mid = midpoint(e.touches[0], e.touches[1]);
+          onZoomChange(next, anchorAt?.(mid.clientX, mid.clientY));
+          anchorPan(mid);
+        }
         // Two-finger drag also pans, tracked from the midpoint.
         manualPan(midpoint(e.touches[0], e.touches[1]));
         return;
