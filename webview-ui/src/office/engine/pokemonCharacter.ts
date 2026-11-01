@@ -14,9 +14,9 @@
 import {
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
-  CAPSULE_HIT_HALF_WIDTH_PX,
-  CAPSULE_HIT_RISE_PX,
   CHARACTER_SITTING_OFFSET_PX,
+  ORB_HIT_HALF_WIDTH_PX,
+  ORB_HIT_RISE_PX,
   POKEMON_BUBBLE_GAP_PX,
   POKEMON_FEET_BELOW_GROUND_PX,
   POKEMON_GROUND_OFFSET_PX,
@@ -48,7 +48,7 @@ import { arePokemonSpritesDelivered, isPokemonThemeEnabled } from './pokemonThem
  * A Pokémon as far as the UI is concerned, even if its sheets are still
  * decoding (or its species isn't known yet): the theme is on and either the
  * host delivers sprites (every agent is a Pokémon there) or the server sent
- * this character's species. Drives the capsule spawn and the themed label.
+ * this character's species. Drives the orb spawn and the themed label.
  * Hosts that never send species (VS Code, `--no-sprites`) stay upstream
  * throughout. The greeter is never one (it is Promptling, see renderer.ts).
  */
@@ -62,7 +62,7 @@ export function hasPokemonIdentity(ch: Character): boolean {
 
 /**
  * A Pokémon that can't be drawn yet: its species is unknown, or its sheets
- * are still loading or failed. Drawn as a closed capsule resting where it
+ * are still loading or failed. Drawn as a closed orb resting where it
  * stands, never as an upstream character; it holds still until it opens.
  */
 export function isPokemonPlaceholder(ch: Character): boolean {
@@ -138,11 +138,11 @@ function pokemonBedPose(ch: Character): PoseBox | null {
 /**
  * Where a character lying in a bed is drawn (bedLie.ts): a Pokémon's lying
  * pose, or theme off its upstream sprite turned on its side. Null when it
- * isn't in a bed (or is opening or closing its capsule).
+ * isn't in a bed (or is opening or closing its orb).
  */
 export function bedLieOf(ch: Character): BedLie | null {
   if (!ch.bedRest || ch.matrixEffect) return null;
-  // A capsule waiting for its Pokémon rests on the bed, not in it.
+  // An orb waiting for its Pokémon rests on the bed, not in it.
   if (isPokemonPlaceholder(ch)) return null;
   if (isPokemonCharacter(ch)) {
     const pose = pokemonBedPose(ch);
@@ -210,12 +210,12 @@ export function drawnBody(
     };
   }
   if (isPokemonPlaceholder(ch)) {
-    // The closed capsule resting on its ground point.
+    // The closed orb resting on its ground point.
     const groundY = standingGroundY(ch);
     return {
-      left: ch.x - CAPSULE_HIT_HALF_WIDTH_PX,
-      right: ch.x + CAPSULE_HIT_HALF_WIDTH_PX,
-      top: groundY - CAPSULE_HIT_RISE_PX,
+      left: ch.x - ORB_HIT_HALF_WIDTH_PX,
+      right: ch.x + ORB_HIT_HALF_WIDTH_PX,
+      top: groundY - ORB_HIT_RISE_PX,
       bottom: groundY + POKEMON_FEET_BELOW_GROUND_PX,
     };
   }

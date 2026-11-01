@@ -791,7 +791,7 @@ components:
             This connection is sent Pokémon species (`pokemonSpeciesLoaded`, or
             `pokemonSpeciesFailed`) for every agent: the standalone server with
             sprites on. With the theme on, the office then draws every agent as a
-            Pokémon, a closed capsule until its sheets decode, and never an
+            Pokémon, a closed orb until its sheets decode, and never an
             upstream character. Absent means no (VS Code, `--no-sprites`): the
             office draws upstream characters.
 
@@ -1405,7 +1405,7 @@ components:
       description: |
         A species an agent on this connection shows could not be loaded (the
         sprite hosts unreachable, a bad download). The office keeps that
-        agent's closed capsule ("Sprite unavailable"); the server tries again
+        agent's closed orb ("Sprite unavailable"); the server tries again
         after a backoff and sends pokemonSpeciesLoaded once it succeeds. Sent
         once per species and connection until it loads; standalone only.
       type: object

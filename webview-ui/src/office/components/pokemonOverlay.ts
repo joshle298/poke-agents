@@ -17,7 +17,7 @@ import { getPokemonSpeciesName } from '../sprites/pokemonSprites.js';
 import type { Character } from '../types.js';
 
 /** The overlay is themed for a Pokémon while the theme is on — even before
- *  its sheets decode (a capsule). Theme off, sub-agents, and hosts that send
+ *  its sheets decode (an orb). Theme off, sub-agents, and hosts that send
  *  no species (VS Code, `--no-sprites`): the upstream label. */
 export function isThemedOverlay(ch: Character): boolean {
   return hasPokemonIdentity(ch) && !ch.isSubagent;
@@ -31,7 +31,7 @@ export interface PokemonLabel {
   /** Small text under line 1, when the nickname isn't already the species. */
   species: string | null;
   condition: PokemonCondition;
-  /** Its sprites can't load for now: the capsule stays closed. */
+  /** Its sprites can't load for now: the orb stays closed. */
   spriteUnavailable: boolean;
 }
 

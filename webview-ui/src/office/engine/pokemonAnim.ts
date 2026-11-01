@@ -184,7 +184,7 @@ function choice(
  * The animation for a character right now (DESIGN §D table). Precedence:
  * fainted (walking while it heads to the Pokémon Center), a one-shot,
  * walking, needs-you, asleep, working, idle. Null when the species has none
- * of the chain decoded (the renderer draws its closed capsule).
+ * of the chain decoded (the renderer draws its closed orb).
  */
 export function choosePokemonAnim(
   ch: Character,

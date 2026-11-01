@@ -14,7 +14,7 @@
  * | error cleared by new activity                | revived     | heal                           |
  * | level goes up (live, a small step)           | levelUp     | level-up                       |
  * | evolves                                      | evolution   | evolution, then the new cry    |
- * | new session created by a Lead (live)         | spawned     | capsule throw, pop, its cry    |
+ * | new session created by a Lead (live)         | spawned     | orb throw, pop, its cry        |
  * | any other new session (live)                 | arrived     | pop, its cry                   |
  * | one session messages another (live)          | message     | whoosh                         |
  * | leaves the office (hidden, archived, scope)  | recall      | recall                         |

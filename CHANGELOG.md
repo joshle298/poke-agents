@@ -6,6 +6,8 @@
 
 - **Hide sessions idle longer than.** The Sessions modal's activity window says what it does, with shorter choices: 15 min, 30 min, 1 h, 6 h, 24 h, 3 days or Never. A session with no activity for longer leaves the town by itself. **Never** says that it still stops at 30 days, the furthest back Poke Agents looks. **Show idle sessions** sits right under it and says what turning it off leaves: working, waiting and errored sessions.
 - **Archive instead of PC.** The toolbar's **PC** button is now **Archive** and opens **Archived sessions**, which says what it lists. **Withdraw** is now **Restore**, and the Pokédex's **Deposit in PC** is now **Archive**.
+- **The catch orb.** Sessions are now thrown out of and recalled into Poke Agents' own catch orb, and messages fly between them as one, instead of the teal-and-cream capsule: a glossy teal-to-indigo sphere inside a gold C for Conductor, open on the right with a small latch. The C spins round it while it flies and comes to rest as it lands, then the orb cracks open with a slit of light and a flash before the Pokémon appears. A session whose sprites are loading waits as the closed orb, and the party bar, the Pokédex, the archived sessions and the empty office show it where there is no portrait.
+- **A new app icon:** the catch orb on the night tile, with two sparkles, in the Mac app, the favicon and the installed web app. At 16 and 48 px it is drawn without outlines or sparkles.
 
 ### Fixes
 

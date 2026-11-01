@@ -651,7 +651,7 @@ export const KEYBOARD_MIN_HEIGHT_PX = 150;
 
 // ── Pokémon office ───────────────────────────────────────────
 // Characters drawn from PMDCollab sheets (decoded at runtime, never bundled),
-// the capsule spawn/recall, links and message projectiles between agents,
+// the orb spawn/recall, links and message projectiles between agents,
 // and the themed overlay label. Theme off = none of this runs.
 
 /** PMD sheet durations are game frames at this rate. */
@@ -748,49 +748,54 @@ export const POKEMON_SILHOUETTE_COLOR = '#ffffff';
 export const POKEMON_OUTLINE_COLOR = '#ffffff';
 export const POKEMON_RECALL_COLOR = '#7ee8d6';
 
-// Capsule spawn (throw → open → materialize) and recall (teal beam → return).
-export const CAPSULE_SPAWN_SEC = 0.9;
-export const CAPSULE_RECALL_SEC = 0.6;
-/** Spawn phase boundaries as fractions of CAPSULE_SPAWN_SEC. */
-export const CAPSULE_THROW_END = 0.4;
-export const CAPSULE_OPEN_END = 0.55;
-/** Recall: beam phase ends here; the capsule flies off for the rest. */
-export const CAPSULE_RECALL_BEAM_END = 0.5;
-/** With no thrower, the capsule drops from this far above the ground point. */
-export const CAPSULE_DROP_HEIGHT_PX = 48;
-/** Peak height of a thrown capsule's arc above the straight line. */
-export const CAPSULE_THROW_ARC_PX = 20;
+// Orb spawn (throw → crack open → materialize) and recall (teal beam →
+// return).
+export const ORB_SPAWN_SEC = 0.9;
+export const ORB_RECALL_SEC = 0.6;
+/** Spawn phase boundaries as fractions of ORB_SPAWN_SEC. */
+export const ORB_THROW_END = 0.4;
+export const ORB_OPEN_END = 0.55;
+/** A thrown or flown orb's ring shows each of its spin frames this long. */
+export const ORB_SPIN_FRAME_SEC = 0.08;
+/** Recall: beam phase ends here; the orb flies off for the rest. */
+export const ORB_RECALL_BEAM_END = 0.5;
+/** With no thrower, the orb drops from this far above the ground point. */
+export const ORB_DROP_HEIGHT_PX = 48;
+/** Peak height of a thrown orb's arc above the straight line. */
+export const ORB_THROW_ARC_PX = 20;
 /** The materializing body starts at this scale and grows to 1. */
-export const CAPSULE_MATERIALIZE_MIN_SCALE = 0.25;
+export const ORB_MATERIALIZE_MIN_SCALE = 0.25;
 /** Share of the materialize phase spent growing (the rest fades white → colour). */
-export const CAPSULE_GROW_SHARE = 0.6;
-export const CAPSULE_FLASH_COLOR = '#ffffff';
-/** Burst ring radius (world px) when the capsule opens, and its sample count. */
-export const CAPSULE_BURST_RADIUS_PX = 10;
-export const CAPSULE_BURST_POINTS = 16;
-export const CAPSULE_RECALL_BEAM_COLOR = 'rgba(126, 232, 214, 0.9)';
-/** During recall the capsule hovers this far above the head, then leaves this far up. */
-export const CAPSULE_RECALL_HOVER_PX = 6;
-export const CAPSULE_RECALL_EXIT_PX = 40;
-/** A capsule whose Pokémon's sheets are still decoding lands closed and waits
- *  at most this long before its spawn ends (it then stays a closed capsule,
+export const ORB_GROW_SHARE = 0.6;
+export const ORB_FLASH_COLOR = '#ffffff';
+/** The ring of white pixels flashing out when the orb cracks open: its final
+ *  radius (world px; it starts at the open orb's edge) and its pixel count. */
+export const ORB_BURST_RADIUS_PX = 15;
+export const ORB_BURST_POINTS = 20;
+export const ORB_RECALL_BEAM_COLOR = 'rgba(126, 232, 214, 0.9)';
+/** During recall the open orb hovers this far above the head, then the
+ *  closed orb leaves this far up. */
+export const ORB_RECALL_HOVER_PX = 6;
+export const ORB_RECALL_EXIT_PX = 40;
+/** An orb whose Pokémon's sheets are still decoding lands closed and waits
+ *  at most this long before its spawn ends (it then stays a closed orb,
  *  holding still, and opens once the sheets are ready). */
-export const CAPSULE_WAIT_MAX_SEC = 10;
-/** A closed capsule seen for less than this before its sheets were ready (a
+export const ORB_WAIT_MAX_SEC = 10;
+/** A closed orb seen for less than this before its sheets were ready (a
  *  reload decoding cached sheets) gives way to its Pokémon without opening;
  *  one that rested longer opens. */
-export const CAPSULE_OPEN_MIN_WAIT_SEC = 1;
-/** The waiting capsule's gentle bob: one cycle every this many seconds, this
+export const ORB_OPEN_MIN_WAIT_SEC = 1;
+/** The waiting orb's gentle bob: one cycle every this many seconds, this
  *  many world px up at the top of it. */
-export const CAPSULE_BOB_PERIOD_SEC = 1.6;
-export const CAPSULE_BOB_PX = 1;
-/** Each agent id shifts its capsule's bob by this much, so neighbours differ. */
-export const CAPSULE_BOB_STAGGER_SEC = 0.37;
-/** Hit box of a closed capsule standing in for a Pokémon, from its ground
- *  point (world px): half its width and how far it rises. */
-export const CAPSULE_HIT_HALF_WIDTH_PX = 9;
-export const CAPSULE_HIT_RISE_PX = 10;
-/** The capsule's hover card line when its Pokémon's sprites can't load. */
+export const ORB_BOB_PERIOD_SEC = 1.6;
+export const ORB_BOB_PX = 1;
+/** Each agent id shifts its orb's bob by this much, so neighbours differ. */
+export const ORB_BOB_STAGGER_SEC = 0.37;
+/** Hit box of a closed orb standing in for a Pokémon, from its ground point
+ *  (world px): half its width and how far it rises (the C's top). */
+export const ORB_HIT_HALF_WIDTH_PX = 8;
+export const ORB_HIT_RISE_PX = 16;
+/** The orb's hover card line when its Pokémon's sprites can't load. */
 export const SPRITE_UNAVAILABLE_TEXT = 'Sprite unavailable';
 
 // Links between agents (agentLinks), drawn on the floor under everyone.
@@ -813,14 +818,14 @@ export const LINK_CASING_COLOR = 'rgba(48, 30, 12, 0.5)';
 /** localStorage key of the local "Show connections" setting (default on). */
 export const SHOW_CONNECTIONS_STORAGE_KEY = 'pixel-agents.showConnections';
 
-// Message projectiles (agentMessage): a capsule flies sender → receiver.
+// Message projectiles (agentMessage): an orb flies sender → receiver.
 export const PROJECTILE_SPEED_PX_PER_SEC = 160;
 export const PROJECTILE_MIN_SEC = 0.4;
 export const PROJECTILE_MAX_SEC = 1.4;
 export const PROJECTILE_ARC_LIFT_PX = 16;
 /** The server coalesces; this caps what the client keeps in the air. */
 export const PROJECTILE_MAX_IN_FLIGHT = 8;
-/** Message preview bubble near the receiver once the capsule lands. */
+/** Message preview bubble near the receiver once the orb lands. */
 export const MESSAGE_PREVIEW_SEC = 3;
 export const MESSAGE_PREVIEW_MAX_CHARS = 80;
 /** agentNotice speech bubble. */

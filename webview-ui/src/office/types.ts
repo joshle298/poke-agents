@@ -297,17 +297,17 @@ export interface Character {
   asleep?: boolean;
   /** Seconds before a tool start, message or turn end may play a one-shot. */
   oneShotCooldown?: number;
-  /** Seconds it has been drawn as a closed capsule waiting for its Pokémon
+  /** Seconds it has been drawn as a closed orb waiting for its Pokémon
    *  (its sheets loading or failed); undefined once it opened. Drives the
-   *  capsule's bob. */
-  capsuleWaitSec?: number;
-  /** Seconds a capsule spawn has held at the landing, waiting for the sheets
-   *  (at most CAPSULE_WAIT_MAX_SEC). */
+   *  orb's bob. */
+  orbWaitSec?: number;
+  /** Seconds an orb spawn has held at the landing, waiting for the sheets
+   *  (at most ORB_WAIT_MAX_SEC). */
   spawnHoldSec?: number;
   /** PMD row (0-7) to face instead of `dir` while a one-shot plays. */
   faceOverride?: number | null;
-  /** World point the capsule is thrown from on spawn (the Lead or parent);
-   *  absent = the capsule drops from above. */
+  /** World point the orb is thrown from on spawn (the Lead or parent);
+   *  absent = the orb drops from above. */
   effectOrigin?: { x: number; y: number };
   /** Seconds into the evolution flash; undefined when not evolving. */
   evolveTimer?: number;
@@ -356,13 +356,13 @@ export interface BedRest {
  *  waking up, and the hurt flinch that leads into a faint. */
 export type PokemonOneShot = 'toolRead' | 'toolWrite' | 'message' | 'turnEnd' | 'wake' | 'hurt';
 
-/** A message capsule in flight from one agent to another (agentMessage). */
+/** A message orb in flight from one agent to another (agentMessage). */
 export interface Projectile {
   id: number;
   fromId: number;
   toId: number;
   kind: AgentLinkKind;
-  /** Shown near the receiver once the capsule lands. */
+  /** Shown near the receiver once the orb lands. */
   preview?: string;
   /** Seconds in flight, and the flight's length. */
   t: number;

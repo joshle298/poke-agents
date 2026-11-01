@@ -231,7 +231,7 @@ export function markPokemonSpeciesFailed(dex: number, shiny: boolean): void {
 /**
  * Whether this species can't be drawn for now: the server failed to load it,
  * or neither its Idle nor its Walk sheet could be decoded. Its characters
- * stay closed capsules ("Sprite unavailable").
+ * stay closed orbs ("Sprite unavailable").
  */
 export function isPokemonSpeciesUnavailable(dex: number, shiny: boolean): boolean {
   const key = pokemonSpeciesKey(dex, shiny);

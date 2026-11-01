@@ -63,7 +63,7 @@ test('the label: nickname and Lv on line 1, the species in small text', () => {
   const ch = pokemon();
   ch.label = 'Fix login bug';
   ch.level = 12;
-  // A species with no sheets at all can't be drawn: its capsule stays closed.
+  // A species with no sheets at all can't be drawn: its orb stays closed.
   assert.deepEqual(pokemonLabel(ch), {
     nickname: 'Fix login bug',
     level: 'Lv 12',

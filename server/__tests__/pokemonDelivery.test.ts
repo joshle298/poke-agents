@@ -163,7 +163,7 @@ describe('createSpeciesDelivery', () => {
       const delivery = createSpeciesDelivery(store, (m) => out.push(m));
 
       // Offline at startup: the idle agent's species fails (the office is told,
-      // so its capsule reads "Sprite unavailable") and nothing else will ever
+      // so its orb reads "Sprite unavailable") and nothing else will ever
       // ask for it again.
       delivery.send({ type: 'existingAgents', agents: [1] });
       await until(() => speciesRetryAt(7, false) !== undefined);

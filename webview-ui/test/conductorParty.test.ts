@@ -258,7 +258,7 @@ describe('Archived sessions portraits', () => {
     );
   });
 
-  it('falls back to the capsule without the route, a species or a valid dex', () => {
+  it('falls back to the orb without the route, a species or a valid dex', () => {
     expect(archivedPortraitUrl({ species: 4, shiny: false }, loaded, false)).toBeUndefined();
     expect(archivedPortraitUrl(undefined, loaded, true)).toBeUndefined();
     expect(archivedPortraitUrl({ species: 0, shiny: false }, loaded, true)).toBeUndefined();

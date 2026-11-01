@@ -84,7 +84,7 @@ interface PokemonPickerModalProps {
  * the picker stays open; a tile or the reset closes it. The level still picks
  * the stage within the line; the office plays the evolution flash. Portraits
  * come lazily from the local server's same-origin route; without it, the
- * capsule stands in.
+ * orb stands in.
  */
 export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerModalProps) {
   const catalog = useConductor((s) => s.pokemonCatalog);

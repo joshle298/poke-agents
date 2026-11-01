@@ -1,7 +1,7 @@
 /**
  * The Pokémon theme switch, as module state.
  *
- * Read every frame by the renderer and every tick by OfficeState (capsule
+ * Read every frame by the renderer and every tick by OfficeState (orb
  * vs matrix effect, species hit boxes), so it lives outside React — same
  * shape as the renderer's ghost setting. DOM-free: OfficeState imports it and
  * the Node test runner imports OfficeState.
@@ -10,7 +10,7 @@
  * send Pokémon species (VS Code, `--no-sprites`) still draw upstream
  * characters: only a host that delivers sprites (`settingsLoaded.pokemonSprites`)
  * makes the office a Pokémon office, where every agent is a Pokémon (a closed
- * capsule until its sheets decode) and no upstream character is ever drawn.
+ * orb until its sheets decode) and no upstream character is ever drawn.
  */
 
 let enabled = true;
@@ -43,7 +43,7 @@ export function arePokemonSpritesDelivered(): boolean {
 }
 
 /** Theme on in a host that delivers sprites: every agent is a Pokémon, drawn
- *  as a closed capsule while its sheets load, never as an upstream character. */
+ *  as a closed orb while its sheets load, never as an upstream character. */
 export function isPokemonOffice(): boolean {
   return enabled && spritesDelivered;
 }

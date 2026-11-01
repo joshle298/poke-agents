@@ -174,7 +174,7 @@ export function archivedSpecies(
  * portrait route (standalone, theme on) the row asks it for the dex's Normal
  * portrait: the server downloads it into its cache on demand. A shiny shows
  * the base form's, as the server does when a shiny has no portraits of its
- * own. Otherwise undefined (the capsule).
+ * own. Otherwise undefined (the orb).
  */
 export function archivedPortraitUrl(
   ref: SpeciesRef | undefined,

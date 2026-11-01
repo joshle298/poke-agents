@@ -152,7 +152,7 @@ test('walking plays Walk, standing awake plays Idle (Walk when Idle is missing)'
   ch.state = CharacterState.WALK;
   assert.deepEqual(anim(ch), { situation: 'walk', anim: 'Walk', loop: true });
   // Its Walk sheet still decoding (sheets arrive one by one): it walks in
-  // its Idle pose, never without a frame (that would be a capsule mid-walk).
+  // its Idle pose, never without a frame (that would be an orb mid-walk).
   assert.deepEqual(anim(ch, without('Walk')), { situation: 'walk', anim: 'Idle', loop: true });
 });
 
@@ -212,7 +212,7 @@ test('errored: Hurt while the flinch plays, then Faint held; fallbacks when miss
   assert.equal(anim(ch)?.anim, 'Faint', 'fainted beats walking');
 });
 
-test('a species with none of a chain yields null (the renderer draws its capsule)', () => {
+test('a species with none of a chain yields null (the renderer draws its orb)', () => {
   assert.equal(anim(idleChar(), {}), null);
 });
 

@@ -504,7 +504,7 @@ export function useExtensionMessages(
           }
         }
         os.setAgentIdentity(id, identity);
-        // A child created with a Lead pops out of a capsule its Lead throws.
+        // A child created with a Lead pops out of an orb its Lead throws.
         if (teammateParentId !== undefined) os.setSpawnOrigin(id, teammateParentId);
         saveAgentSeats(os);
       } else if (msg.type === 'agentClosed') {
@@ -858,7 +858,7 @@ export function useExtensionMessages(
         // New species are when sheet memory grows; drop the long-unused ones.
         os.sweepPokemonSheets();
       } else if (msg.type === 'pokemonSpeciesFailed') {
-        // Its capsules stay closed ("Sprite unavailable") until a retry lands.
+        // Its orbs stay closed ("Sprite unavailable") until a retry lands.
         markPokemonSpeciesFailed(msg.dex as number, msg.shiny === true);
       } else if (msg.type === 'petSpritesLoaded') {
         const pets = msg.pets;
@@ -936,7 +936,7 @@ export function useExtensionMessages(
         }
         // Absent means on (hosts that predate the theme, VS Code).
         applyPokemonTheme(msg.pokemonTheme !== false);
-        // A host that delivers sprites makes every agent a Pokémon (a capsule
+        // A host that delivers sprites makes every agent a Pokémon (an orb
         // until its sheets decode); absent = VS Code, --no-sprites: upstream.
         setPokemonSpritesDelivered(msg.pokemonSprites === true);
         if (Array.isArray(msg.externalAssetDirectories)) {

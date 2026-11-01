@@ -5,7 +5,7 @@
  * once at 1x and cached per source image; zoom happens in drawImage.
  *
  * Works for Pokémon sheets (an ImageBitmap plus the frame's rectangle) and
- * for upstream SpriteData (its 1x canvas), so the capsule effect can open
+ * for upstream SpriteData (its 1x canvas), so the orb effect can open
  * on either. DOM: only the renderer imports this.
  */
 

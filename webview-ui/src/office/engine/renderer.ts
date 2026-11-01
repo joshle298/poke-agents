@@ -66,7 +66,7 @@ import {
   hasCarpetSprites,
 } from '../sprites/carpetTiles.js';
 import { getPetSprites } from '../sprites/petSpriteData.js';
-import { CAPSULE_CLOSED_SPRITE, PROMPTLING_SPRITE } from '../sprites/pokemonUiSprites.js';
+import { ORB_CLOSED_SPRITE, PROMPTLING_SPRITE } from '../sprites/pokemonUiSprites.js';
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js';
 import { BUBBLE_HEART_SPRITE, getCharacterSprites } from '../sprites/spriteData.js';
 import type {
@@ -87,17 +87,13 @@ import {
   wallColorToHex,
 } from '../wallTiles.js';
 import type { BedLie } from './bedLie.js';
-import {
-  renderCapsuleEffect,
-  renderRestingCapsule,
-  restingCapsuleCenter,
-} from './capsuleEffect.js';
 import { getCharacterSprite } from './characters.js';
 import type { ConnectionsRenderState } from './connectionsRender.js';
 import { renderLinks, renderProjectiles } from './connectionsRender.js';
 import { spriteFrame } from './frameCanvas.js';
 import { renderMatrixEffect } from './matrixEffect.js';
-import { CAPSULE_LANDED_SEC } from './matrixEffectState.js';
+import { ORB_LANDED_SEC } from './matrixEffectState.js';
+import { renderOrbEffect, renderRestingOrb, restingOrbCenter } from './orbEffect.js';
 import { getPetSpriteData } from './petEntity.js';
 import {
   bedLieOf,
@@ -550,8 +546,8 @@ export function floorForegroundDrawables(
  *  (1 − FLOOR_FOREGROUND_MAX_COVER) of its body in view; others, no limit. */
 function foregroundEntityOf(ch: Character): ForegroundEntity {
   const g = pokemonGeometryOf(ch);
-  // The closed capsule standing in for a Pokémon: grass covers at most part of it.
-  const rise = g ? g.headRise : isPokemonPlaceholder(ch) ? CAPSULE_CLOSED_SPRITE.length : null;
+  // The closed orb standing in for a Pokémon: grass covers at most part of it.
+  const rise = g ? g.headRise : isPokemonPlaceholder(ch) ? ORB_CLOSED_SPRITE.length : null;
   if (rise === null) return ch;
   const feetY = pokemonGroundY(ch) + POKEMON_FEET_BELOW_GROUND_PX;
   const height = rise + POKEMON_FEET_BELOW_GROUND_PX;
@@ -728,10 +724,10 @@ export function renderScene(
 
     // With the theme on a Pokémon is never drawn as an upstream character:
     // one with no frame to show (its sprites loading, failed, or the anim
-    // not decoded yet) is its closed capsule; in a Pokémon office the
+    // not decoded yet) is its closed orb; in a Pokémon office the
     // greeter is Promptling.
     if (hasPokemonIdentity(ch)) {
-      pushRestingCapsule(drawables, ch, offsetX, offsetY, zoom, isSelected, isHovered, alpha);
+      pushRestingOrb(drawables, ch, offsetX, offsetY, zoom, isSelected, isHovered, alpha);
       continue;
     }
     if (ch.isGreeter && isPokemonOffice()) {
@@ -763,7 +759,7 @@ export function renderScene(
     const charZY = ch.y + TILE_SIZE / 2 + CHARACTER_Z_SORT_OFFSET;
 
     // Matrix spawn/despawn effect — skip outline, use per-pixel rendering. A
-    // Pokémon (its capsule) and Promptling never reach here.
+    // Pokémon (its orb) and Promptling never reach here.
     if (ch.matrixEffect) {
       const mDrawX = drawX;
       const mDrawY = drawY;
@@ -851,12 +847,12 @@ export function renderScene(
 }
 
 /**
- * A Pokémon whose sprites aren't ready: its closed capsule. Thrown in on
- * spawn (the capsule effect's throw), then resting on its ground point with
+ * A Pokémon whose sprites aren't ready: its closed orb. Thrown in on
+ * spawn (the orb effect's throw), then resting on its ground point with
  * a gentle bob until the sheets arrive and OfficeState opens it; a recall
- * before that flies the closed capsule off.
+ * before that flies the closed orb off.
  */
-function pushRestingCapsule(
+function pushRestingOrb(
   drawables: ZDrawable[],
   ch: Character,
   offsetX: number,
@@ -868,19 +864,19 @@ function pushRestingCapsule(
 ): void {
   const ground = { x: ch.x, y: pokemonGroundY(ch) };
   const zY = characterZ(ch);
-  if (ch.matrixEffect === 'spawn' && ch.matrixEffectTimer < CAPSULE_LANDED_SEC) {
+  if (ch.matrixEffect === 'spawn' && ch.matrixEffectTimer < ORB_LANDED_SEC) {
     // Still in the air: the throw (or drop) of the spawn effect.
-    const frame = spriteFrame(CAPSULE_CLOSED_SPRITE);
+    const frame = spriteFrame(ORB_CLOSED_SPRITE);
     drawables.push({
       zY,
-      draw: (c) => renderCapsuleEffect(c, ch, frame, ground, 0, offsetX, offsetY, zoom, alpha),
+      draw: (c) => renderOrbEffect(c, ch, frame, ground, 0, offsetX, offsetY, zoom, alpha),
     });
     return;
   }
   if ((isSelected || isHovered) && ch.matrixEffect !== 'despawn') {
-    const outline = getCachedSprite(getOutlineSprite(CAPSULE_CLOSED_SPRITE), zoom);
+    const outline = getCachedSprite(getOutlineSprite(ORB_CLOSED_SPRITE), zoom);
     const outlineAlpha = isSelected ? SELECTED_OUTLINE_ALPHA : HOVERED_OUTLINE_ALPHA;
-    const center = restingCapsuleCenter(ch, ground);
+    const center = restingOrbCenter(ch, ground);
     const x = Math.round(offsetX + center.x * zoom - outline.width / 2);
     const y = Math.round(offsetY + center.y * zoom - outline.height / 2);
     drawables.push({
@@ -895,11 +891,11 @@ function pushRestingCapsule(
   }
   drawables.push({
     zY,
-    draw: (c) => renderRestingCapsule(c, ch, ground, offsetX, offsetY, zoom, alpha),
+    draw: (c) => renderRestingOrb(c, ch, ground, offsetX, offsetY, zoom, alpha),
   });
 }
 
-/** The greeter in a Pokémon office: Promptling, stepping out of a capsule
+/** The greeter in a Pokémon office: Promptling, stepping out of an orb
  *  on spawn and recalled into one, instead of an upstream character. */
 function pushPromptling(
   drawables: ZDrawable[],
@@ -915,8 +911,7 @@ function pushPromptling(
   if (ch.matrixEffect) {
     drawables.push({
       zY,
-      draw: (c) =>
-        renderCapsuleEffect(c, ch, frame, ground, frame.sh, offsetX, offsetY, zoom, alpha),
+      draw: (c) => renderOrbEffect(c, ch, frame, ground, frame.sh, offsetX, offsetY, zoom, alpha),
     });
     return;
   }

@@ -21,7 +21,7 @@ export const SOUND_MAX_LEVEL_UP_STEP = 3;
  *  adoption, not a level-up. */
 export const SOUND_LEVEL_SETTLE_MS = 10_000;
 /** A `spawned` message this soon after its child's arrival sound adds
- *  nothing: the arrival already threw the capsule. */
+ *  nothing: the arrival already threw the orb. */
 export const SOUND_SPAWN_DEDUPE_MS = 5_000;
 /** Cry pitch shift for a fainting Pokémon. */
 export const SOUND_FAINT_CRY_SEMITONES = -4;
