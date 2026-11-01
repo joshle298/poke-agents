@@ -2,7 +2,7 @@
 
 Watch your [Conductor](https://conductor.build) cloud sessions as Pokémon in a small pixel-art town.
 
-![The town in demo mode: Pokémon at work in the Lab, a capsule flying from the Lead, a fainted Pokémon in a Pokémon Center bed, idle ones in the tall grass](docs/screenshots/town-2x.png)
+![The town in demo mode, zoomed out: the Lead at a desk in the Lab, workers at the Work Yard's picnic tables with a message orb flying to the Lead, a fainted Pokémon in a Pokémon Center bed, one working in the Grove, and idle ones in the Meadow](docs/screenshots/town-2x.png)
 
 Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, under the [MIT License](LICENSE). The screenshots in this README come from the built-in [demo](#demo), with synthetic sessions.
 
@@ -212,7 +212,7 @@ The demo plays a scripted story with synthetic sessions instead of connecting to
 
 Everything in the office works on the demo's sessions, and nothing reaches Conductor: **Open in Conductor** says there is nothing to open. Sprites, cries and radio tracks download as usual. The first round, about five minutes long, plays the same way every time; then the Lead hands out new tasks. `--demo-seed <n>` varies the history and later rounds, and `--demo-speed <x>` plays the story faster or slower. The demo keeps its seats in its own file and never replaces an office that shows your real sessions.
 
-![The demo office a minute in: the Lead at the lectern, workers at their desks, a fainted Pokémon in bed, a sleeper in the tall grass](docs/screenshots/town.png)
+![The demo office a minute in, as it opens on the Lab and the Work Yard: the Lead at a Lab desk, workers at the Work Yard's tables with a message orb in flight, one at a table in the Grove, and an idle one in the tall grass](docs/screenshots/town.png)
 
 ## Sign In
 

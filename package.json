@@ -2,7 +2,7 @@
   "name": "@joshle298/poke-agents",
   "displayName": "Poke Agents",
   "description": "Your Conductor cloud sessions as Pokémon in a pixel-art office. Inspired by Pixel Agents.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "pablodelucca",
   "repository": {
     "type": "git",

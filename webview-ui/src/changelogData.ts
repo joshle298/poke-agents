@@ -42,6 +42,34 @@ export const CHANGELOG_REPO_URL = 'https://github.com/joshle298/poke-agents';
  *  is built on. */
 export const changelogEntries: ChangelogEntry[] = [
   {
+    version: '0.5',
+    sections: [
+      {
+        title: 'Features',
+        items: [
+          'A town twice the size: Leads work in the Lab, every other session at a table outdoors',
+          'Scroll or drag the ground to look around; zooming stays on the point under the pointer',
+          'The catch orb: sessions are thrown out of it, recalled into it and messaged as one, and it is the new app icon',
+        ],
+      },
+      {
+        title: 'Changes',
+        items: [
+          'Sessions: hide sessions idle longer than 15 min to 3 days, or never',
+          'Archive replaces the PC: Archived sessions, with Restore',
+          '"Connecting to Conductor…" no longer sticks after the connection comes back',
+        ],
+      },
+    ],
+    contributors: [
+      {
+        name: '@joshle298',
+        url: 'https://github.com/joshle298',
+        description: 'Poke Agents: the bigger town, the catch orb, Archive and the idle limit',
+      },
+    ],
+  },
+  {
     version: '0.4',
     sections: [
       {
