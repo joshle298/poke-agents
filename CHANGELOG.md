@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **Hide sessions idle longer than.** The Sessions modal's activity window says what it does, with shorter choices: 15 min, 30 min, 1 h, 6 h, 24 h, 3 days or Never. A session with no activity for longer leaves the town by itself. **Never** says that it still stops at 30 days, the furthest back Poke Agents looks. **Show idle sessions** sits right under it and says what turning it off leaves: working, waiting and errored sessions.
+- **Archive instead of PC.** The toolbar's **PC** button is now **Archive** and opens **Archived sessions**, which says what it lists. **Withdraw** is now **Restore**, and the Pokédex's **Deposit in PC** is now **Archive**.
+
+### Fixes
+
+- **"Connecting to Conductor…" no longer sticks.** After the office's connection to Poke Agents drops and comes back (a restarted server, a laptop waking), the office asks for everything again, so it shows the sessions and the connection as they are now. Before, it could keep saying "Connecting to Conductor…" while Conductor had long been connected with its sessions in the town. The card also counts the seconds, and after 20 s says **Still connecting…** with "Conductor may be slow; sessions appear as they load."
+
 ## Poke Agents v0.4.0
 
 Switch model and Change Pokémon in the Pokédex, calmer offices, and a new icon.

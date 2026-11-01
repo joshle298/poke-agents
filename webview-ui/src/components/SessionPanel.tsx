@@ -104,8 +104,8 @@ const ROLE_LABEL: Record<Exclude<SessionDetailEntry['role'], 'tool'>, string> = 
 const TEXT_LINE_HEIGHT = 1.3;
 
 const STOP_CONFIRM_TEXT = 'Stops the current turn. Messages still queued in Conductor are dropped.';
-const DEPOSIT_CONFIRM_TEXT =
-  'Archives this session in Conductor. Withdraw it from the PC Box to bring it back.';
+const ARCHIVE_CONFIRM_TEXT =
+  'Archives this session in Conductor. Restore it from Archive in the toolbar to bring it back.';
 
 const TABS: ReadonlyArray<{ id: PokedexTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -226,7 +226,7 @@ export function SessionPanel({
   const pokemonOffice = usePokemonOffice();
 
   const [draft, setDraft] = useState('');
-  const [confirm, setConfirm] = useState<'stop' | 'deposit' | null>(null);
+  const [confirm, setConfirm] = useState<'stop' | 'archive' | null>(null);
   const [picker, setPicker] = useState<'model' | 'pokemon' | null>(null);
   // The message last sent from here, until its conductorActionResult.
   const [sent, setSent] = useState<{ at: number; text: string } | null>(null);
@@ -581,8 +581,8 @@ export function SessionPanel({
                   >
                     Hide
                   </Button>
-                  <Button size="sm" onClick={() => setConfirm('deposit')}>
-                    Deposit in PC
+                  <Button size="sm" onClick={() => setConfirm('archive')}>
+                    Archive
                   </Button>
                 </>
               )}
@@ -644,10 +644,10 @@ export function SessionPanel({
         onCancel={() => setConfirm(null)}
       />
       <ConfirmDialog
-        isOpen={confirm === 'deposit'}
-        title="Deposit in PC?"
-        body={DEPOSIT_CONFIRM_TEXT}
-        confirmLabel="Deposit"
+        isOpen={confirm === 'archive'}
+        title="Archive session?"
+        body={ARCHIVE_CONFIRM_TEXT}
+        confirmLabel="Archive"
         onConfirm={() => {
           if (sessionId) archiveSession(sessionId);
         }}

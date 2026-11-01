@@ -670,6 +670,42 @@ describe('Conductor provider scope and visibility', () => {
     });
   });
 
+  it('hides sessions idle longer than a 15-minute window, and echoes 0.25 h', async () => {
+    const [recent, stale] = [uuid(0x601), uuid(0x602)];
+    const h = await boot({
+      prepare: (api) => {
+        for (const [n, id, idleMs] of [
+          [0x611, recent, 5 * 60_000],
+          [0x612, stale, 30 * 60_000],
+        ] as const) {
+          api.addWorkspace({ id: uuid(n), lastActivityAt: new Date(NOW - idleMs).toISOString() });
+          api.addSession({
+            id,
+            workspaceId: uuid(n),
+            name: `Idle ${idleMs / 60_000} min`,
+            items: idleFeed(id, NOW - idleMs),
+          });
+        }
+      },
+    });
+    // The default 6 h window shows both.
+    expect(h.sink.adopted.has(recent)).toBe(true);
+    expect(h.sink.adopted.has(stale)).toBe(true);
+
+    h.provider.setScope({
+      creator: 'me',
+      activeWithinHours: 0.25,
+      showIdle: true,
+      maxSessions: 24,
+    });
+    await settle(h.provider);
+    expect(h.sink.adopted.has(recent)).toBe(true);
+    expect(h.sink.adopted.has(stale)).toBe(false);
+    expect(h.sink.removed).toContainEqual([stale, 'scope']);
+    expect(h.sink.lastStatus()?.scope).toMatchObject({ activeWithinHours: 0.25 });
+    await h.provider.stop();
+  });
+
   it('fills the cap in order: pinned, needs-you, working, errored, then recent', async () => {
     const stateDir = tmpStateDir();
     const [pinned, waiting, working, errored, idle] = [
@@ -915,7 +951,7 @@ describe('Conductor provider controls', () => {
     await again.provider.stop();
   });
 
-  it('archives to the PC Box and restores back into the office (against the fake API)', async () => {
+  it('archives to Archived sessions and restores back into the office (against the fake API)', async () => {
     const h = await boot({ prepare: orchestration });
     await h.provider.archiveSession(CHILD);
     expect(h.api.calls.filter((c) => c.method === 'POST').map((c) => c.path)).toEqual([

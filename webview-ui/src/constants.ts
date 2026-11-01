@@ -890,7 +890,7 @@ export const STATUS_BADGE_COLORS = {
 } as const;
 
 // ── Conductor UI ─────────────────────────────────────────────
-// Party bar, Pokédex panel, Sessions and PC Box modals, battle log and toasts
+// Party bar, Pokédex panel, Sessions and Archived sessions modals, battle log and toasts
 // for stream-provider (Conductor) agents. Colors live in index.css.
 /** Window width (CSS px) from which the party bar shows full slots and the
  *  Pokédex docks beside the office; below it the bar is portraits only and
@@ -917,7 +917,7 @@ export const PARTY_MAX_NEST_DEPTH = 2;
 export const EVOLUTION_LEVELS: readonly number[] = [16, 36];
 /** How often time-derived slot states (asleep, "synced Xs ago") re-render. */
 export const CONDUCTOR_UI_TICK_MS = 5_000;
-/** The local server's same-origin sprite route (standalone only): the PC Box
+/** The local server's same-origin sprite route (standalone only): Archived sessions
  *  asks it for portraits of species nobody in the office uses. */
 export const POKEMON_PORTRAIT_ROUTE_PREFIX = '/api/pokemon';
 /** Highest National Dex number the server's sprite route accepts. */
@@ -988,12 +988,20 @@ export const COPY_FEEDBACK_MS = 1_500;
 /** After connecting, the empty office says "Connected as …" this long (or
  *  until sessions walk in). */
 export const CONDUCTOR_CONNECTED_NOTICE_MS = 12_000;
-/** Sessions modal scope choices: activity window in hours (0 = no limit) and
- *  the cap on characters. */
-export const CONDUCTOR_SCOPE_WINDOW_HOURS = [1, 6, 24, 72, 0] as const;
-/** The label for 0: the server serves "no limit" as its longest window, the
- *  last 30 days (MAX_ACTIVE_WITHIN_HOURS in the Conductor provider). */
-export const CONDUCTOR_SCOPE_ALL_LABEL = 'All (30d)';
+/** The empty office's "Connecting to Conductor…" turns into "Still
+ *  connecting…" with a hint after this long, and counts the seconds every
+ *  CONDUCTOR_CONNECTING_TICK_MS meanwhile. */
+export const CONDUCTOR_SLOW_CONNECT_MS = 20_000;
+export const CONDUCTOR_CONNECTING_TICK_MS = 1_000;
+/** Sessions modal scope choices: "Hide sessions idle longer than", in hours
+ *  (15 min, 30 min, 1 h, 6 h, 24 h, 3 days; 0 = Never, no limit), and the cap
+ *  on characters. */
+export const CONDUCTOR_SCOPE_WINDOW_HOURS = [0.25, 0.5, 1, 6, 24, 72, 0] as const;
+/** The label for 0. The server serves "no limit" as its longest window, the
+ *  last CONDUCTOR_SCOPE_MAX_WINDOW_DAYS days (MAX_ACTIVE_WITHIN_HOURS in the
+ *  Conductor provider), and the modal says so while Never is chosen. */
+export const CONDUCTOR_SCOPE_NEVER_LABEL = 'Never';
+export const CONDUCTOR_SCOPE_MAX_WINDOW_DAYS = 30;
 export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
 /** Battle log: events kept, how long the newest stays up, and its fade. */
 export const BATTLE_LOG_CAPACITY = 30;

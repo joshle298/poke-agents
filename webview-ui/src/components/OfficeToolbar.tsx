@@ -26,12 +26,12 @@ interface OfficeToolbarProps {
   /** Claude Code feeds this office: + Agent launches it. Without it (a
    *  Conductor-only office) there is nothing to launch. */
   claudeActive: boolean;
-  /** Conductor feeds this office: show Sessions and PC. */
+  /** Conductor feeds this office: show Sessions and Archive. */
   conductorActive: boolean;
   isSessionsOpen: boolean;
   onOpenSessions: () => void;
-  isPcBoxOpen: boolean;
-  onOpenPcBox: () => void;
+  isArchiveOpen: boolean;
+  onOpenArchive: () => void;
   /** The most the panel may be wide (CSS px): past it the buttons wrap onto
    *  balanced rows. Undefined: as wide as one row. */
   maxWidth?: number;
@@ -47,7 +47,7 @@ interface RowMetrics {
 
 /**
  * The panel's button widths, gap and frame, kept current as buttons come and
- * go (Sessions and PC follow Conductor) and change size (the pixel font
+ * go (Sessions and Archive follow Conductor) and change size (the pixel font
  * loading). They don't depend on how the row wraps.
  */
 function useRowMetrics(panelRef: RefObject<HTMLDivElement | null>): RowMetrics | null {
@@ -96,7 +96,7 @@ function useRowMetrics(panelRef: RefObject<HTMLDivElement | null>): RowMetrics |
 
 /**
  * The office's toolbar: + Agent (with its launch drawer) when Claude Code feeds
- * the office, Sessions and PC when Conductor does, then Music, Layout and
+ * the office, Sessions and Archive when Conductor does, then Music, Layout and
  * Settings. One row in the office's top-right corner, placed by OfficeTopBar
  * (left of the party bar and the Pokédex); it wraps onto balanced rows only
  * when the office is too narrow for one.
@@ -115,8 +115,8 @@ export function OfficeToolbar({
   conductorActive,
   isSessionsOpen,
   onOpenSessions,
-  isPcBoxOpen,
-  onOpenPcBox,
+  isArchiveOpen,
+  onOpenArchive,
   maxWidth,
 }: OfficeToolbarProps) {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -222,11 +222,11 @@ export function OfficeToolbar({
             Sessions
           </Button>
           <Button
-            variant={isPcBoxOpen ? 'active' : 'default'}
-            onClick={onOpenPcBox}
-            title="PC Box: deposited (archived) sessions"
+            variant={isArchiveOpen ? 'active' : 'default'}
+            onClick={onOpenArchive}
+            title="Archived sessions"
           >
-            PC
+            Archive
           </Button>
         </>
       )}

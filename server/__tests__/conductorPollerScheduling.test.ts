@@ -1,7 +1,7 @@
 /**
  * What the Conductor poller spends its request budget on, and when sessions
  * walk in: focus, workspace activity, deferred units, ranking by a session's
- * own activity, withdrawals from the PC Box, levels, and catch-up batches.
+ * own activity, restores from Archived sessions, levels, and catch-up batches.
  * Every scenario runs against the fake API with a manual clock.
  */
 
@@ -311,7 +311,7 @@ describe('Conductor poller: units that wait for a free slot', () => {
     await h.provider.stop();
   });
 
-  it('lists archived sessions for a PC Box opened during startup within seconds', async () => {
+  it('lists archived sessions for an Archived sessions modal opened during startup within seconds', async () => {
     const archived = uuid(0x3301);
     const clock = manualClock(NOW);
     const api = new FakeConductorApi(() => clock.t);
@@ -339,7 +339,7 @@ describe('Conductor poller: units that wait for a free slot', () => {
       budgetPerMinute: 120,
     });
     await provider.start(new RecordingSink());
-    // The PC Box opens while dozens of sessions are still onboarding.
+    // Archived sessions opens while dozens of sessions are still onboarding.
     provider.listSessions();
     const until = clock.t + 30_000;
     while (clock.t < until) {
@@ -351,7 +351,7 @@ describe('Conductor poller: units that wait for a free slot', () => {
   });
 });
 
-describe('Conductor poller: the PC Box on a saturated budget', () => {
+describe('Conductor poller: Archived sessions on a saturated budget', () => {
   it("lists the most recent workspaces' archived sessions within seconds of opening", async () => {
     const archived = uuid(0x3601);
     const clock = manualClock(NOW);
@@ -490,8 +490,8 @@ describe('Conductor poller: a turn longer than the scope window', () => {
   });
 });
 
-describe('Conductor poller: withdrawing from the PC Box', () => {
-  it('keeps a withdrawn session that finished hours ago in the office and the lists', async () => {
+describe('Conductor poller: restoring from Archived sessions', () => {
+  it('keeps a restored session that finished hours ago in the office and the lists', async () => {
     const ws = uuid(0x5001);
     const old = uuid(0x5002);
     const h = await boot({
@@ -523,7 +523,7 @@ describe('Conductor poller: withdrawing from the PC Box', () => {
     expect(listed).toBeDefined();
     expect(listed?.archived).toBeUndefined();
 
-    // Past the pin, the withdrawal still counts as activity in the window.
+    // Past the pin, the restore still counts as activity in the window.
     await run(h, 15 * MINUTE, () => {}, 5_000);
     expect(h.sink.adopted.has(old)).toBe(true);
     await h.provider.stop();

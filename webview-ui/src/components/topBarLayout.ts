@@ -93,7 +93,7 @@ export function placeTopBar(sizes: TopBarSizes): TopBarPlacement {
  * The narrowest content width at which items `widths` wide, `gap` apart and
  * wrapped in order, take no more rows than they do at `maxWidth`: the
  * toolbar's width when one row doesn't fit, so its rows come out balanced
- * (Sessions, PC, Music over Layout, Settings rather than one button alone on
+ * (Sessions, Archive, Music over Layout, Settings rather than one button alone on
  * the second row) and its panel has no empty stretch beside the shorter row.
  * Equal to the one-row width when that fits.
  */

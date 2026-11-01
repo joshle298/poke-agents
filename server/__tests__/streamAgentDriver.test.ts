@@ -967,7 +967,7 @@ describe('StreamAgentDriver', () => {
         {
           type: 'conductorSessions',
           sessions: [
-            // The species it shows, for the PC Box.
+            // The species it shows, for Archived sessions.
             { ...summary('in'), agentId: agentIdOf('in'), species: 172, shiny: false },
             {
               sessionId: 'out',

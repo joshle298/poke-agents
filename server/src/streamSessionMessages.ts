@@ -1,7 +1,7 @@
 /**
  * Client messages that act on stream-provider sessions (Conductor): the
  * Pokédex panel's detail and actions, the Sessions modal's scope, hide and pin
- * controls, the PC Box, and deep links. Dispatched from handleClientMessage
+ * controls, Archived sessions, and deep links. Dispatched from handleClientMessage
  * after its read-only gate, so every one of them is privileged.
  *
  * Agent-addressed messages resolve their session through the driver that owns
@@ -42,7 +42,7 @@ import type { StreamAgentDriver } from './streamAgentDriver.js';
 
 type WsSend = (message: Record<string, unknown>) => void;
 
-/** The stream provider that session-addressed messages (scope, hide, pin, PC Box) act on. */
+/** The stream provider that session-addressed messages (scope, hide, pin, archive) act on. */
 const CONDUCTOR_PROVIDER_ID = 'conductor';
 
 /** Provider session ids as they may arrive from a client. */
@@ -204,7 +204,7 @@ export function refuseStreamSessionMessage(
   const driver = conductorDriver(ctx);
   if (type === 'setSessionHidden' || type === 'setSessionPinned') {
     // The cached list: asking the provider (listSessions) would also start
-    // the PC Box's archived listings, an effect only privileged clients get.
+    // the archived listings (Archived sessions), an effect only privileged clients get.
     if (driver) send({ type: 'conductorSessions', sessions: driver.cachedSessionsSnapshot() });
   } else if (type === 'setConductorScope') {
     const status = driver?.statusMessage();

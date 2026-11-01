@@ -34,7 +34,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 /**
  * Outcomes of Conductor actions (message sent, stop refused, ...). Desktop
  * (`officeTopPx` set): stacked right-aligned in the office's top-right corner,
- * under the toolbar and whatever stacks under it, near the Pokédex and PC Box
+ * under the toolbar and whatever stacks under it, near the Pokédex and Archived sessions
  * the actions come from; OfficeTopBar places them. Phone: at the top centre,
  * mounted at App's top level (position:fixed inside the mobile shell's
  * transformed track would size to the track). Either way above the modals.

@@ -325,7 +325,7 @@ export interface StreamProvider {
   sendMessage?(sessionId: string, text: string): Promise<void>;
   /** Cancel the session's running turn. Rejects with a user-facing message. */
   stopSession?(sessionId: string): Promise<void>;
-  /** Archive (deposit) or unarchive (withdraw) the session. Rejects with a user-facing message. */
+  /** Archive or unarchive (restore) the session. Rejects with a user-facing message. */
   archiveSession?(sessionId: string): Promise<void>;
   restoreSession?(sessionId: string): Promise<void>;
   /** Mark the session as focused (selected in the office) so it polls faster. */

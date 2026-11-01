@@ -78,7 +78,7 @@ export const DEMO_CAST: Record<DemoRole, DemoCastMember> = {
       patterns: ['TODO\\(v2\\)', 'plan_tier', 'featureFlags.v2'],
       notes: [
         'Five tracks are left before the release candidate: migration, flaky tests, docs, the PR #42 review and a perf pass.',
-        'The pricing prototype is merged behind a flag, so its session can go to the PC.',
+        'The pricing prototype is merged behind a flag, so its session can be archived.',
         'CI is green on main; the release workflow only needs the tag.',
         'RELEASE_PLAN.md now lists an owner session for every track.',
       ],

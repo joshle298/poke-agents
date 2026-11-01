@@ -227,9 +227,9 @@ _Avoid_: dismissed (for cloud sessions, dismissing is how a session becomes hidd
 A cloud session that is always shown, ranked ahead of every other session when more are in scope than the cap allows.
 _Avoid_: favorite, starred
 
-**PC Box**:
-The list of archived cloud sessions. Depositing a session in the PC archives it in Conductor and removes its character; withdrawing it unarchives it, and its character walks back in.
-_Avoid_: archive view, trash
+**Archived sessions**:
+The list of cloud sessions archived in Conductor, opened with **Archive** in the toolbar. Archiving a session from its Pokédex archives it in Conductor and removes its character; restoring it unarchives it, and its character walks back in.
+_Avoid_: PC, PC Box (the old labels; only a flavour line in the list still says PC Box), deposit, withdraw, trash
 
 **Pokédex**:
 The panel that shows one cloud session in detail: its workspace, repository, model, status, task, recent activity and messages with other sessions, with the actions that ask Conductor to act on it. Opened by clicking a Pokémon or its party slot.

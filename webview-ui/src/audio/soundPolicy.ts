@@ -17,7 +17,7 @@
  * | new session created by a Lead (live)         | spawned     | capsule throw, pop, its cry    |
  * | any other new session (live)                 | arrived     | pop, its cry                   |
  * | one session messages another (live)          | message     | whoosh                         |
- * | leaves the office (hidden, deposited, scope) | recall      | recall                         |
+ * | leaves the office (hidden, archived, scope)  | recall      | recall                         |
  * | the selected or a pinned session finished    | done        | soft two-note                  |
  * | you open its Pokédex                         | pokedex     | its cry (user)                 |
  *

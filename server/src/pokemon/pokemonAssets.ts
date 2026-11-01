@@ -98,7 +98,7 @@ const CATALOG_DEX: ReadonlySet<number> = new Set([
 
 /**
  * Whether the sprite route may serve (and so download) this species: one an
- * agent shows now, or any the catalog can assign (PC Box portraits name
+ * agent shows now, or any the catalog can assign (archived sessions' portraits name
  * species no agent in the office holds). Anything else is refused before the
  * cache is touched, so a page cannot make the server mirror SpriteCollab.
  */

@@ -1,6 +1,6 @@
 /**
  * Conductor UI store: everything the chrome (party bar, Pokédex, Sessions and
- * PC Box modals, battle log, toasts, theme) knows about stream-provider agents
+ * Archived sessions modals, battle log, toasts, theme) knows about stream-provider agents
  * and the Conductor connection.
  *
  * DOM-free and transport-free so the Node test runner can drive it: a feed
@@ -163,11 +163,15 @@ export interface ConductorState {
   chatHistories: Readonly<Record<number, ChatHistory>>;
   /** null until the server reports (no Conductor provider, or not yet). */
   status: ConductorStatus | null;
+  /** Store clock time this page started waiting for Conductor (no status
+   *  yet, or `connecting`); null once the server reports any other state.
+   *  The empty office's elapsed time and slow-connect hint count from it. */
+  connectingSince: number | null;
   /** null until the first conductorSessions arrives. */
   sessions: readonly ConductorSessionSummary[] | null;
   /** pokemonSpeciesLoaded payloads keyed by speciesKey(dex, shiny). */
   species: Readonly<Record<string, PokemonSpeciesLoaded>>;
-  /** Last species seen per Conductor session id — lets the PC Box show a
+  /** Last species seen per Conductor session id — lets Archived sessions show a
    *  portrait for a session that left the office. */
   sessionSpecies: Readonly<Record<string, SpeciesRef>>;
   pokemonTheme: boolean;
@@ -188,7 +192,7 @@ const DEFAULT_PROVIDERS: readonly string[] = ['claude'];
 
 const EMPTY_HISTORY: ChatHistory = { entries: [], hasMore: false, loaded: false };
 
-function initialConductorState(): ConductorState {
+function initialConductorState(now: number): ConductorState {
   return {
     activeProviders: DEFAULT_PROVIDERS,
     agentIds: [],
@@ -197,6 +201,7 @@ function initialConductorState(): ConductorState {
     sessionDetails: {},
     chatHistories: {},
     status: null,
+    connectingSince: now,
     sessions: null,
     species: {},
     sessionSpecies: {},
@@ -308,9 +313,9 @@ function actionToastText(
       case 'stopSession':
         return `Stopped ${who}`;
       case 'archiveSession':
-        return `${who} was deposited in the PC`;
+        return `${who} was archived`;
       case 'restoreSession':
-        return `${who} was withdrawn from the PC`;
+        return `${who} was restored`;
       case 'continueWithModel':
         return `Started a new session to continue ${who}`;
       default:
@@ -324,8 +329,8 @@ function actionToastText(
     setSessionHidden: "Couldn't change who is shown",
     setSessionPinned: "Couldn't change the pin",
     setConductorScope: "Couldn't change the scope",
-    archiveSession: "Couldn't deposit the session",
-    restoreSession: "Couldn't withdraw the session",
+    archiveSession: "Couldn't archive the session",
+    restoreSession: "Couldn't restore the session",
     disconnect: "Couldn't sign out",
     // Its message says what happened (refused, or not confirmed).
     continueWithModel: 'Switch model',
@@ -337,13 +342,14 @@ function actionToastText(
 type Listener = () => void;
 
 export class ConductorStore {
-  private state: ConductorState = initialConductorState();
+  private state: ConductorState;
   private readonly listeners = new Set<Listener>();
   private readonly now: () => number;
   private seq = 0;
 
   constructor(opts: { now?: () => number } = {}) {
     this.now = opts.now ?? Date.now;
+    this.state = initialConductorState(this.now());
   }
 
   getState = (): ConductorState => this.state;
@@ -608,7 +614,13 @@ export class ConductorStore {
         return { ...state, chatHistories: { ...state.chatHistories, [msg.id]: next } };
       }
       case 'conductorStatus':
-        return { ...state, status: msg };
+        // Always the newest status as sent: the server sends one on every
+        // change and replays it on every handshake (a reconnect included).
+        return {
+          ...state,
+          status: msg,
+          connectingSince: msg.state === 'connecting' ? (state.connectingSince ?? now) : null,
+        };
       case 'conductorSessions':
         return { ...state, sessions: Array.isArray(msg.sessions) ? msg.sessions : [] };
       case 'conductorActionResult': {

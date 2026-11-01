@@ -4,7 +4,7 @@ import { requestConductorSessions, restoreSession } from '../conductor/actions.j
 import { findSpecies, useConductor } from '../conductor/conductorStore.js';
 import { agoText, workspaceLabel } from '../conductor/format.js';
 import { useNow } from '../conductor/hooks.js';
-import { pcBoxPortraitUrl, pcBoxSpecies } from '../conductor/party.js';
+import { archivedPortraitUrl, archivedSpecies } from '../conductor/party.js';
 import { archivedSessions } from '../conductor/sessionsView.js';
 import { CONDUCTOR_UI_TICK_MS, PORTRAIT_SOURCE_PX } from '../constants.js';
 import { isBrowserRuntime } from '../runtime.js';
@@ -12,17 +12,17 @@ import { CapsuleIcon, PokemonPortrait } from './PokemonPortrait.js';
 import { Button } from './ui/Button.js';
 import { Modal } from './ui/Modal.js';
 
-interface PcBoxModalProps {
+interface ArchiveModalProps {
   isOpen: boolean;
   onClose: () => void;
   readOnly: boolean;
 }
 
 /**
- * The PC Box: sessions deposited (archived) in Conductor. Withdraw
- * unarchives one, and it walks back into the office.
+ * Archived sessions (Archive in the toolbar): sessions archived in Conductor.
+ * Restore unarchives one, and it walks back into the office.
  */
-export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
+export function ArchiveModal({ isOpen, onClose, readOnly }: ArchiveModalProps) {
   const sessions = useConductor((s) => s.sessions);
   const sessionSpecies = useConductor((s) => s.sessionSpecies);
   const speciesMap = useConductor((s) => s.species);
@@ -30,7 +30,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
   // The standalone server serves portraits by dex while the theme is on.
   const portraitRoute = isBrowserRuntime && pokemonTheme;
   const now = useNow(CONDUCTOR_UI_TICK_MS, isOpen);
-  // Withdrawals in flight: the row stays but its button waits until the
+  // Restores in flight: the row stays but its button waits until the
   // session leaves the archived list (or the toast reports a failure).
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
 
@@ -43,19 +43,27 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
   useEffect(() => setPending(new Set()), [sessions]);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="PC Box" className="w-[min(520px,100%)]">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Archived sessions"
+      className="w-[min(520px,100%)]"
+    >
       <div className="flex flex-col gap-6 px-10 pb-8">
+        <span className="text-xs text-text-muted">
+          Sessions you archived in Conductor. Restore one to bring it back to the office.
+        </span>
         {archived.length === 0 ? (
           <div className="py-8 text-sm flex flex-col gap-4">
-            <span>The PC is empty.</span>
+            <span>No archived sessions.</span>
             <span className="text-xs text-text-muted">
-              Deposit a session from its Pokédex to store it here.
+              Archive a session from its Pokédex to keep it here.
             </span>
           </div>
         ) : (
           <ul className="m-0 p-0 list-none flex flex-col gap-4">
             {archived.map((session) => {
-              const ref = pcBoxSpecies(session, sessionSpecies);
+              const ref = archivedSpecies(session, sessionSpecies);
               const species = findSpecies({ species: speciesMap }, ref?.species, ref?.shiny);
               const waiting = pending.has(session.sessionId);
               return (
@@ -64,7 +72,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
                   className="flex items-center gap-8 p-4 border-2 border-border bg-btn-bg"
                 >
                   <PokemonPortrait
-                    url={pcBoxPortraitUrl(ref, { species: speciesMap }, portraitRoute)}
+                    url={archivedPortraitUrl(ref, { species: speciesMap }, portraitRoute)}
                     size={PORTRAIT_SOURCE_PX}
                     alt={species?.name ?? ''}
                     fallback={<CapsuleIcon size={PORTRAIT_SOURCE_PX} />}
@@ -76,7 +84,7 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
                         workspaceLabel(session.workspaceNumber, session.workspaceName),
                         session.repo,
                         session.archivedAt
-                          ? `deposited ${agoText(session.archivedAt, now)}`
+                          ? `archived ${agoText(session.archivedAt, now)}`
                           : undefined,
                       ]
                         .filter(Boolean)
@@ -93,13 +101,18 @@ export function PcBoxModal({ isOpen, onClose, readOnly }: PcBoxModalProps) {
                         restoreSession(session.sessionId);
                       }}
                     >
-                      {waiting ? 'Withdrawing…' : 'Withdraw'}
+                      {waiting ? 'Restoring…' : 'Restore'}
                     </Button>
                   )}
                 </li>
               );
             })}
           </ul>
+        )}
+        {pokemonTheme && (
+          <span className="text-2xs text-text-muted">
+            Your PC Box: archived Pokémon rest here until you restore them.
+          </span>
         )}
       </div>
     </Modal>
