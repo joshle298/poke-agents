@@ -35,7 +35,7 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **Archived sessions.** **Archive** in the toolbar lists the sessions you archived in Conductor, with their Pokémon's portraits. **Restore** brings one back into the town.
 - **Sessions.** Choose which sessions appear: your workspaces or the whole organization, how long a session may sit idle before it leaves the town, idle sessions on or off, a cap, and per-session hide and pin, with search.
 - **Party bar.** Each visible session as a party slot with portrait, name, level, HP and status. Leads come first with their sessions under them, and a slot blinks while its session needs you.
-- **Battle log.** An optional one-line ticker of events such as "Pichu used Bash!" or "Torchic fainted!".
+- **Battle log.** An optional ticker of events such as "Pichu used Bash!" or "Torchic fainted!", typed into the message bar under the town. The bar never covers the map.
 - **Sounds.** Each Pokémon's cry when its session needs you, faints, arrives or evolves, and original chiptune effects for level-ups, orb throws and messages. See [Sounds](#sounds).
 - **Jukebox.** Background music: Poke Agents Radio, a built-in station of freely licensed retro game tracks, or your own music. See [Music](#music).
 - **Mac app.** The same office in its own window, with notifications when a session needs you or faints and a Dock badge counting the sessions waiting on you. See [Mac App](#mac-app).
@@ -45,7 +45,7 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **
 
 ![The Pokédex's Chat tab on a session waiting on a question, with three options and the reply box](docs/screenshots/pokedex-chat.png)
 
-![The party bar beside the Pokémon Center: FNT on the fainted session, ! on the one waiting for an answer, SLP on the sleeper, and the battle log below](docs/screenshots/party-and-battle-log.png)
+![The party bar beside the Pokémon Center: FNT on the fainted session, ! on the one waiting for an answer, SLP on the sleeper, and the battle log in the message bar under the town](docs/screenshots/party-and-battle-log.png)
 
 ### Using the Office
 
@@ -68,6 +68,8 @@ Session actions are the only writes Poke Agents makes to Conductor, and each hap
 | Archive                    | Archives the session. Asks first. The session leaves the town and is listed under Archive. |
 | Restore                    | Unarchives a session from Archive. It walks back in, even if it was idle past the limit.   |
 | Switch model… → Start      | Creates a session in the same workspace with the model you picked and your first message.  |
+
+Each action's outcome ("Message sent to …", or why Conductor refused it) appears in the message bar under the town, with the battle log on or off. × dismisses it.
 
 ![Archived sessions listing an archived session with its Pokémon's portrait and a Restore button](docs/screenshots/archived-sessions.png)
 

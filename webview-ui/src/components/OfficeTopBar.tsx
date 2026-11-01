@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { useLayoutEffect } from 'react';
 
 import {
   OFFICE_TOOLBAR_Z_INDEX,
@@ -10,8 +9,6 @@ import {
   ZOOM_CONTROLS_RIGHT_PX,
 } from '../constants.js';
 import { useBoxSize } from '../hooks/useBoxSize.js';
-import { Toasts } from './Toasts.js';
-import type { Rect } from './topBarLayout.js';
 import { placeTopBar } from './topBarLayout.js';
 
 /** Room the toolbar's row may take: the free area minus the gaps at its right
@@ -32,31 +29,22 @@ interface OfficeTopBarProps {
   /** The top-centre pills, stacked (EditActionBar, the rotate hint, the zoom
    *  level, the connection status, "View only"). */
   centre: ReactNode;
-  /** What the top chrome covers, in the office's coordinates, whenever it
-   *  changes (the battle log keeps clear of it). */
-  onOccupiedChange: (occupied: readonly Rect[]) => void;
 }
 
 /**
  * The desktop office's top chrome, in the free area left of whatever covers
  * the office's right edge (the party bar and a docked Pokédex sit outside the
  * office region already): the toolbar in the top-right corner with the
- * now-playing pill and the first-run tooltip under it, the top-centre pills,
- * and the toast stack. Sizes are measured and placed by `placeTopBar`, which
- * moves the centre pills under the toolbar when they don't fit beside it.
+ * now-playing pill and the first-run tooltip under it, and the top-centre
+ * pills. Sizes are measured and placed by `placeTopBar`, which moves the
+ * centre pills under the toolbar when they don't fit beside it. Toasts are in
+ * the message bar under the office.
  *
  * The area and the column set no z-index, so each piece keeps its own place in
  * the page's stacking order (the toolbar and the pills over the characters'
- * labels, toasts over the modals); the wrappers pass pointer events through
- * to the office.
+ * labels); the wrappers pass pointer events through to the office.
  */
-export function OfficeTopBar({
-  rightInset,
-  toolbar,
-  belowToolbar,
-  centre,
-  onOccupiedChange,
-}: OfficeTopBarProps) {
+export function OfficeTopBar({ rightInset, toolbar, belowToolbar, centre }: OfficeTopBarProps) {
   const [areaRef, area] = useBoxSize<HTMLDivElement>();
   const [columnRef, column] = useBoxSize<HTMLDivElement>();
   const [toolbarRef, toolbarBox] = useBoxSize<HTMLDivElement>();
@@ -64,18 +52,10 @@ export function OfficeTopBar({
   const placement = placeTopBar({
     areaWidth: area.width,
     toolbarWidth: toolbarBox.width,
-    columnWidth: column.width,
     columnHeight: column.height,
     laneWidth: lane.width,
     laneHeight: lane.height,
   });
-
-  // Report what the chrome covers when it changes (on a resize, or when a
-  // pill shows or hides), not on every render.
-  const occupiedKey = JSON.stringify(placement.occupied);
-  useLayoutEffect(() => {
-    onOccupiedChange(JSON.parse(occupiedKey) as Rect[]);
-  }, [occupiedKey, onOccupiedChange]);
 
   return (
     <div
@@ -120,7 +100,6 @@ export function OfficeTopBar({
         )}
         {belowToolbar}
       </div>
-      <Toasts officeTopPx={placement.toastsTop} />
     </div>
   );
 }

@@ -418,16 +418,129 @@
   text-shadow: 1px 1px 0 var(--color-text-shadow);
 }
 
-/* The battle log's one-line dialog box (shown only under the Pokémon theme). */
-.battle-log {
+/* The message bar under the office (MessageBar): a strip under the map, and
+   the text box in it. Without the theme the box has the panel look (a 2px
+   border, the rest of its frame as padding). The frame and padding widths come
+   from constants.ts as custom properties, so the box's rows sit where
+   messageBarLayout says. */
+.message-bar-strip {
+  transition: height var(--message-bar-transition, 140ms) ease-out;
+}
+.message-bar {
+  position: relative;
   background: var(--color-bg);
   color: var(--color-text);
   border: 2px solid var(--color-border);
+  padding: calc(var(--message-bar-pad-y) + var(--message-bar-frame) - 2px)
+    calc(var(--message-bar-pad-x) + var(--message-bar-frame) - 2px);
+  box-shadow: var(--shadow-pixel);
+  transition: opacity var(--message-bar-transition, 140ms) linear;
+}
+/* Under the theme, a GBA text box: a light band inside a dark outline whose
+   corners step in by a pixel (drawn outside the box, in its margin), the
+   light dialog fill and a 1-px text shadow. */
+:root[data-theme='pokemon'] .message-bar {
+  border: var(--message-bar-frame) solid var(--color-panel-inner);
+  padding: var(--message-bar-pad-y) var(--message-bar-pad-x);
   box-shadow:
-    inset 0 0 0 2px var(--color-panel-inner),
-    var(--shadow-pixel);
+    0 -2px 0 0 var(--color-border),
+    0 2px 0 0 var(--color-border),
+    -2px 0 0 0 var(--color-border),
+    2px 0 0 0 var(--color-border),
+    inset 0 0 0 2px var(--color-bg-thumb);
   text-shadow: 1px 1px 0 var(--color-text-shadow);
-  transition: opacity var(--battle-log-fade, 500ms) linear;
+}
+/* ...and the outline's pixel stepping in at each corner. */
+:root[data-theme='pokemon'] .message-bar::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--message-bar-frame));
+  background:
+    linear-gradient(var(--color-border), var(--color-border)) left top / 2px 2px no-repeat,
+    linear-gradient(var(--color-border), var(--color-border)) right top / 2px 2px no-repeat,
+    linear-gradient(var(--color-border), var(--color-border)) left bottom / 2px 2px no-repeat,
+    linear-gradient(var(--color-border), var(--color-border)) right bottom / 2px 2px no-repeat;
+  pointer-events: none;
+}
+/* A strip that holds only chips shows no box while none is up. */
+.message-bar[data-empty] {
+  opacity: 0;
+}
+/* The phone's chip layer: the box's geometry, nothing drawn. */
+.message-bar[data-ghost],
+:root[data-theme='pokemon'] .message-bar[data-ghost] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.message-bar[data-ghost]::before {
+  display: none;
+}
+.message-bar-line {
+  transition: opacity var(--message-bar-fade, 500ms) linear;
+}
+/* The line before the newest: the same ink, dimmed. */
+.message-bar-line[data-previous] {
+  opacity: 0.6;
+}
+.message-bar-line[data-fading] {
+  opacity: 0;
+}
+/* The GBA "more" arrow after a line has typed in: a stepped triangle that
+   bobs. */
+.message-bar-more {
+  position: absolute;
+  right: 4px;
+  bottom: 9px;
+  width: 10px;
+  height: 6px;
+  background: var(--color-accent);
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 2px,
+    8px 2px,
+    8px 4px,
+    6px 4px,
+    6px 100%,
+    4px 100%,
+    4px 4px,
+    2px 4px,
+    2px 2px,
+    0 2px
+  );
+  visibility: hidden;
+}
+.message-bar-more[data-shown] {
+  visibility: visible;
+  animation: message-bar-more 0.8s steps(1, end) infinite;
+}
+@keyframes message-bar-more {
+  50% {
+    transform: translateY(2px);
+  }
+}
+/* An action outcome in the bar: a small framed box with a mark in its tone. */
+.message-bar-chip {
+  gap: 6px;
+  padding-left: 8px;
+  background: var(--color-bg);
+  border: 2px solid var(--color-border);
+}
+:root[data-theme='pokemon'] .message-bar-chip {
+  border-color: var(--color-panel-inner);
+}
+.message-bar-chip[data-tone='error'],
+:root[data-theme='pokemon'] .message-bar-chip[data-tone='error'] {
+  border-color: var(--color-status-error);
+}
+.message-bar-chip-mark {
+  width: 6px;
+  height: 6px;
+  background: var(--color-status-success);
+}
+.message-bar-chip[data-tone='error'] .message-bar-chip-mark {
+  background: var(--color-status-error);
 }
 
 /* A party slot whose session needs you blinks (hard steps, no easing). */
@@ -441,8 +554,13 @@
     outline: 2px solid var(--color-status-permission);
     outline-offset: -2px;
   }
-  .battle-log {
+  .message-bar-strip,
+  .message-bar,
+  .message-bar-line {
     transition: none;
+  }
+  .message-bar-more[data-shown] {
+    animation: none;
   }
 }
 

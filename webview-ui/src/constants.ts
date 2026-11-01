@@ -191,7 +191,7 @@ export const OFFICE_TOP_BAR_STACK_GAP_PX = 6;
  *  narrow windows move them down into the office. */
 export const OFFICE_TOP_PILLS_Z_INDEX = 46;
 /** The toolbar: above the pills, so its launch drawer opens over them; below
- *  the modals (50) and the toasts (60). */
+ *  the modals (50) and the message bar's chips (60). */
 export const OFFICE_TOOLBAR_Z_INDEX = 47;
 
 // ── Editor ───────────────────────────────────────────────────
@@ -1029,28 +1029,61 @@ export const CONDUCTOR_SCOPE_WINDOW_HOURS = [0.25, 0.5, 1, 6, 24, 72, 0] as cons
 export const CONDUCTOR_SCOPE_NEVER_LABEL = 'Never';
 export const CONDUCTOR_SCOPE_MAX_WINDOW_DAYS = 30;
 export const CONDUCTOR_SCOPE_MAX_SESSIONS = [12, 24, 48, 96] as const;
-/** Battle log: events kept, how long the newest stays up, and its fade. */
+/** Battle log: events kept, how long a line stays up, and its fade. */
 export const BATTLE_LOG_CAPACITY = 30;
 export const BATTLE_LOG_VISIBLE_MS = 4_000;
 export const BATTLE_LOG_FADE_MS = 500;
-/** The battle log's distance from the office's bottom edge, as a share of the
- *  office's height: it reads in the lower part of the office instead of
- *  hugging the window's bottom edge. */
-export const BATTLE_LOG_BOTTOM_FRACTION = 0.25;
-/** ...and at least this far from the office's edges and from what it keeps
- *  clear of (the layout editor's palette, the desktop top bar). */
-export const BATTLE_LOG_EDGE_GAP_PX = 10;
-export const BATTLE_LOG_MAX_WIDTH_PX = 520;
 /** Per-device preferences (localStorage, not synced through the server). */
 export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
-/** Toasts for Conductor action outcomes: lifetime and how many stack. */
+/** Toasts for Conductor action outcomes. A success stays up this long, an
+ *  error (a reason to read) longer; neither leaves while the pointer is on
+ *  its chip or focus is in it, and either gets at least TOAST_RESUME_MS more
+ *  after that. */
 export const TOAST_VISIBLE_MS = 4_000;
-export const TOAST_MAX_VISIBLE = 3;
+export const TOAST_ERROR_VISIBLE_MS = 10_000;
+export const TOAST_RESUME_MS = 2_000;
+/** How many toasts the store keeps: a new one drops the oldest success first,
+ *  so a success never pushes out an error still up. */
+export const TOAST_MAX_KEPT = 3;
+/** The message bar's chips: above the modals (50), as the toasts were, so an
+ *  outcome of an action taken in a modal reads over its backdrop. */
 export const TOAST_Z_INDEX = 60;
-/** Desktop: toasts stack right-aligned under the toolbar, this wide at most
- *  (longer text wraps), so they stay under it rather than reaching across
- *  the top of the office. */
-export const TOAST_MAX_WIDTH_PX = 320;
+/** The message bar under the office (MessageBar): a text box in the strip
+ *  below the map, never over it. The box sits this far inside the strip (the
+ *  theme's outline is drawn in this margin)... */
+export const MESSAGE_BAR_MARGIN_PX = 6;
+/** ...with this frame and padding... */
+export const MESSAGE_BAR_FRAME_PX = 4;
+export const MESSAGE_BAR_PAD_X_PX = 12;
+export const MESSAGE_BAR_PAD_Y_PX = 2;
+/** ...around one or two rows this tall: a battle-log line, or a chip. */
+export const MESSAGE_BAR_ROW_PX = 36;
+/** A chip's border (part of its row), its text's lines (two to a row, four
+ *  to two; longer text ends in an ellipsis, the whole of it in the chip's
+ *  tooltip and the bar's live region), and the room kept under the last line
+ *  for its descenders. */
+export const MESSAGE_BAR_CHIP_BORDER_PX = 2;
+export const MESSAGE_BAR_CHIP_LINE_PX = 15;
+export const MESSAGE_BAR_CHIP_TEXT_PAD_PX = 2;
+/** An office page shorter than this (a landscape phone, a short VS Code
+ *  panel) gets a one-row bar. */
+export const MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX = 520;
+/** A bar narrower than this puts its chip over the lines instead of in a
+ *  column beside them (phones, 1,100 px with the Pokédex docked). */
+export const MESSAGE_BAR_SIDE_CHIPS_MIN_PX = 600;
+/** Chips side by side in one row are this far apart. */
+export const MESSAGE_BAR_CHIP_GAP_PX = 6;
+/** Typewriter reveal of the newest line: this long per character, the whole
+ *  line in at most MESSAGE_BAR_TYPE_MAX_MS. */
+export const MESSAGE_BAR_TYPE_MS_PER_CHAR = 18;
+export const MESSAGE_BAR_TYPE_MAX_MS = 600;
+/** The strip changing height (Settings' Battle Log, a page crossing
+ *  MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX), and the box showing or hiding in a strip
+ *  that holds only chips. */
+export const MESSAGE_BAR_TRANSITION_MS = 140;
+/** Room kept at the end of the newest line for the ▼ shown once it has typed
+ *  in (the GBA "more" arrow). */
+export const MESSAGE_BAR_MORE_SPACE_PX = 18;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
 /** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */

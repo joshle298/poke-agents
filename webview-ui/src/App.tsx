@@ -6,7 +6,6 @@ import type { SelectMods, TabStatus } from './components/AgentCard.js';
 import type { CardBarLayout } from './components/AgentCardBar.js';
 import { AgentCardBar } from './components/AgentCardBar.js';
 import { ArchiveModal } from './components/ArchiveModal.js';
-import { BattleLog } from './components/BattleLog.js';
 import { ChangelogModal } from './components/ChangelogModal.js';
 import { ConductorEmptyOffice, NothingTrackedOffice } from './components/ConductorEmptyOffice.js';
 import { ConnectionIndicator } from './components/ConnectionIndicator.js';
@@ -15,6 +14,8 @@ import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
+import { MessageBar, MessageBarChipLayer } from './components/MessageBar.js';
+import { messageBarLayout } from './components/messageBarLayout.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { OfficeToolbar } from './components/OfficeToolbar.js';
 import { OfficeTopBar } from './components/OfficeTopBar.js';
@@ -23,9 +24,7 @@ import { SessionPanel } from './components/SessionPanel.js';
 import { SessionsModal } from './components/SessionsModal.js';
 import { SettingsModal } from './components/SettingsModal.js';
 import { TerminalDrawer } from './components/TerminalDrawer.js';
-import { Toasts } from './components/Toasts.js';
 import { Tooltip } from './components/Tooltip.js';
-import type { Rect } from './components/topBarLayout.js';
 import { officeRightCover } from './components/topBarLayout.js';
 import { Button } from './components/ui/Button.js';
 import { Modal } from './components/ui/Modal.js';
@@ -417,10 +416,9 @@ function App() {
   ]);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  // The layout editor's palette, measured, and what the desktop top bar
-  // covers (OfficeTopBar reports it): the battle log keeps clear of both.
-  const [paletteRef, paletteBox] = useBoxSize<HTMLDivElement>();
-  const [topBarOccupied, setTopBarOccupied] = useState<readonly Rect[]>([]);
+  // The office page (the map's region and the message bar under it): its
+  // size picks the bar's rows and where its chips go.
+  const [officePageRef, officePageBox] = useBoxSize<HTMLDivElement>();
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0);
   useEditorKeyboard(
@@ -697,14 +695,17 @@ function App() {
     return <div className="w-full h-full flex items-center justify-center ">Loading...</div>;
   }
 
-  // What covers the office's right edge, which the top bar and the battle log
-  // keep clear of: the upstream card column (theme off) and, on narrow
-  // desktop windows, the Pokédex drawer beside it.
+  // What covers the office's right edge, which the top bar and the layout
+  // editor's palette keep clear of: the upstream card column (theme off) and,
+  // on narrow desktop windows, the Pokédex drawer beside it. The column also
+  // covers the message bar's right end; the drawer ends above the bar.
   const pokedexDrawerOpen = !isMobile && !wideWindow && detailAgentPresent;
-  const officeRightInset = officeRightCover(
+  const cardColumnPx =
     !isMobile && cardBarLayout === 'overlay' && cardAgentIds.length > 0
       ? TERMINAL_SIDEBAR_WIDTH_PX
-      : 0,
+      : 0;
+  const officeRightInset = officeRightCover(
+    cardColumnPx,
     pokedexDrawerOpen ? POKEDEX_PANEL_WIDTH_PX : null,
   );
 
@@ -750,15 +751,10 @@ function App() {
     </div>
   );
 
-  // The office region is shared by both shells: desktop mounts it as the
-  // flexing left half of the split view (the terminal panel docks beside it);
-  // mobile mounts it as the first page of the sliding track. containerRef
-  // (ToolOverlay geometry) rides along either way.
+  // The office region: the map's canvas and everything drawn over it.
+  // containerRef (ToolOverlay geometry) is the canvas's box.
   const officeRegion = (
-    <div
-      ref={containerRef}
-      className={`relative h-full overflow-hidden ${isMobile ? 'w-full' : 'flex-1 min-w-0'}`}
-    >
+    <div ref={containerRef} className="relative flex-1 min-h-0 w-full overflow-hidden">
       <OfficeCanvas
         officeState={officeState}
         onClick={handleClick}
@@ -794,16 +790,14 @@ function App() {
       )}
 
       {/* Desktop: the toolbar in the office's top-right corner (left of the
-          party bar and the Pokédex), the now-playing pill, the first-run
-          tooltip and the toasts under it, and the top-centre pills beside
-          it or, when they don't fit, under it. Debug mode keeps the toolbar
-          (Settings turns debug off). A read-only office gets no toolbar:
-          launching, layout editing and every setting would be refused by the
-          server anyway. */}
+          party bar and the Pokédex), the now-playing pill and the first-run
+          tooltip under it, and the top-centre pills beside it or, when they
+          don't fit, under it. Debug mode keeps the toolbar (Settings turns
+          debug off). A read-only office gets no toolbar: launching, layout
+          editing and every setting would be refused by the server anyway. */}
       {!isMobile && (
         <OfficeTopBar
           rightInset={officeRightInset}
-          onOccupiedChange={setTopBarOccupied}
           toolbar={
             officeReadOnly
               ? null
@@ -860,7 +854,6 @@ function App() {
                 : null;
               return (
                 <EditorToolbar
-                  ref={paletteRef}
                   rightInset={officeRightInset}
                   activeTool={editorState.activeTool}
                   selectedTileType={editorState.selectedTileType}
@@ -995,16 +988,6 @@ function App() {
         <NothingTrackedOffice />
       )}
 
-      {/* A quarter of the office's height above its bottom edge, clear of the
-          layout editor's palette and the desktop top bar. */}
-      {pokemonTheme && battleLogOn && !isDebugMode && (
-        <BattleLog
-          rightInset={officeRightInset}
-          obstacles={isMobile ? [] : topBarOccupied}
-          palette={editor.isEditMode && paletteBox.height > 0 ? paletteBox : null}
-        />
-      )}
-
       {/* Narrow desktop windows: the Pokédex opens as a drawer over the
           office's right edge (clear of the upstream card column, which
           overlays that edge when the theme is off). */}
@@ -1050,6 +1033,37 @@ function App() {
     </div>
   );
 
+  // The battle log is a Pokémon-theme flourish, and debug view hides it.
+  const showBattleLog = pokemonTheme && battleLogOn && !isDebugMode;
+  // Action outcomes (toasts) come only from a tokened Conductor office.
+  const barNotices = conductorActive && !officeReadOnly;
+  const barLayout = messageBarLayout(
+    { width: officePageBox.width - cardColumnPx, height: officePageBox.height },
+    showBattleLog,
+    { chipsOver: isMobile },
+  );
+  // The office page, shared by both shells: the office region over the
+  // message bar, so the bar never covers the map (the canvas shrinks by its
+  // height). Desktop mounts it as the flexing left half of the split view
+  // (the party bar, a docked Pokédex or the terminal panel beside it); mobile
+  // as the first page of the sliding track, above the card scroller, with the
+  // bar's chips drawn outside the track (MessageBarChipLayer).
+  const officePage = (
+    <div
+      ref={officePageRef}
+      className={`flex flex-col h-full ${isMobile ? 'w-full' : 'flex-1 min-w-0'}`}
+    >
+      {officeRegion}
+      <MessageBar
+        battleLog={showBattleLog}
+        notices={barNotices}
+        layout={barLayout}
+        rightInsetPx={cardColumnPx}
+        chipsElsewhere={isMobile}
+      />
+    </div>
+  );
+
   // Wide windows dock the Pokédex as a flex sibling of the office.
   const dockedPanel = wideWindow && detailAgentPresent && detailAgentId !== null && (
     <SessionPanel
@@ -1078,7 +1092,15 @@ function App() {
     >
       {isMobile ? (
         <MobileShell
-          office={officeRegion}
+          office={officePage}
+          messageChips={
+            <MessageBarChipLayer
+              battleLog={showBattleLog}
+              notices={barNotices}
+              layout={barLayout}
+              hidden={detailAgentPresent && detailAgentId !== null}
+            />
+          }
           shell={mobileShell}
           drawer={terminalDrawer}
           agentIds={cardAgentIds}
@@ -1097,7 +1119,7 @@ function App() {
         />
       ) : (
         <>
-          {officeRegion}
+          {officePage}
 
           {/* Party layouts: the Pokédex docks between the office and the
               party, so the office reflows and the party never moves. */}
@@ -1306,8 +1328,6 @@ function App() {
           onClose={closeDetail}
         />
       )}
-      {/* Desktop toasts stack under the toolbar (OfficeTopBar). */}
-      {isMobile && <Toasts />}
       {/* Jukebox (local music, never Conductor): privileged standalone offices. */}
       {isBrowserRuntime && !officeReadOnly && <Jukebox isMobile={isMobile} />}
 
