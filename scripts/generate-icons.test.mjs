@@ -169,6 +169,12 @@ const SPHERE_KEYS = new Set('BbnNMRhW');
 /** The sphere's body alone, without the highlight and glint. */
 const BODY_KEYS = new Set('BbnNMR');
 const DESIGN_SIZES = [16, 32, 48, 64, 128, 1024];
+const NEIGHBOURS_4 = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 
 /** Every drawn cell of a grid whose key passes `keep`. */
 function cellsOf(grid, keep) {
@@ -208,11 +214,8 @@ function groups(cells) {
   return found;
 }
 
-/**
- * The sphere's disc, found from its own colours: as wide as they reach,
- * centred on them left to right, its top where they start (the ring may
- * hide part of its bottom).
- */
+/** The sphere's disc, found from its own colours: as wide as they reach and
+ *  centred on them. */
 function sphereDisc(grid) {
   const cells = cellsOf(grid, (key) => SPHERE_KEYS.has(key));
   const b = box(cells);
@@ -222,48 +225,98 @@ function sphereDisc(grid) {
 
 const distance = (cell, disc) => Math.hypot(cell.x + 0.5 - disc.cx, cell.y + 0.5 - disc.cy);
 
-/** Why the orb isn't a round sphere, or null: every sphere colour lies in
- *  the disc, the disc holds nothing but the sphere, its outline and the
- *  ring, and the sphere shows at least 70% of its height. */
+/** Why the sphere isn't round, or null: it shows whole (as tall as it is
+ *  wide), every row and column of it is centred on the disc (no egg, lemon
+ *  or pill), every sphere colour lies in the disc, and the disc holds
+ *  nothing but the sphere. */
 function roundProblem(grid) {
   const disc = sphereDisc(grid);
-  for (const cell of cellsOf(grid, (key) => SPHERE_KEYS.has(key))) {
+  if (disc.box.height !== disc.box.width) {
+    return `${disc.box.width} wide but ${disc.box.height} tall`;
+  }
+  const sphere = cellsOf(grid, (key) => SPHERE_KEYS.has(key));
+  for (const [axis, across] of [
+    ['y', 'x'],
+    ['x', 'y'],
+  ]) {
+    const centre = across === 'x' ? disc.cx : disc.cy;
+    const lines = Map.groupBy(sphere, (c) => c[axis]);
+    for (const [at, line] of lines) {
+      const b = box(line);
+      const [lo, hi] = across === 'x' ? [b.x0, b.x1] : [b.y0, b.y1];
+      if ((lo + hi + 1) / 2 !== centre) return `${axis} ${at} runs ${lo} to ${hi}, off centre`;
+    }
+  }
+  for (const cell of sphere) {
     if (distance(cell, disc) > disc.r + 0.5) return `(${cell.x}, ${cell.y}) is off the disc`;
   }
   for (const [y, row] of grid.entries()) {
     for (const [x, key] of row.entries()) {
-      if (distance({ x, y }, disc) > disc.r - 1) continue;
-      if (!key || !(SPHERE_KEYS.has(key) || RING_KEYS.has(key) || key === 'k')) {
+      if (distance({ x, y }, disc) <= disc.r - 1 && !SPHERE_KEYS.has(key)) {
         return `(${x}, ${y}) inside the disc is ${key ?? 'empty'}`;
       }
     }
   }
-  if (disc.box.height < 0.7 * disc.box.width) {
-    return `${disc.box.width} wide but ${disc.box.height} tall`;
+  return null;
+}
+
+/** Why the sphere's outline isn't whole and one cell thick, or null: every
+ *  cell beside the sphere is outline, and every outline cell is beside it. */
+function outlineProblem(grid) {
+  const at = (x, y) => grid[y]?.[x] ?? null;
+  for (const { x, y } of cellsOf(grid, (key) => SPHERE_KEYS.has(key))) {
+    for (const [dx, dy] of NEIGHBOURS_4) {
+      const key = at(x + dx, y + dy);
+      if (!SPHERE_KEYS.has(key) && key !== 'k')
+        return `a gap in the outline at (${x + dx}, ${y + dy})`;
+    }
+  }
+  for (const { x, y } of cellsOf(grid, (key) => key === 'k')) {
+    if (!NEIGHBOURS_4.some(([dx, dy]) => SPHERE_KEYS.has(at(x + dx, y + dy)))) {
+      return `outline (${x}, ${y}) is away from the sphere`;
+    }
   }
   return null;
 }
 
 /**
- * The C ring, or null: gold reaching past the sphere on both sides, in one
- * stroke on the left (the spine) and in two ends on the right with at least
- * a clear row between them (the opening). Inside the disc it only crosses
- * the sphere's lower half (in front), the upper half hiding it (behind).
+ * The C ring, or null. Free-standing: no gold inside the sphere's disc or
+ * touching the sphere or its outline. Close to face-on: its gold spans
+ * nearly as much down as across. Round the sphere: it passes above and
+ * below it, in one stroke on the left (the spine) and in two ends on the
+ * right with at least two rows of clean tile between them beside the sphere
+ * (the opening).
  */
 function findRingC(grid) {
   const disc = sphereDisc(grid);
   const gold = cellsOf(grid, (key) => RING_KEYS.has(key));
+  if (gold.length === 0) return null;
+  const solid = (key) => key && (SPHERE_KEYS.has(key) || key === 'k');
+  for (const { x, y } of gold) {
+    if (distance({ x, y }, disc) <= disc.r + 0.5) return null;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) if (solid(grid[y + dy]?.[x + dx])) return null;
+    }
+  }
+  const ring = box(gold);
+  if (ring.height < 0.85 * ring.width || ring.width < 0.85 * ring.height) return null;
+  const middle = Math.floor(disc.cx);
+  if (!gold.some((c) => c.x === middle && c.y < disc.box.y0)) return null;
+  if (!gold.some((c) => c.x === middle && c.y > disc.box.y1)) return null;
   const left = gold.filter((c) => c.x + 1 <= disc.cx - disc.r);
   const right = gold.filter((c) => c.x >= disc.cx + disc.r);
-  if (left.length === 0 || right.length === 0) return null;
-  if (groups(left).length !== 1) return null;
+  if (left.length === 0 || groups(left).length !== 1) return null;
   const ends = groups(right).map(box);
   if (ends.length !== 2) return null;
   const [upper, lower] = ends.sort((a, b) => a.y0 - b.y0);
-  if (lower.y0 - upper.y1 < 2) return null;
-  const inside = gold.filter((c) => distance(c, disc) <= disc.r - 0.5);
-  if (inside.length === 0 || inside.some((c) => c.y + 0.5 <= disc.cy)) return null;
-  return { spine: box(left), upper, lower };
+  const [x0, x1] = [Math.min(upper.x0, lower.x0), Math.max(upper.x1, lower.x1)];
+  let open = 0;
+  for (let y = upper.y1 + 1; y < lower.y0; y++) {
+    if (grid[y].slice(x0, x1 + 1).some((key) => key && !solid(key))) return null;
+    open++;
+  }
+  if (open < 2) return null;
+  return { spine: box(left), upper, lower, open };
 }
 
 /** Why a band crosses the sphere, or null: on the rows within half a radius
@@ -299,16 +352,23 @@ function buttonProblem(grid) {
   return null;
 }
 
-test('the orb is a round sphere at every size, not a pill', () => {
+test('the orb is a whole round sphere at every size, not a pill or an egg', () => {
   for (const size of DESIGN_SIZES) assert.equal(roundProblem(designFor(size)), null, `${size} px`);
 });
 
-test('a gold C rings the sphere at every size: past it both sides, open on the right', () => {
+test('from 48 px the sphere has a whole outline one cell thick', () => {
+  for (const size of [48, 64, 1024]) {
+    assert.equal(outlineProblem(designFor(size)), null, `${size} px`);
+  }
+});
+
+test('a free gold C stands round the sphere at every size, open on the right', () => {
   for (const size of DESIGN_SIZES) {
     const ring = findRingC(designFor(size));
     assert.ok(ring, `${size} px shows the C ring`);
     // The C's spine reaches above and below the ends of its arms' opening.
     assert.ok(ring.spine.height >= 3, `${size} px: a spine ${ring.spine.height} tall`);
+    assert.ok(ring.open >= 2, `${size} px: ${ring.open} rows open`);
   }
 });
 
@@ -319,7 +379,7 @@ test('no band splits the sphere and no button sits in its middle, at any size', 
   }
 });
 
-test('the shape checks reject a pill, no ring, a closed O, a mirrored C, a band and a button', () => {
+test('the shape checks reject a pill, an egg, a broken outline, rings that are no free C, a band and a button', () => {
   const grid = designFor(1024);
   const swap = (from, to) =>
     grid.map((row, y) => row.map((key, x) => (from({ x, y, key }) ? to : key)));
@@ -328,6 +388,14 @@ test('the shape checks reject a pill, no ring, a closed O, a mirrored C, a band 
 
   const pill = grid.map((row) => row.flatMap((key) => [key, key]));
   assert.notEqual(roundProblem(pill), null, 'a pill');
+  const lowerLeft = ({ x, y, key }) =>
+    SPHERE_KEYS.has(key) && x + 0.5 < disc.cx - 2 && y + 0.5 > disc.cy + 2;
+  assert.notEqual(roundProblem(swap(lowerLeft, 'k')), null, 'an egg, its lower left cut');
+  assert.notEqual(
+    outlineProblem(swap(({ x, y }) => y === disc.box.y1 + 2 && x === Math.floor(disc.cx), 'k')),
+    null,
+    'an outline two cells thick',
+  );
   assert.equal(findRingC(swap(({ key }) => RING_KEYS.has(key), null)), null, 'no ring');
   const closed = swap(
     ({ x, y }) =>
@@ -336,12 +404,15 @@ test('the shape checks reject a pill, no ring, a closed O, a mirrored C, a band 
   );
   assert.equal(findRingC(closed), null, 'a closed O');
   assert.equal(findRingC(grid.map((row) => [...row].reverse())), null, 'a mirrored C');
+  const gap = ({ x, y, key }) =>
+    !key && distance({ x, y }, disc) > disc.r && distance({ x, y }, disc) < disc.r + 2.5;
+  assert.equal(findRingC(swap(gap, 'g')), null, 'a ring against the sphere, a crescent on it');
   const middle = Math.floor(disc.cy);
-  assert.notEqual(
-    bandProblem(swap(({ x, y }) => y === middle && Math.abs(x + 0.5 - disc.cx) < disc.r, 'k')),
-    null,
-    'a dark band across the middle',
-  );
+  const across = ({ x, y }) => y === middle && Math.abs(x + 0.5 - disc.cx) < disc.r;
+  assert.equal(findRingC(swap(across, 'g')), null, 'a ring across the middle, a planet');
+  const flat = grid.filter((_, y) => y % 3 !== 0);
+  assert.equal(findRingC(flat), null, 'a ring seen edge-on');
+  assert.notEqual(bandProblem(swap(across, 'k')), null, 'a dark band across the middle');
   assert.notEqual(
     buttonProblem(swap((cell) => distance(cell, disc) <= 1.5, 'h')),
     null,
@@ -394,11 +465,17 @@ test("the orb uses the office orb's colours", () => {
   const sprite = JSON.parse(
     fs.readFileSync(path.join(REPO_ROOT, 'webview-ui/src/office/sprites/orb.json'), 'utf8'),
   );
+  const hexOf = (key) => `#${INK[key].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
   for (const key of 'BbnNMRhWwGgo') {
-    const want = sprite.palette[key].toLowerCase();
-    const got = `#${INK[key].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-    assert.equal(got, want, `ink ${key}`);
+    assert.equal(hexOf(key), sprite.palette[key].toLowerCase(), `ink ${key}`);
   }
+  assert.equal(hexOf('k'), sprite.palette.K.toLowerCase(), 'one outline colour');
+});
+
+test("the sparkles wear the ring's gold and the glint's white", () => {
+  assert.deepEqual(INK.Y, INK.G);
+  assert.deepEqual(INK.y, INK.g);
+  assert.deepEqual(INK['*'], INK.W);
 });
 
 test('two sparkles that touch neither each other nor the orb', () => {
@@ -412,7 +489,10 @@ test('two sparkles that touch neither each other nor the orb', () => {
       }
     }
   }
-  assert.equal(cellsOf(designFor(16), (key) => SPARKLE_KEYS.has(key)).length, 0, 'none at 16 px');
+  for (const size of [16, 48]) {
+    const sparkles = cellsOf(designFor(size), (key) => SPARKLE_KEYS.has(key));
+    assert.equal(sparkles.length, 0, `none at ${size} px`);
+  }
 });
 
 test('a whole cell of tile lies between every sparkle and the tile edge, iOS mask included', () => {

@@ -8,7 +8,7 @@
  * to receiver — spawned as dashes, messaged as dots, watched faint — each
  * lit pixel over a dark casing pixel.
  * Projectiles fly above everyone on an arc from chest to chest: an orb, its
- * ring spinning until it lands, while themed; an envelope otherwise.
+ * C spinning round it until it lands, while themed; an envelope otherwise.
  */
 
 import {

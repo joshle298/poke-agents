@@ -6,27 +6,27 @@
 //
 // The art is original: Poke Agents' own catch orb, the one thrown, recalled
 // and flown in the office (webview-ui/src/office/sprites/orb.json), drawn
-// large. A glossy sphere 16 cells across, deep teal to indigo, lit from the
-// upper left (a white glint, a pale halo and two star specks) with a cyan
-// rim light along its lower right. A bold gold C for Conductor rings it at
-// a tilt, like a planet's ring: the ring passes behind the sphere at the
-// top and in front of it near the bottom, and it opens on the right, where
-// its upper end carries a small gold latch. Everything has a dark outline,
-// and the ring casts a dark line where it crosses the sphere. Two gold
-// sparkles sit in the free corners, each at least a cell inside the tile,
-// on a macOS-style rounded square in the app's night palette.
+// large. A glossy sphere, deep teal to indigo, lit from the upper left (a
+// white glint, a pale halo and two star specks), with a cyan rim light along
+// its lower right and a dark outline one cell thick. Round it, face-on, stands
+// a bold gold C for Conductor: a free ring with a cell of tile between it and
+// the sphere, lit along its top and left, shaded along its underside, and
+// open on the right, where its upper end swells into a round latch with a
+// glint. Two sparkles in the ring's gold sit in the free corners, each with a
+// cell of tile round it, on a macOS-style rounded square in the app's night
+// palette.
 //
 // It is not a ball from the games: the sphere is one colour all round, with
 // no band splitting it into two hemispheres, no button in its middle and no
-// red, white or black halves. The ring is tilted, curved and open, and the
-// C is our own pixel letter, not Conductor's logo.
+// red, white or black halves, and the ring never touches it. The C is our own
+// pixel letter, not Conductor's logo.
 //
 // Each size is drawn on whole-pixel cells, so edges stay crisp. 32 px and up
-// draw the 32-cell design. 16 px is drawn by hand: the sphere 8 px across
-// with its glint and rim, the C ring as a gold stroke 1 to 2 px thick with
-// the latch and the opening on the right, and no outline or sparkles (they
-// would melt into the dark square). 48 px draws the 16 px design at 3 px a
-// cell.
+// draw the 32-cell design. 48 px draws its own 24-cell design at 2 px a cell
+// (the same orb, no sparkles). 16 px is drawn by hand: the sphere 6 px across
+// with its glint and rim, a pixel of tile, then the C as a 1 px gold stroke
+// with the latch's glint at its upper end and four rows of tile between its
+// ends. It has no outline or sparkles (they would melt into the dark square).
 //
 // Outputs (all committed; scripts/generate-icons.test.mjs fails when they
 // drift from this script):
@@ -50,9 +50,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 // ── Palette ───────────────────────────────────────────────────
 // The tile keeps the app's night blues. The orb uses the office orb's
-// colours (orb.json): five shades of its teal-to-indigo body, the cyan rim,
-// the pale highlight, the gold ring in three shades, and the icon's own dark
-// outline. No red, and no white half.
+// colours (orb.json): its outline, five shades of its teal-to-indigo body,
+// the cyan rim, the pale highlight, and the gold ring in three shades, which
+// the sparkles wear too. No red, and no white half.
 
 const hex = (h) => [
   parseInt(h.slice(1, 3), 16),
@@ -71,7 +71,7 @@ const TOP_RIM_ALPHA = 0.2;
 
 /** Cell colors by key. */
 export const INK = {
-  k: hex('#0e1a26'), // outline, and the ring's shadow on the sphere
+  k: hex('#0e1a26'), // the sphere's outline
   B: hex('#34bdbb'), // sphere, lit teal
   b: hex('#1e8fa6'), // sphere, teal
   n: hex('#21639a'), // sphere, deep teal
@@ -84,8 +84,8 @@ export const INK = {
   G: hex('#ffe58a'), // the C ring, lit
   g: hex('#f2c23a'), // the C ring
   o: hex('#b07a1e'), // the C ring in shadow
-  y: hex('#f8d030'), // sparkle tips
-  Y: hex('#ffe878'), // sparkle arms
+  y: hex('#f2c23a'), // sparkle arms, in the ring's gold
+  Y: hex('#ffe58a'), // sparkle arms, in the ring's lit gold
   '*': hex('#ffffff'), // sparkle core
 };
 
@@ -97,15 +97,14 @@ export const INK = {
 const parseGrid = (rows) => rows.map((row) => [...row].map((c) => (c === '.' ? null : c)));
 
 /**
- * The orb on a 32-cell grid (32 px and up). The sphere is an outlined disc
- * 16 cells across (rows 9 to 24); the C ring's centre-line is a tilted
- * ellipse about 22 cells wide and 9 tall, a stroke 2 cells thick, that
- * leaves the sphere's top right as the C's upper arm (ending in a 2 by 3
- * latch with a glint), wraps round its left as the spine, crosses in front
- * of its lower part, and ends a stroke's width past the sphere's right edge,
- * three rows below the latch: the C's opening. The sparkles take the free
- * corners, the big one at the upper left and the small one at the lower
- * right.
+ * The orb on a 32-cell grid (32 px and up). The sphere is a disc 12 cells
+ * across (rows 10 to 21) inside a one-cell outline. A cell of tile rings it,
+ * then the C: a gold stroke 2 cells thick whose outer edge is a circle 20
+ * cells across, lit (G) along its top and left and shaded (o) along its
+ * underside. It opens on the right: its upper end swells into a 3 by 3 latch
+ * with a glint (w) over rows 11 to 13, rows 14 to 18 are tile, and its lower
+ * end's top face catches the light. The sparkles take the upper-left and
+ * lower-right corners.
  */
 const GRID_32 = parseGrid([
   '................................',
@@ -113,27 +112,27 @@ const GRID_32 = parseGrid([
   '................................',
   '................................',
   '................................',
-  '.......y........................',
   '.......Y........................',
-  '.....yY*Yy......................',
-  '.......Y........................',
-  '.......y.....kkkkkk..kkkkk......',
-  '...........kkBBBbbnkkGGGwGk.....',
-  '..........kBhhBBbbbnnkggGgk.....',
-  '.........kBhWWhBbbbhnRkkgok.....',
-  '.........kBhWhBbbbnnnRk.kk......',
-  '.......kkBBBhBBbbbnnnNRk........',
-  '......kGkbBBBbbbbnnnNNRkkk......',
-  '.....kGgkbbbbbbbnnnnNNRkGGk.....',
-  '.....kGgkbbbbbbnnnnNNMRGggk.....',
-  '....kGgkknbhbnnnnnNNNMGgkk......',
-  '....kGgkknnnnnnnnNNNGGgk........',
-  '....kGgkkknnnnnNNNGGggk.........',
-  '....kGgkkkNNNNNGGGggkkk.........',
-  '.....kGGGGGGGGGgggkkRk...y......',
-  '......koggggggokkkRkk...y*y.....',
-  '.......kkkkkkkkkkkk......y......',
-  '................................',
+  '......Y*Y....GGGGGG.............',
+  '.......Y...GGggggggGG...........',
+  '.........GGgg......ggGG.........',
+  '........GGg...kkkk...gGG........',
+  '........Gg..kkBBbbkk..gG........',
+  '.......Gg..kBBBBBbbnk..gGG......',
+  '.......Gg.kBBhhBBbbbnk.gwG......',
+  '......Gg..kBhWWhBbbhnk..og......',
+  '......Gg.kBBhWhBBbbnnNk.........',
+  '......Gg.kBBBBBBbbbnnNk.........',
+  '......Gg.kbBBBBbbbnnNNk.........',
+  '......Gg.kbbbbbbbnnNNRk.........',
+  '......Gg..kbbbbnnNNMRk..........',
+  '.......Gg.kbhnnnNNMRRk.GG.......',
+  '.......Gg..knnNNMMRRk..go.......',
+  '........gg..kkNMMRkk..go........',
+  '........ggg...kkkk...goo........',
+  '.........gggg......ggoo..y......',
+  '...........ggggggggoo...yYy.....',
+  '.............oooooo......y......',
   '................................',
   '................................',
   '................................',
@@ -142,36 +141,68 @@ const GRID_32 = parseGrid([
   '................................',
 ]);
 
-/** Hand-drawn 16 px design: the sphere 8 px across with a pixel of tile all
- *  round the orb, a glint at its upper left and a rim down its right; the
- *  ring a gold stroke round its left and across its lower part, 2 px thick
- *  in front, its upper arm with the latch at the top right and its other
- *  end two rows below. No outline (it would melt into the dark square) and
- *  no sparkles. */
+/** The same orb on a 24-cell grid, for 48 px (2 px a cell, where the 32-cell
+ *  design would need 1.5): the sphere 8 cells across in its outline, a cell
+ *  of tile, the C 2 cells thick and 16 across with its latch, rows 11 to 13
+ *  open between its ends. No room for sparkles. */
+const GRID_24 = parseGrid([
+  '........................',
+  '........................',
+  '........................',
+  '........................',
+  '........GGGGGGGG........',
+  '.......GggggggggG.......',
+  '......Ggg......ggG......',
+  '.....Gg...kkkk...gG.....',
+  '....Ggg..kBBbbk..ggGG...',
+  '....Gg..kBBhBbnk..gwG...',
+  '....Gg.kBhWhBbnNk..og...',
+  '....Gg.kBBhBbbnNk.......',
+  '....Gg.kbBBbbnNNk.......',
+  '....Gg.kbbbbnNMRk.......',
+  '....Gg..khnnNMRk..GG....',
+  '....Ggg..kNMRRk..ggo....',
+  '.....Gg...kkkk...go.....',
+  '......ggg......ggo......',
+  '.......gggggggggo.......',
+  '........gooooooo........',
+  '........................',
+  '........................',
+  '........................',
+  '........................',
+]);
+
+/** Hand-drawn 16 px design: the sphere 6 px across with a glint at its upper
+ *  left and a rim at its lower right, a pixel of tile, then the C, a 1 px
+ *  gold stroke 10 px across. Its upper end turns into the latch's glint;
+ *  rows 6 to 9 are open between its ends. No outline (it would melt into the
+ *  dark square) and no sparkles, and a pixel of tile all round the orb. */
 const GRID_16 = parseGrid([
   '................',
   '................',
   '................',
-  '......BBbn......',
-  '.....BWBbnnGG...',
-  '....BBBbbnnRo...',
-  '...GBBbbnnNR....',
-  '...GbbbnnNNR....',
-  '...GbbnnNNGGG...',
-  '...GnnNNGGgg....',
-  '...gGGGGgg......',
-  '....gggg........',
-  '................',
+  '.....GGGGGg.....',
+  '....G......gG...',
+  '...G..BBbn..w...',
+  '...G.BWBbnN.....',
+  '...G.BBbbnN.....',
+  '...G.bbbnNR.....',
+  '...G.bbnNMR.....',
+  '...g..nNRR..G...',
+  '....g......go...',
+  '.....ggggoo.....',
   '................',
   '................',
   '................',
 ]);
 
 /** The design drawn at a given output size: the 16-cell design below 32 px,
- *  and wherever only it lands on whole pixels (48 px, at 3 px a cell, where
- *  the 32-cell design would need 1.5); the 32-cell design otherwise. */
+ *  the 24-cell design where only it lands on whole pixels (48 px), and the
+ *  32-cell design otherwise. */
 export function designFor(size) {
-  return size < 32 || (size % 32 !== 0 && size % 16 === 0) ? GRID_16 : GRID_32;
+  if (size < 32) return GRID_16;
+  if (size % 32 !== 0 && size % 24 === 0) return GRID_24;
+  return GRID_32;
 }
 
 // ── Rendering ─────────────────────────────────────────────────

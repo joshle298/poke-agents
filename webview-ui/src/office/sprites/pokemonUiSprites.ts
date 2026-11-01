@@ -24,20 +24,22 @@ function resolve(palette: Palette, pixels: string[][]): SpriteData {
 /** A frame written as one string per row, one palette key per pixel. */
 const rows = (frame: string[]): string[][] => frame.map((row) => [...row]);
 
-/** Closed orb (16x13), its C ring open on the right: resting while a
+/** Closed orb (16x16), the C round it open on the right: resting while a
  *  Pokémon's sprites load, thrown, recalled and flown as a message. */
 export const ORB_CLOSED_SPRITE: SpriteData = resolve(orbData.palette, rows(orbData.frames.closed));
 
-/** The ring spinning (16x13 each): its opening on the right (closed), the
- *  front, then the left. Played in a loop while the orb flies. */
+/** The C spinning clockwise round the sphere (16x16 each): its opening on
+ *  the right (closed), then below, on the left and above. Played in a loop
+ *  while the orb flies. */
 export const ORB_SPIN_SPRITES: readonly SpriteData[] = [
   ORB_CLOSED_SPRITE,
-  resolve(orbData.palette, rows(orbData.frames.spinFront)),
+  resolve(orbData.palette, rows(orbData.frames.spinDown)),
   resolve(orbData.palette, rows(orbData.frames.spinLeft)),
+  resolve(orbData.palette, rows(orbData.frames.spinUp)),
 ];
 
-/** Open orb (20x16): split along the ring's tilt, its upper part lifted and
- *  light pouring out between, the frame's centre in the light. */
+/** Open orb (16x16): the closed orb with a slit of light rising through its
+ *  centre to the latch side and spilling out of the C's opening. */
 export const ORB_OPEN_SPRITE: SpriteData = resolve(orbData.palette, rows(orbData.frames.open));
 
 /** Envelope (7x5): a message in flight while the theme is off. */

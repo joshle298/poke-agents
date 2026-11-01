@@ -2,9 +2,9 @@
  * The catch orb (office/sprites/orb.json): thrown when a session appears,
  * flown as a message and drawn where a session has no Pokémon. It is our own
  * design, so these guard what keeps it off the official ball (a round
- * sphere of one colour with a tilted gold C round it: no band across it, no
- * button in its middle, no red), the geometry the spawn and recall effect
- * draws with, and the fallback icon built from the same pixels.
+ * sphere of one colour inside a free gold C: no band across it, no button in
+ * its middle, no red), the geometry the spawn and recall effect draws with,
+ * and the fallback icon built from the same pixels.
  *
  * Run with: npm test
  */
@@ -70,15 +70,32 @@ const SPHERE_KEYS = new Set('BbnNMRhW');
 const BODY_KEYS = new Set('BbnNMR');
 /** The C ring's gold, its latch's glint included. */
 const RING_KEYS = new Set('Ggow');
+/** The closed orb, then the C turned a quarter clockwise at a time. */
+const SPIN_FRAMES = ['closed', 'spinDown', 'spinLeft', 'spinUp'] as const;
+const NEIGHBOURS_4 = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+] as const;
 
 interface Cell {
   x: number;
   y: number;
 }
 
-function cellsOf(frame: Frame, keys: Set<string>): Cell[] {
-  return frame.flatMap((row, y) => [...row].flatMap((key, x) => (keys.has(key) ? [{ x, y }] : [])));
+function cellsOf(frame: Frame, keep: (key: string, x: number, y: number) => boolean): Cell[] {
+  return frame.flatMap((row, y) =>
+    [...row].flatMap((key, x) => (keep(key, x, y) ? [{ x, y }] : [])),
+  );
 }
+
+const keyAt = (frame: Frame, x: number, y: number): string => frame[y]?.[x] ?? '_';
+
+/** The sphere's outline: dark pixels beside the sphere. */
+const isSphereOutline = (frame: Frame, x: number, y: number): boolean =>
+  keyAt(frame, x, y) === 'K' &&
+  NEIGHBOURS_4.some(([dx, dy]) => SPHERE_KEYS.has(keyAt(frame, x + dx, y + dy)));
 
 function box(cells: Cell[]) {
   const xs = cells.map((c) => c.x);
@@ -88,32 +105,31 @@ function box(cells: Cell[]) {
 }
 
 /** Groups of cells that touch, corners included. */
-function groupCount(cells: Cell[]): number {
+function groupsOf(cells: Cell[]): Cell[][] {
   const left = new Set(cells.map((c) => `${c.x},${c.y}`));
-  let count = 0;
+  const found: Cell[][] = [];
   for (const start of left) {
     left.delete(start);
-    count++;
-    const queue = [start];
-    while (queue.length > 0) {
-      const [x, y] = queue.pop()!.split(',').map(Number);
+    const group = [start];
+    for (let i = 0; i < group.length; i++) {
+      const [x, y] = group[i].split(',').map(Number);
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           const next = `${x + dx},${y + dy}`;
-          if (left.delete(next)) queue.push(next);
+          if (left.delete(next)) group.push(next);
         }
       }
     }
+    found.push(group.map((k) => k.split(',').map(Number)).map(([x, y]) => ({ x, y })));
   }
-  return count;
+  return found;
 }
 
-/** The sphere's disc, from its own colours: as wide as they reach, its top
- *  where they start (the ring hides part of its bottom). */
+/** The sphere's disc, from its own colours: as wide as they reach. */
 function sphereDisc(frame: Frame) {
-  const b = box(cellsOf(frame, SPHERE_KEYS));
+  const b = box(cellsOf(frame, (key) => SPHERE_KEYS.has(key)));
   const r = b.width / 2;
-  return { cx: b.x0 + r, cy: b.y0 + r, r };
+  return { cx: b.x0 + r, cy: b.y0 + r, r, box: b };
 }
 
 const distance = (c: Cell, d: { cx: number; cy: number }) =>
@@ -131,48 +147,96 @@ function hsv(color: string): { hue: number; sat: number; value: number } {
 
 const colorsOf = (sprite: SpriteData) => new Set(sprite.flat().filter(Boolean));
 
-test('the closed and spinning orb is a round sphere, not a pill', () => {
-  for (const name of ['closed', 'spinFront', 'spinLeft'] as const) {
+test('the closed and spinning orb is a whole round sphere, not a pill or an egg', () => {
+  for (const name of SPIN_FRAMES) {
     const frame = FRAMES[name];
     const disc = sphereDisc(frame);
-    for (const cell of cellsOf(frame, SPHERE_KEYS)) {
-      assert.ok(
-        distance(cell, disc) <= disc.r + 0.5,
-        `${name}: (${cell.x}, ${cell.y}) off the disc`,
-      );
+    assert.equal(disc.box.height, disc.box.width, `${name}: as tall as it is wide`);
+    const sphere = cellsOf(frame, (key) => SPHERE_KEYS.has(key));
+    for (const y of new Set(sphere.map((c) => c.y))) {
+      const row = box(sphere.filter((c) => c.y === y));
+      assert.equal((row.x0 + row.x1 + 1) / 2, disc.cx, `${name}: row ${y} is centred`);
     }
-    frame.forEach((row, y) =>
-      [...row].forEach((key, x) => {
-        if (distance({ x, y }, disc) > disc.r - 1) return;
-        assert.ok(
-          SPHERE_KEYS.has(key) || RING_KEYS.has(key) || key === 'K',
-          `${name}: (${x}, ${y})`,
-        );
-      }),
-    );
+    for (const x of new Set(sphere.map((c) => c.x))) {
+      const column = box(sphere.filter((c) => c.x === x));
+      assert.equal((column.y0 + column.y1 + 1) / 2, disc.cy, `${name}: column ${x} is centred`);
+    }
+    for (const cell of cellsOf(frame, (_, x, y) => distance({ x, y }, disc) <= disc.r - 1)) {
+      assert.ok(SPHERE_KEYS.has(keyAt(frame, cell.x, cell.y)), `${name}: (${cell.x}, ${cell.y})`);
+    }
   }
 });
 
-test('a gold C rings the closed orb: past the sphere both sides, open on the right', () => {
+test('a free gold C stands round the orb: a pixel of floor between, open on the right', () => {
+  for (const name of SPIN_FRAMES) {
+    const frame = FRAMES[name];
+    // Nothing but floor touches the sphere's outline from outside.
+    for (const { x, y } of cellsOf(frame, (_, x, y) => isSphereOutline(frame, x, y))) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const key = keyAt(frame, x + dx, y + dy);
+          const ok = key === '_' || SPHERE_KEYS.has(key) || isSphereOutline(frame, x + dx, y + dy);
+          assert.ok(ok, `${name}: ${key} at (${x + dx}, ${y + dy}) touches the sphere`);
+        }
+      }
+    }
+  }
   const frame = FRAMES.closed;
   const disc = sphereDisc(frame);
-  const gold = cellsOf(frame, RING_KEYS);
+  const gold = cellsOf(frame, (key) => RING_KEYS.has(key));
+  const ring = box(gold);
+  assert.ok(Math.abs(ring.width - ring.height) <= 2, 'face-on: as tall as it is wide');
+  const middle = Math.floor(disc.cx);
+  assert.ok(
+    gold.some((c) => c.x === middle && c.y < disc.box.y0),
+    'over the sphere',
+  );
+  assert.ok(
+    gold.some((c) => c.x === middle && c.y > disc.box.y1),
+    'under the sphere',
+  );
   const left = gold.filter((c) => c.x + 1 <= disc.cx - disc.r);
   const right = gold.filter((c) => c.x >= disc.cx + disc.r);
-  assert.equal(groupCount(left), 1, 'one stroke round the left');
-  assert.equal(groupCount(right), 2, 'two ends on the right, the opening between');
-  // Tilted: the ring crosses the sphere only below its middle (in front),
-  // and passes behind its upper half.
-  const inside = gold.filter((c) => distance(c, disc) <= disc.r - 0.5);
-  assert.ok(inside.length > 0, 'in front of the sphere');
-  assert.ok(
-    inside.every((c) => c.y + 0.5 > disc.cy),
-    'behind its upper half',
-  );
+  assert.equal(groupsOf(left).length, 1, 'one stroke round the left');
+  const ends = groupsOf(right).map(box);
+  assert.equal(ends.length, 2, 'two ends on the right, the opening between');
+  const [upper, lower] = ends.sort((a, b) => a.y0 - b.y0);
+  const [x0, x1] = [Math.min(upper.x0, lower.x0), Math.max(upper.x1, lower.x1)];
+  let open = 0;
+  for (let y = upper.y1 + 1; y < lower.y0; y++) {
+    const clear = [...frame[y].slice(x0, x1 + 1)].every(
+      (key, i) => key === '_' || isSphereOutline(frame, x0 + i, y),
+    );
+    if (clear) open++;
+  }
+  assert.ok(open >= 2, `${open} rows of floor in the opening`);
+});
+
+test('the sphere holds still while the C turns a quarter clockwise each frame', () => {
+  const closed = FRAMES.closed;
+  const disc = sphereDisc(closed);
+  // Where the gold lies relative to the sphere: away from the opening.
+  const away: Record<(typeof SPIN_FRAMES)[number], [number, number]> = {
+    closed: [-1, 0],
+    spinDown: [0, -1],
+    spinLeft: [1, 0],
+    spinUp: [0, 1],
+  };
+  for (const name of SPIN_FRAMES) {
+    const frame = FRAMES[name];
+    const sphere = (f: Frame) =>
+      cellsOf(f, (key) => SPHERE_KEYS.has(key)).map((c) => keyAt(f, c.x, c.y) + c.x + ',' + c.y);
+    assert.deepEqual(sphere(frame), sphere(closed), `${name}: the same sphere`);
+    const gold = cellsOf(frame, (key) => RING_KEYS.has(key));
+    const mx = gold.reduce((a, c) => a + c.x + 0.5, 0) / gold.length - disc.cx;
+    const my = gold.reduce((a, c) => a + c.y + 0.5, 0) / gold.length - disc.cy;
+    const [ax, ay] = away[name];
+    assert.ok(mx * ax + my * ay > 0.5, `${name}: the C opens the other way (${mx}, ${my})`);
+  }
 });
 
 test('no band splits the sphere and no button sits in its middle', () => {
-  for (const name of ['closed', 'spinFront', 'spinLeft'] as const) {
+  for (const name of SPIN_FRAMES) {
     const frame = FRAMES[name];
     const disc = sphereDisc(frame);
     frame.forEach((row, y) => {
@@ -209,30 +273,61 @@ test('no frame uses red, the official ball colour; the body is teal to indigo', 
   }
 });
 
-test('the ring spins from closed to front to left and comes to rest closed', () => {
+test('the C spins right, down, left, up and comes to rest closed', () => {
   assert.deepEqual(
-    ORB_SPIN_SPRITES.map((s) => [s[0].length, s.length]),
-    ORB_SPIN_SPRITES.map(() => [ORB_CLOSED_SPRITE[0].length, ORB_CLOSED_SPRITE.length]),
-    'every spin frame is the closed frame’s size, so the orb never jumps',
+    [...ORB_SPIN_SPRITES, ORB_OPEN_SPRITE].map((s) => [s[0].length, s.length]),
+    [...ORB_SPIN_SPRITES, ORB_OPEN_SPRITE].map(() => [
+      ORB_CLOSED_SPRITE[0].length,
+      ORB_CLOSED_SPRITE.length,
+    ]),
+    'every frame is the closed frame’s size, so the orb never jumps',
   );
   assert.equal(orbSpinSprite(0), ORB_CLOSED_SPRITE, 'at rest');
-  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 1.5), ORB_SPIN_SPRITES[2], 'left just before');
-  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 2.5), ORB_SPIN_SPRITES[1], 'front before that');
-  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 3.5), ORB_CLOSED_SPRITE, 'closed before that');
+  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 1.5), ORB_SPIN_SPRITES[3], 'up just before');
+  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 2.5), ORB_SPIN_SPRITES[2], 'left before that');
+  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 3.5), ORB_SPIN_SPRITES[1], 'down before that');
+  assert.equal(orbSpinSprite(ORB_SPIN_FRAME_SEC * 4.5), ORB_CLOSED_SPRITE, 'closed before that');
 });
 
-test("the open frame's light is at its centre, where the recall beam leaves", () => {
-  const w = ORB_OPEN_SPRITE[0].length;
-  const h = ORB_OPEN_SPRITE.length;
-  const light = new Set([orbData.palette.W, orbData.palette.L]);
-  for (const [x, y] of [
+test('the open orb is the closed one cracked: a thin slit of light rising through its centre', () => {
+  const open = FRAMES.open;
+  const closed = FRAMES.closed;
+  const light = new Set(['W', 'L']);
+  const slit: Cell[] = [];
+  open.forEach((row, y) =>
+    [...row].forEach((key, x) => {
+      const was = keyAt(closed, x, y);
+      if (RING_KEYS.has(was) || RING_KEYS.has(key)) {
+        assert.equal(key, was, `(${x}, ${y}): the C stays whole`);
+      }
+      if (was === '_') assert.ok(key === '_' || light.has(key), `(${x}, ${y}): only light spills`);
+      if (light.has(key) && key !== was) slit.push({ x, y });
+    }),
+  );
+  const w = open[0].length;
+  const h = open.length;
+  // The recall beam leaves the frame's centre.
+  const centre = [
     [w / 2 - 1, h / 2 - 1],
     [w / 2, h / 2 - 1],
     [w / 2 - 1, h / 2],
     [w / 2, h / 2],
-  ]) {
-    assert.ok(light.has(ORB_OPEN_SPRITE[y][x]), `(${x}, ${y}) is ${ORB_OPEN_SPRITE[y][x]}`);
+  ];
+  assert.ok(
+    centre.some(([x, y]) => slit.some((c) => c.x === x && c.y === y)),
+    'the slit crosses the centre',
+  );
+  for (const x of new Set(slit.map((c) => c.x))) {
+    assert.ok(slit.filter((c) => c.x === x).length <= 2, `column ${x}: a slit, not a wedge`);
   }
+  const b = box(slit);
+  const leftmost = slit.filter((c) => c.x === b.x0);
+  const rightmost = slit.filter((c) => c.x === b.x1);
+  assert.ok(
+    Math.max(...rightmost.map((c) => c.y)) < Math.min(...leftmost.map((c) => c.y)),
+    'rising to the latch side',
+  );
+  assert.ok(b.height >= 3, 'slanted, not a level band');
 });
 
 /** The sprite canvases drawn, with where (device px). */
@@ -281,7 +376,7 @@ test('the resting and the open orb both stand on the ground by their bottom row'
   );
   const closed = resting.draws[0];
   assert.equal(closed.y + closed.h, ground.y * zoom, 'closed: bottom on the ground');
-  // Split open, partway through the open phase (after the ring has turned).
+  // Cracked open, partway through the open phase.
   const opening = recordDraws();
   const timer = ORB_LANDED_SEC + ORB_SPAWN_SEC * 0.14;
   renderOrbEffect(opening.ctx, orbCharacter(timer), frame, ground, 20, 0, 0, zoom, 1);

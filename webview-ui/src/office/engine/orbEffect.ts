@@ -1,16 +1,17 @@
 /**
  * The orb's spawn/despawn effect (drawing only; matrixEffectState.ts owns
  * the timer). It rides the same `matrixEffect` field as the matrix rain. The
- * orb is our own design (sprites/orb.json): a glossy sphere ringed at a tilt
- * by a gold C.
+ * orb is our own design (sprites/orb.json): a glossy sphere inside a free
+ * gold C.
  *
  * Spawn: the orb is thrown from `effectOrigin` (the Lead) on an arc, or
- * drops from above, its ring spinning and coming to rest as it lands. Then
- * the ring turns once more, the sphere splits along the ring's tilt with a
- * ring of white pixels flashing out of the light, and the body grows out of
- * it as a white silhouette and fades to its colours.
- * Despawn (recall): a teal beam from the open orb over the head shrinks the
- * body to a teal point, then the orb, closed, flies up and away spinning.
+ * drops from above, its C spinning round it and coming to rest, open on the
+ * right, as it lands. Then it cracks open: a slit of light runs through it
+ * to the latch while a ring of white pixels flashes out, and the body grows
+ * out of it as a white silhouette and fades to its colours.
+ * Despawn (recall): a teal beam from the open orb's slit over the head
+ * shrinks the body to a teal point, then the orb, closed, flies up and away
+ * spinning.
  *
  * Works on any frame: a Pokémon sheet frame, or Promptling (the greeter).
  *
@@ -18,8 +19,8 @@
  * rests closed on its ground point with a gentle bob (renderRestingOrb),
  * and flies off closed if the session leaves before it ever opened.
  *
- * Every orb frame stands on the ground by its bottom row (groundedCenter),
- * so the open orb's lower part stays where the closed sphere was.
+ * Every orb frame is the same size and stands on the ground by its bottom
+ * row (groundedCenter), so the orb cracks open where it landed.
  */
 
 import {
@@ -33,7 +34,6 @@ import {
   ORB_GROW_SHARE,
   ORB_MATERIALIZE_MIN_SCALE,
   ORB_OPEN_END,
-  ORB_OPEN_SPIN_SHARE,
   ORB_RECALL_BEAM_COLOR,
   ORB_RECALL_BEAM_END,
   ORB_RECALL_EXIT_PX,
@@ -86,10 +86,10 @@ export function groundedCenter(sprite: SpriteData, ground: Point): Point {
 }
 
 /**
- * The orb `secondsToRest` before its ring stops spinning. In forward time
- * the ring's opening turns from the right to the front to the left and back
- * (ORB_SPIN_SPRITES in order), one frame every ORB_SPIN_FRAME_SEC, and it
- * comes to rest on the right, closed, at 0.
+ * The orb `secondsToRest` before its C stops spinning. In forward time the
+ * C's opening turns clockwise from the right to below, the left, above and
+ * back (ORB_SPIN_SPRITES in order), one frame every ORB_SPIN_FRAME_SEC, and
+ * it comes to rest on the right, closed, at 0.
  */
 export function orbSpinSprite(secondsToRest: number): SpriteData {
   const n = ORB_SPIN_SPRITES.length;
@@ -128,7 +128,7 @@ export function renderOrbEffect(
   ctx.save();
   ctx.globalAlpha = alpha;
   if (ch.matrixEffect === 'despawn') {
-    // The open orb hovers over the head, its light at its centre.
+    // The open orb hovers over the head, its slit of light at its centre.
     const open = {
       x: ground.x,
       y: ground.y - headRise - ORB_RECALL_HOVER_PX - ORB_OPEN_SPRITE.length / 2,
@@ -148,7 +148,7 @@ export function renderOrbEffect(
         1,
         POKEMON_RECALL_COLOR,
       );
-      // The beam from the orb's light down to the middle of the body.
+      // The beam from the orb's slit down to the middle of the body.
       ctx.fillStyle = ORB_RECALL_BEAM_COLOR;
       const chestY = ground.y - Math.round((headRise * (1 - q)) / 2);
       forEachLinePixel(open.x, open.y, ground.x, chestY, (x, y) =>
@@ -173,7 +173,7 @@ export function renderOrbEffect(
 
   const throwSec = ORB_THROW_END * duration;
   if (p < ORB_THROW_END) {
-    // In the air, the ring spinning until it lands.
+    // In the air, the C spinning until it lands.
     const q = p / ORB_THROW_END;
     const rest = groundedCenter(ORB_CLOSED_SPRITE, ground);
     const origin = ch.effectOrigin;
@@ -186,35 +186,25 @@ export function renderOrbEffect(
     const sprite = orbSpinSprite(throwSec - ch.matrixEffectTimer);
     drawCenteredSprite(ctx, sprite, at, offsetX, offsetY, zoom);
   } else if (p < ORB_OPEN_END) {
+    // The orb cracks open; a ring of white pixels flashes out of its light,
+    // from the open orb's edge outward, fading as it goes.
     const q = (p - ORB_THROW_END) / (ORB_OPEN_END - ORB_THROW_END);
-    if (q < ORB_OPEN_SPIN_SHARE) {
-      // The C ring spins open: its opening turns to the front, then the left.
-      const turns = ORB_SPIN_SPRITES.length - 1;
-      const i = 1 + Math.min(turns - 1, Math.floor((q / ORB_OPEN_SPIN_SHARE) * turns));
-      const sprite = ORB_SPIN_SPRITES[i];
-      drawCenteredSprite(ctx, sprite, groundedCenter(sprite, ground), offsetX, offsetY, zoom);
-    } else {
-      // The sphere splits along the ring's tilt; a ring of white pixels
-      // flashes out of the light.
-      const s = (q - ORB_OPEN_SPIN_SHARE) / (1 - ORB_OPEN_SPIN_SHARE);
-      const light = groundedCenter(ORB_OPEN_SPRITE, ground);
-      drawCenteredSprite(ctx, ORB_OPEN_SPRITE, light, offsetX, offsetY, zoom);
-      // From the edge of the open orb outward, fading as it goes.
-      const from = ORB_OPEN_SPRITE.length / 2;
-      const radius = Math.round(from + s * (ORB_BURST_RADIUS_PX - from));
-      ctx.globalAlpha = alpha * (1 - s * s);
-      ctx.fillStyle = ORB_FLASH_COLOR;
-      for (let k = 0; k < ORB_BURST_POINTS; k++) {
-        const angle = (k * 2 * Math.PI) / ORB_BURST_POINTS;
-        fillWorldPixel(
-          ctx,
-          Math.round(light.x + Math.cos(angle) * radius),
-          Math.round(light.y + Math.sin(angle) * radius),
-          offsetX,
-          offsetY,
-          zoom,
-        );
-      }
+    const light = groundedCenter(ORB_OPEN_SPRITE, ground);
+    drawCenteredSprite(ctx, ORB_OPEN_SPRITE, light, offsetX, offsetY, zoom);
+    const from = ORB_OPEN_SPRITE.length / 2;
+    const radius = Math.round(from + q * (ORB_BURST_RADIUS_PX - from));
+    ctx.globalAlpha = alpha * (1 - q * q);
+    ctx.fillStyle = ORB_FLASH_COLOR;
+    for (let k = 0; k < ORB_BURST_POINTS; k++) {
+      const angle = (k * 2 * Math.PI) / ORB_BURST_POINTS;
+      fillWorldPixel(
+        ctx,
+        Math.round(light.x + Math.cos(angle) * radius),
+        Math.round(light.y + Math.sin(angle) * radius),
+        offsetX,
+        offsetY,
+        zoom,
+      );
     }
   } else {
     const q = (p - ORB_OPEN_END) / (1 - ORB_OPEN_END);

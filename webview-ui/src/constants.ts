@@ -748,15 +748,13 @@ export const POKEMON_SILHOUETTE_COLOR = '#ffffff';
 export const POKEMON_OUTLINE_COLOR = '#ffffff';
 export const POKEMON_RECALL_COLOR = '#7ee8d6';
 
-// Orb spawn (throw → spin open → split → materialize) and recall (teal beam
-// → return).
+// Orb spawn (throw → crack open → materialize) and recall (teal beam →
+// return).
 export const ORB_SPAWN_SEC = 0.9;
 export const ORB_RECALL_SEC = 0.6;
 /** Spawn phase boundaries as fractions of ORB_SPAWN_SEC. */
 export const ORB_THROW_END = 0.4;
 export const ORB_OPEN_END = 0.55;
-/** Share of the open phase the ring spends turning before the sphere splits. */
-export const ORB_OPEN_SPIN_SHARE = 0.4;
 /** A thrown or flown orb's ring shows each of its spin frames this long. */
 export const ORB_SPIN_FRAME_SEC = 0.08;
 /** Recall: beam phase ends here; the orb flies off for the rest. */
@@ -770,7 +768,7 @@ export const ORB_MATERIALIZE_MIN_SCALE = 0.25;
 /** Share of the materialize phase spent growing (the rest fades white → colour). */
 export const ORB_GROW_SHARE = 0.6;
 export const ORB_FLASH_COLOR = '#ffffff';
-/** The ring of white pixels flashing out when the orb splits: its final
+/** The ring of white pixels flashing out when the orb cracks open: its final
  *  radius (world px; it starts at the open orb's edge) and its pixel count. */
 export const ORB_BURST_RADIUS_PX = 15;
 export const ORB_BURST_POINTS = 20;
@@ -794,9 +792,9 @@ export const ORB_BOB_PX = 1;
 /** Each agent id shifts its orb's bob by this much, so neighbours differ. */
 export const ORB_BOB_STAGGER_SEC = 0.37;
 /** Hit box of a closed orb standing in for a Pokémon, from its ground point
- *  (world px): half its width and how far it rises (its sphere's top). */
+ *  (world px): half its width and how far it rises (the C's top). */
 export const ORB_HIT_HALF_WIDTH_PX = 8;
-export const ORB_HIT_RISE_PX = 12;
+export const ORB_HIT_RISE_PX = 16;
 /** The orb's hover card line when its Pokémon's sprites can't load. */
 export const SPRITE_UNAVAILABLE_TEXT = 'Sprite unavailable';
 

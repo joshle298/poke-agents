@@ -14,11 +14,14 @@ import assert from 'node:assert/strict';
 import { afterAll, afterEach, beforeAll, beforeEach, test, vi } from 'vitest';
 
 import {
+  ORB_HIT_HALF_WIDTH_PX,
+  ORB_HIT_RISE_PX,
   ORB_OPEN_MIN_WAIT_SEC,
   ORB_SPAWN_SEC,
   ORB_WAIT_MAX_SEC,
   POKEMON_EVOLVE_HOLD_MAX_SEC,
   POKEMON_EVOLVE_SEC,
+  POKEMON_FEET_BELOW_GROUND_PX,
 } from '../src/constants.js';
 import { pokemonLabel } from '../src/office/components/pokemonOverlay.js';
 import { ORB_LANDED_SEC, spawnEffectStyle } from '../src/office/engine/matrixEffectState.js';
@@ -172,7 +175,11 @@ test('an orb lands and waits closed for its sheets, then opens where it lies', a
   os.update(2);
   assert.equal(ch.matrixEffectTimer, ORB_LANDED_SEC, 'still waiting');
   const box = drawnBody(ch)!;
-  assert.ok(box.bottom - box.top < 16, 'clicked on as the orb it is');
+  assert.deepEqual(
+    [box.right - box.left, box.bottom - box.top],
+    [2 * ORB_HIT_HALF_WIDTH_PX, ORB_HIT_RISE_PX + POKEMON_FEET_BELOW_GROUND_PX],
+    'clicked on as the orb it is',
+  );
 
   setPokemonSpecies(msg);
   await flushDecodes();
