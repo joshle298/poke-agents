@@ -45,7 +45,7 @@ Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **
 
 ![The Pokédex's Chat tab on a session waiting on a question, with three options and the reply box](docs/screenshots/pokedex-chat.png)
 
-![The party bar beside the Pokémon Center: FNT on the fainted session, ! on the one waiting for an answer, SLP on the sleeper, and the battle log below](docs/screenshots/party-and-battle-log.png)
+![The party bar beside the Pokémon Center: FNT on the fainted session, ! on the one waiting for an answer, SLP on the sleeper, and the battle log in the text box under the town](docs/screenshots/party-and-battle-log.png)
 
 ### Using the Office
 

@@ -25,7 +25,7 @@ import type {
   SessionDetail,
   SessionDetailEntry,
 } from '../../../core/src/messages.js';
-import { BATTLE_LOG_CAPACITY, EVOLUTION_LEVELS, TOAST_MAX_VISIBLE } from '../constants.js';
+import { BATTLE_LOG_CAPACITY, EVOLUTION_LEVELS, TOAST_MAX_KEPT } from '../constants.js';
 import { extractToolName } from '../office/toolUtils.js';
 import { mergeEntries } from './chat.js';
 
@@ -101,7 +101,8 @@ export interface Toast {
   seq: number;
   text: string;
   tone: 'success' | 'error';
-  /** When it arrived (the store's clock): it leaves TOAST_VISIBLE_MS later. */
+  /** When it arrived (the store's clock): the message bar times it from
+   *  here (toastExpiresAt). */
   at: number;
 }
 
@@ -336,6 +337,17 @@ function actionToastText(
   return message ? `${failure[action]}: ${message}` : failure[action];
 }
 
+/** At most `max` toasts: the oldest success goes first, an error only when
+ *  there are only errors, so a success never pushes out an error still up. */
+function keepToasts(toasts: readonly Toast[], max: number): Toast[] {
+  const kept = [...toasts];
+  while (kept.length > max) {
+    const success = kept.findIndex((t) => t.tone === 'success');
+    kept.splice(success === -1 ? 0 : success, 1);
+  }
+  return kept;
+}
+
 type Listener = () => void;
 
 export class ConductorStore {
@@ -396,8 +408,7 @@ export class ConductorStore {
 
   private toast(state: ConductorState, text: string, tone: Toast['tone']): ConductorState {
     const toast: Toast = { seq: this.nextSeq(), text, tone, at: this.now() };
-    const toasts = [...state.toasts, toast].slice(-TOAST_MAX_VISIBLE);
-    return { ...state, toasts };
+    return { ...state, toasts: keepToasts([...state.toasts, toast], TOAST_MAX_KEPT) };
   }
 
   /** Fold one ServerMessage into the state. Unrelated messages are ignored. */

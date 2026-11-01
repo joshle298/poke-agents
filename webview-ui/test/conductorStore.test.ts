@@ -8,7 +8,7 @@ import {
   crossesEvolutionLevel,
   currentActivity,
 } from '../src/conductor/conductorStore.js';
-import { BATTLE_LOG_CAPACITY, TOAST_MAX_VISIBLE } from '../src/constants.js';
+import { BATTLE_LOG_CAPACITY, TOAST_MAX_KEPT } from '../src/constants.js';
 
 function species(dex: number, name: string, shiny = false): PokemonSpeciesLoaded {
   return {
@@ -316,8 +316,8 @@ describe('ConductorStore', () => {
         ['Message sent to Lead', 'success'],
         ["Couldn't stop the session: Session not found", 'error'],
       ]);
-      // Stamped with the store's clock: the message bar expires each one
-      // TOAST_VISIBLE_MS after it arrived, shown or not.
+      // Stamped with the store's clock: the message bar times each one from
+      // when it arrived, shown or not.
       expect(toasts.map((t) => t.at)).toEqual([clock, clock]);
       expect(store.getState().actionOutcomes[1]).toMatchObject({
         action: 'stopSession',
@@ -384,11 +384,27 @@ describe('ConductorStore', () => {
       expect(connectAnswer(null, -1)).toBeNull();
     });
 
-    it('caps the visible toasts', () => {
-      for (let i = 0; i < TOAST_MAX_VISIBLE + 2; i++) {
+    it('caps the toasts it keeps, dropping successes before errors', () => {
+      for (let i = 0; i < TOAST_MAX_KEPT + 2; i++) {
         apply({ type: 'conductorActionResult', action: 'openExternal', ok: false });
       }
-      expect(store.getState().toasts).toHaveLength(TOAST_MAX_VISIBLE);
+      expect(store.getState().toasts).toHaveLength(TOAST_MAX_KEPT);
+      const failed = store.getState().toasts.map((t) => t.seq);
+
+      // A burst of successes never pushes out an error still up: they push
+      // each other out instead.
+      store
+        .getState()
+        .toasts.slice(1)
+        .forEach((t) => store.dismissToast(t.seq));
+      apply({ type: 'agentCreated', id: 1, label: 'Lead' });
+      for (let i = 0; i < TOAST_MAX_KEPT + 2; i++) {
+        apply({ type: 'conductorActionResult', action: 'sendSessionMessage', id: 1, ok: true });
+      }
+      const toasts = store.getState().toasts;
+      expect(toasts).toHaveLength(TOAST_MAX_KEPT);
+      expect(toasts[0]).toMatchObject({ seq: failed[0], tone: 'error' });
+      expect(toasts.slice(1).every((t) => t.tone === 'success')).toBe(true);
     });
 
     it('patches a session optimistically until the server list replaces it', () => {

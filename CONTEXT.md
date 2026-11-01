@@ -248,7 +248,7 @@ The optional ticker of office events in the style of a Pokémon game ("Pikachu u
 _Avoid_: activity feed, event log
 
 **Message bar**:
-The text box in a strip under the office's map, like the one under a GBA game's screen: the battle log on its left, the outcomes of the user's Conductor actions ("Message sent to …", a refusal) as chips on its right. It never covers the map; with the battle log off it opens only while an outcome shows.
+The text box in a strip under the office's map, like the one under a GBA game's screen: the battle log on its left, the outcomes of the user's Conductor actions ("Message sent to …", a refusal) as chips on its right, a refusal taking the room it needs. It never covers the map. With the battle log off it keeps one row in an office where outcomes can arrive, so an outcome never moves the map, and none elsewhere.
 _Avoid_: status bar, footer, notification area
 
 **Level**:

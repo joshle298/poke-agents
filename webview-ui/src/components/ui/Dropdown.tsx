@@ -13,23 +13,29 @@ interface DropdownProps {
   /** 'up' (the default) opens above the anchor, 'down' below it. */
   placement?: DropdownPlacement;
   /**
-   * Cap the panel's height at the room between its anchor and the viewport's
-   * edge on the side it opens to (and, opening down, its width at the room
-   * to the right of it in the region that clips it). The app hides overflow,
-   * so content taller or wider than that room would otherwise be cut off.
+   * Cap the panel's height at the room between its anchor and the edge on the
+   * side it opens to: the viewport's opening up; opening down, the bottom of
+   * the region that clips it (the office region ends above the message bar),
+   * and its width at the room to the right of it in that region. The app
+   * hides overflow, so content taller or wider than that room would otherwise
+   * be cut off.
    * The panel becomes a flex column: give the child that should scroll
    * `min-h-0 overflow-y-auto` and pin the rest with `shrink-0`.
    */
   fitViewport?: boolean;
 }
 
-/** Right edge (viewport px) of the nearest ancestor that clips overflow (the
- *  office region, beside the party bar), else of the viewport. */
-function clipRight(element: HTMLElement): number {
+/** The right and bottom edges (viewport px) of the nearest ancestor that clips
+ *  overflow (the office region: beside the party bar, above the message bar),
+ *  else of the viewport. */
+function clipEdges(element: HTMLElement): { right: number; bottom: number } {
   for (let node = element.parentElement; node; node = node.parentElement) {
-    if (getComputedStyle(node).overflowX !== 'visible') return node.getBoundingClientRect().right;
+    if (getComputedStyle(node).overflowX !== 'visible') {
+      const { right, bottom } = node.getBoundingClientRect();
+      return { right, bottom: Math.min(bottom, window.innerHeight) };
+    }
   }
-  return window.innerWidth;
+  return { right: window.innerWidth, bottom: window.innerHeight };
 }
 
 export function Dropdown({
@@ -58,9 +64,10 @@ export function Dropdown({
         setMaxSize({ height: Math.max(0, Math.floor(box.bottom - margin)) });
         return;
       }
+      const clip = clipEdges(panel);
       setMaxSize({
-        height: Math.max(0, Math.floor(window.innerHeight - box.top - margin)),
-        width: Math.max(0, Math.floor(clipRight(panel) - box.left - margin)),
+        height: Math.max(0, Math.floor(clip.bottom - box.top - margin)),
+        width: Math.max(0, Math.floor(clip.right - box.left - margin)),
       });
     };
     measure();

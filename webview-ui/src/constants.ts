@@ -1001,42 +1001,55 @@ export const BATTLE_LOG_VISIBLE_MS = 4_000;
 export const BATTLE_LOG_FADE_MS = 500;
 /** Per-device preferences (localStorage, not synced through the server). */
 export const BATTLE_LOG_STORAGE_KEY = 'pixel-agents.battleLog';
-/** Toasts for Conductor action outcomes: lifetime and how many the store
- *  keeps (the message bar shows up to this many chips at once). */
+/** Toasts for Conductor action outcomes. A success stays up this long, an
+ *  error (a reason to read) longer; neither leaves while the pointer is on
+ *  its chip or focus is in it, and either gets at least TOAST_RESUME_MS more
+ *  after that. */
 export const TOAST_VISIBLE_MS = 4_000;
-export const TOAST_MAX_VISIBLE = 2;
+export const TOAST_ERROR_VISIBLE_MS = 10_000;
+export const TOAST_RESUME_MS = 2_000;
+/** How many toasts the store keeps: a new one drops the oldest success first,
+ *  so a success never pushes out an error still up. */
+export const TOAST_MAX_KEPT = 3;
 /** The message bar's chips: above the modals (50), as the toasts were, so an
  *  outcome of an action taken in a modal reads over its backdrop. */
 export const TOAST_Z_INDEX = 60;
 /** The message bar under the office (MessageBar): a text box in the strip
- *  below the map, never over it. The box sits this far inside the strip... */
+ *  below the map, never over it. The box sits this far inside the strip (the
+ *  theme's outline is drawn in this margin)... */
 export const MESSAGE_BAR_MARGIN_PX = 6;
-/** ...with this frame (border) and padding... */
-export const MESSAGE_BAR_BORDER_PX = 2;
+/** ...with this frame and padding... */
+export const MESSAGE_BAR_FRAME_PX = 4;
 export const MESSAGE_BAR_PAD_X_PX = 12;
-export const MESSAGE_BAR_PAD_Y_PX = 5;
-/** ...around one or two rows this tall (a battle-log line or a chip), this
- *  far apart. */
-export const MESSAGE_BAR_ROW_PX = 26;
-export const MESSAGE_BAR_ROW_GAP_PX = 2;
+export const MESSAGE_BAR_PAD_Y_PX = 2;
+/** ...around one or two rows this tall: a battle-log line, or a chip. */
+export const MESSAGE_BAR_ROW_PX = 36;
+/** A chip's border (part of its row), its text's lines (two to a row, four
+ *  to two; longer text ends in an ellipsis, the whole of it in the chip's
+ *  tooltip and the bar's live region), and the room kept under the last line
+ *  for its descenders. */
+export const MESSAGE_BAR_CHIP_BORDER_PX = 2;
+export const MESSAGE_BAR_CHIP_LINE_PX = 15;
+export const MESSAGE_BAR_CHIP_TEXT_PAD_PX = 2;
 /** An office page shorter than this (a landscape phone, a short VS Code
  *  panel) gets a one-row bar. */
 export const MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX = 520;
-/** A bar narrower than this puts its newest chip over the top row instead of
- *  in a column beside the lines (phones). */
+/** A bar narrower than this puts its chip over the lines instead of in a
+ *  column beside them (phones, 1,100 px with the Pokédex docked). */
 export const MESSAGE_BAR_SIDE_CHIPS_MIN_PX = 600;
-/** A chip is at most this wide (beside the lines, half the bar); longer
- *  text is cut with an ellipsis, the whole of it in the chip's tooltip. Chips
- *  side by side in one row are this far apart. */
-export const MESSAGE_BAR_CHIP_MAX_WIDTH_PX = 440;
+/** Chips side by side in one row are this far apart. */
 export const MESSAGE_BAR_CHIP_GAP_PX = 6;
 /** Typewriter reveal of the newest line: this long per character, the whole
  *  line in at most MESSAGE_BAR_TYPE_MAX_MS. */
 export const MESSAGE_BAR_TYPE_MS_PER_CHAR = 18;
 export const MESSAGE_BAR_TYPE_MAX_MS = 600;
-/** The bar opening and closing (only when the battle log is off: a toast
- *  opens it, the last one leaving closes it). */
-export const MESSAGE_BAR_COLLAPSE_MS = 140;
+/** The strip changing height (Settings' Battle Log, a page crossing
+ *  MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX), and the box showing or hiding in a strip
+ *  that holds only chips. */
+export const MESSAGE_BAR_TRANSITION_MS = 140;
+/** Room kept at the end of the newest line for the ▼ shown once it has typed
+ *  in (the GBA "more" arrow). */
+export const MESSAGE_BAR_MORE_SPACE_PX = 18;
 /** data-theme value on <html> while the Pokémon theme is on (index.css). */
 export const POKEMON_THEME_NAME = 'pokemon';
 /** About: the project Poke Agents is built on (MIT, Pablo De Lucca). */

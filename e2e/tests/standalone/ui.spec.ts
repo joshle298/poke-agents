@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { WebSocketRoute } from '@playwright/test';
+
 import { expect, test } from '../../fixtures/standalone';
 import type { TestHooksWindow } from '../../helpers/editor';
 import { sendHookEvent, sessionStartStartup } from '../../helpers/hooks';
@@ -353,8 +355,10 @@ test.describe('Standalone / message bar under the office', () => {
       tool_name: 'Read',
       tool_input: { file_path: path.join(standalone.workspaceDir, 'bar.ts') },
     });
-    // Up for BATTLE_LOG_VISIBLE_MS (4 s), read out by the bar's live region.
-    await expect(bar.getByRole('status')).toContainText('used Read!');
+    // Up for BATTLE_LOG_VISIBLE_MS (4 s): typed into the box, and read out by
+    // the bar's live region.
+    await expect(bar.locator('.message-bar-line', { hasText: 'used Read!' })).toBeVisible();
+    await expect(bar.getByRole('status').filter({ hasText: 'used Read!' })).toHaveCount(1);
 
     // The layout editor's palette stands on top of the bar.
     await page.getByRole('button', { name: 'Layout', exact: true }).click();
@@ -366,9 +370,66 @@ test.describe('Standalone / message bar under the office', () => {
     await page.getByRole('button', { name: 'Layout', exact: true }).click();
     await expect(palette).toBeHidden();
 
-    // Battle Log off: the bar closes and the map takes the room back.
+    // Battle Log off, in an office no action outcome can reach (no
+    // Conductor): the bar closes and the map takes the room back.
     await setSettings(page, { battleLog: false });
     await expect.poll(async () => (await bar.boundingBox())?.height ?? 0).toBe(0);
     await expect.poll(() => bottomOf(canvas)).toBe(800);
+  });
+
+  test('action outcomes are chips in the bar: an error whole, never hidden by a success, the map unmoved @area:standalone', async ({
+    page,
+    // Launches the office (and opens it in `page`).
+    standalone: _standalone,
+  }) => {
+    // Outcomes come from Conductor actions, which this office has none of:
+    // play them in over the page's own socket.
+    const sockets: WebSocketRoute[] = [];
+    await page.routeWebSocket(/\/ws/, (ws) => {
+      ws.connectToServer();
+      sockets.push(ws);
+    });
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible({ timeout: 30_000 });
+    const send = (message: Record<string, unknown>) =>
+      sockets.at(-1)!.send(JSON.stringify(message));
+    const bar = page.getByTestId('message-bar');
+    const canvas = page.getByTestId('office-canvas');
+    await expect.poll(async () => (await bar.boundingBox())?.height ?? 0).toBeGreaterThan(0);
+    const canvasBefore = await canvas.boundingBox();
+
+    const reason =
+      'Conductor refused the request because the session is already archived on another device';
+    const failure = `Couldn't stop the session: ${reason}`;
+    send({ type: 'conductorActionResult', action: 'stopSession', ok: false, message: reason });
+    await expect(bar.getByRole('alert')).toHaveText(failure);
+    const chips = bar.getByTestId('message-bar-chip');
+    const errorChip = chips.filter({ hasText: reason });
+    await expect(errorChip).toBeVisible();
+    // Inside the bar, its whole reason showing (wrapped, not cut).
+    const barBox = (await bar.boundingBox())!;
+    const chipBox = (await errorChip.boundingBox())!;
+    expect(chipBox.y).toBeGreaterThanOrEqual(barBox.y);
+    expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(barBox.y + barBox.height);
+    const clipped = await errorChip.evaluate((chip) =>
+      Array.from(chip.querySelectorAll('span')).some(
+        (span) => span.scrollHeight > span.clientHeight || span.scrollWidth > span.clientWidth,
+      ),
+    );
+    expect(clipped).toBe(false);
+    // The bar keeps its height for the battle log: the map never moves.
+    expect(await canvas.boundingBox()).toEqual(canvasBefore);
+
+    // A newer success is read out, but never hides the error still up.
+    send({ type: 'conductorActionResult', action: 'sendSessionMessage', ok: true });
+    await expect(bar.getByRole('status').filter({ hasText: 'Message sent' })).toHaveCount(1);
+    // Checked at once, not retried: a retry could outlast the success.
+    expect(await errorChip.isVisible()).toBe(true);
+
+    // Each × is named after its toast; dismissing the error shows the success.
+    await bar.getByRole('button', { name: `Dismiss: ${failure}` }).click();
+    await expect(errorChip).toHaveCount(0);
+    await expect(chips.filter({ hasText: 'Message sent' })).toBeVisible();
+    expect(await canvas.boundingBox()).toEqual(canvasBefore);
   });
 });

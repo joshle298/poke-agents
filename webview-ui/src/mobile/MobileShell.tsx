@@ -15,8 +15,13 @@ import { TRACK_TRANSITION, trackTransform, useEdgeSwipe } from './useEdgeSwipe.j
 import type { MobileShellController } from './useMobileShell.js';
 
 interface MobileShellProps {
-  /** The office region App builds for both shells. */
+  /** The office page App builds for both shells (the map over the message
+   *  bar). */
   office: ReactNode;
+  /** The message bar's chips (MessageBarChipLayer): over the bottom of the
+   *  office page but outside the track, so they slide with neither page and
+   *  sit above the modals (the track's transform would trap them under). */
+  messageChips?: ReactNode;
   shell: MobileShellController;
   drawer: TerminalDrawerController;
   /** Every top-level office agent, for the card bar. */
@@ -50,6 +55,7 @@ interface MobileShellProps {
  */
 export function MobileShell({
   office,
+  messageChips,
   shell,
   drawer,
   agentIds,
@@ -113,6 +119,8 @@ export function MobileShell({
             />
           </div>
         </div>
+
+        {messageChips}
 
         {/* View toggle — pinned outside the track so it never slides. */}
         {terminalAvailable && (

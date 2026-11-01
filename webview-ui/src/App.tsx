@@ -13,7 +13,7 @@ import { DebugView } from './components/DebugView.js';
 import { DirectoryModal } from './components/DirectoryModal.js';
 import { EditActionBar } from './components/EditActionBar.js';
 import { IntroBubble } from './components/IntroBubble.js';
-import { MessageBar } from './components/MessageBar.js';
+import { MessageBar, MessageBarChipLayer } from './components/MessageBar.js';
 import { messageBarLayout } from './components/messageBarLayout.js';
 import { MigrationNotice } from './components/MigrationNotice.js';
 import { OfficeToolbar } from './components/OfficeToolbar.js';
@@ -1034,11 +1034,19 @@ function App() {
 
   // The battle log is a Pokémon-theme flourish, and debug view hides it.
   const showBattleLog = pokemonTheme && battleLogOn && !isDebugMode;
+  // Action outcomes (toasts) come only from a tokened Conductor office.
+  const barNotices = conductorActive && !officeReadOnly;
+  const barLayout = messageBarLayout(
+    { width: officePageBox.width - cardColumnPx, height: officePageBox.height },
+    showBattleLog,
+    { chipsOver: isMobile },
+  );
   // The office page, shared by both shells: the office region over the
   // message bar, so the bar never covers the map (the canvas shrinks by its
   // height). Desktop mounts it as the flexing left half of the split view
   // (the party bar, a docked Pokédex or the terminal panel beside it); mobile
-  // as the first page of the sliding track, above the card scroller.
+  // as the first page of the sliding track, above the card scroller, with the
+  // bar's chips drawn outside the track (MessageBarChipLayer).
   const officePage = (
     <div
       ref={officePageRef}
@@ -1047,11 +1055,10 @@ function App() {
       {officeRegion}
       <MessageBar
         battleLog={showBattleLog}
-        layout={messageBarLayout(
-          { width: officePageBox.width - cardColumnPx, height: officePageBox.height },
-          showBattleLog,
-        )}
+        notices={barNotices}
+        layout={barLayout}
         rightInsetPx={cardColumnPx}
+        chipsElsewhere={isMobile}
       />
     </div>
   );
@@ -1085,6 +1092,14 @@ function App() {
       {isMobile ? (
         <MobileShell
           office={officePage}
+          messageChips={
+            <MessageBarChipLayer
+              battleLog={showBattleLog}
+              notices={barNotices}
+              layout={barLayout}
+              hidden={detailAgentPresent && detailAgentId !== null}
+            />
+          }
           shell={mobileShell}
           drawer={terminalDrawer}
           agentIds={cardAgentIds}

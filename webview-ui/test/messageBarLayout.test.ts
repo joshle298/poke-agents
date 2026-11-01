@@ -2,32 +2,41 @@ import { describe, expect, it } from 'vitest';
 
 import {
   barLines,
+  chipLines,
+  liveToasts,
   messageBarHeight,
   messageBarLayout,
-  messageBarOpen,
+  messageBarStripHeight,
+  pickToasts,
+  placeChips,
+  toastExpiresAt,
   typedLength,
   typeDurationMs,
 } from '../src/components/messageBarLayout.js';
 import {
   BATTLE_LOG_FADE_MS,
   BATTLE_LOG_VISIBLE_MS,
-  MESSAGE_BAR_BORDER_PX,
+  MESSAGE_BAR_CHIP_BORDER_PX,
+  MESSAGE_BAR_CHIP_LINE_PX,
+  MESSAGE_BAR_CHIP_TEXT_PAD_PX,
+  MESSAGE_BAR_FRAME_PX,
   MESSAGE_BAR_MARGIN_PX,
   MESSAGE_BAR_PAD_Y_PX,
-  MESSAGE_BAR_ROW_GAP_PX,
   MESSAGE_BAR_ROW_PX,
   MESSAGE_BAR_SIDE_CHIPS_MIN_PX,
   MESSAGE_BAR_TWO_ROWS_MIN_PAGE_PX,
   MESSAGE_BAR_TYPE_MAX_MS,
   MESSAGE_BAR_TYPE_MS_PER_CHAR,
-  TOAST_MAX_VISIBLE,
+  TOAST_ERROR_VISIBLE_MS,
+  TOAST_RESUME_MS,
+  TOAST_VISIBLE_MS,
 } from '../src/constants.js';
 
 describe('messageBarHeight', () => {
   it('is the margin, frame and padding around the rows', () => {
-    const chrome = 2 * (MESSAGE_BAR_MARGIN_PX + MESSAGE_BAR_BORDER_PX + MESSAGE_BAR_PAD_Y_PX);
+    const chrome = 2 * (MESSAGE_BAR_MARGIN_PX + MESSAGE_BAR_FRAME_PX + MESSAGE_BAR_PAD_Y_PX);
     expect(messageBarHeight(1)).toBe(chrome + MESSAGE_BAR_ROW_PX);
-    expect(messageBarHeight(2)).toBe(chrome + 2 * MESSAGE_BAR_ROW_PX + MESSAGE_BAR_ROW_GAP_PX);
+    expect(messageBarHeight(2)).toBe(chrome + 2 * MESSAGE_BAR_ROW_PX);
   });
 });
 
@@ -61,10 +70,10 @@ describe('messageBarLayout', () => {
     expect(messageBarLayout(tallEnough, true).rows).toBe(2);
   });
 
-  it('puts the newest chip over the top row of a narrow bar', () => {
+  it('puts one chip over the lines of a narrow bar', () => {
     expect(messageBarLayout(PHONE, true)).toEqual({
       rows: 2,
-      chips: 'top',
+      chips: 'over',
       maxChips: 1,
       height: messageBarHeight(2),
     });
@@ -72,11 +81,20 @@ describe('messageBarLayout', () => {
     expect(messageBarLayout(justWideEnough, true).chips).toBe('side');
   });
 
+  it('puts the chips over the lines on phones, however wide', () => {
+    // A tablet in the phone shell: its chips are drawn outside the track.
+    expect(messageBarLayout(DESKTOP, true, { chipsOver: true })).toMatchObject({
+      rows: 2,
+      chips: 'over',
+      maxChips: 1,
+    });
+  });
+
   it('is one row of chips, side by side, without the battle log', () => {
     expect(messageBarLayout(DESKTOP, false)).toEqual({
       rows: 1,
-      chips: 'top',
-      maxChips: TOAST_MAX_VISIBLE,
+      chips: 'over',
+      maxChips: 2,
       height: messageBarHeight(1),
     });
     expect(messageBarLayout(PHONE, false).maxChips).toBe(1);
@@ -90,15 +108,190 @@ describe('messageBarLayout', () => {
   });
 });
 
-describe('messageBarOpen', () => {
-  it('stays open while the battle log is on, empty or not', () => {
-    expect(messageBarOpen(true, 0)).toBe(true);
-    expect(messageBarOpen(true, 2)).toBe(true);
+describe('messageBarStripHeight', () => {
+  const withLog = messageBarLayout({ width: 1200, height: 900 }, true);
+  const chipsOnly = messageBarLayout({ width: 1200, height: 900 }, false);
+
+  it('keeps its height with the battle log, empty or not', () => {
+    for (const toastCount of [0, 2]) {
+      expect(messageBarStripHeight(withLog, { battleLog: true, notices: false, toastCount })).toBe(
+        withLog.height,
+      );
+    }
   });
 
-  it('opens without the battle log only while a toast shows', () => {
-    expect(messageBarOpen(false, 0)).toBe(false);
-    expect(messageBarOpen(false, 1)).toBe(true);
+  it('keeps a row for chips without the battle log while outcomes can arrive', () => {
+    // So a toast never resizes the canvas (and re-centres the town).
+    for (const toastCount of [0, 1]) {
+      expect(
+        messageBarStripHeight(chipsOnly, { battleLog: false, notices: true, toastCount }),
+      ).toBe(messageBarHeight(1));
+    }
+  });
+
+  it('is closed where no outcome can arrive, unless one does', () => {
+    expect(
+      messageBarStripHeight(chipsOnly, { battleLog: false, notices: false, toastCount: 0 }),
+    ).toBe(0);
+    expect(
+      messageBarStripHeight(chipsOnly, { battleLog: false, notices: false, toastCount: 1 }),
+    ).toBe(messageBarHeight(1));
+  });
+});
+
+describe('toast chips', () => {
+  const T = 1_000_000;
+  let seq = 0;
+  interface TestToast {
+    seq: number;
+    tone: 'success' | 'error';
+    at: number;
+  }
+  const success = (): TestToast => ({ seq: ++seq, tone: 'success', at: T });
+  const error = (): TestToast => ({ seq: ++seq, tone: 'error', at: T });
+  const seqs = (toasts: readonly { seq: number }[]) => toasts.map((t) => t.seq);
+
+  describe('pickToasts', () => {
+    it('takes the newest ones, oldest first', () => {
+      const [a, b, c] = [success(), success(), success()];
+      expect(pickToasts([a, b, c], 2)).toEqual([b, c]);
+      expect(pickToasts([a, b, c], 1)).toEqual([c]);
+      expect(pickToasts([a], 0)).toEqual([]);
+    });
+
+    it('never lets a newer success hide an error still up', () => {
+      const [failed, sent, sentAgain] = [error(), success(), success()];
+      expect(pickToasts([failed, sent], 1)).toEqual([failed]);
+      expect(pickToasts([failed, sent, sentAgain], 2)).toEqual([failed, sentAgain]);
+    });
+
+    it('shows the newest error when there are several', () => {
+      const [first, second, sent] = [error(), error(), success()];
+      expect(pickToasts([first, second, sent], 1)).toEqual([second]);
+      expect(pickToasts([first, second, sent], 2)).toEqual([second, sent]);
+    });
+  });
+
+  describe('placeChips', () => {
+    const side = messageBarLayout({ width: 1200, height: 900 }, true);
+    const over = messageBarLayout({ width: 390, height: 754 }, true);
+    const chipsOnly = messageBarLayout({ width: 1200, height: 900 }, false);
+
+    it('stacks one chip per row beside two lines', () => {
+      const [first, second, third] = [success(), success(), success()];
+      const placed = placeChips([first, second, third], side, true);
+      expect(placed.logRows).toBe(2);
+      expect(placed.chips.map((c) => [c.toast.seq, c.rows, c.lines])).toEqual([
+        [second.seq, 1, chipLines(1)],
+        [third.seq, 1, chipLines(1)],
+      ]);
+    });
+
+    it('lets an error take both rows beside the lines, over a newer success', () => {
+      const [failed, sent] = [error(), success()];
+      expect(placeChips([failed, sent], side, true)).toEqual({
+        chips: [{ toast: failed, rows: 2, lines: chipLines(2) }],
+        logRows: 2,
+      });
+      const short = messageBarLayout({ width: 1200, height: 400 }, true);
+      expect(placeChips([failed], short, true)).toMatchObject({
+        chips: [{ rows: 1, lines: chipLines(1) }],
+        logRows: 1,
+      });
+    });
+
+    it('puts a success over the top row of a narrow bar, the newest line under it', () => {
+      const sent = success();
+      expect(placeChips([sent], over, true)).toEqual({
+        chips: [{ toast: sent, rows: 1, lines: chipLines(1) }],
+        logRows: 1,
+      });
+      expect(placeChips([], over, true)).toEqual({ chips: [], logRows: 2 });
+      const shortOver = messageBarLayout({ width: 390, height: 400 }, true);
+      expect(placeChips([sent], shortOver, true).logRows).toBe(0);
+    });
+
+    it('lets an error take every row of a narrow bar, over a newer success', () => {
+      const [failed, sent] = [error(), success()];
+      expect(placeChips([failed, sent], over, true)).toEqual({
+        chips: [{ toast: failed, rows: 2, lines: chipLines(2) }],
+        logRows: 0,
+      });
+      const shortOver = messageBarLayout({ width: 390, height: 400 }, true);
+      expect(placeChips([failed], shortOver, true)).toMatchObject({
+        chips: [{ rows: 1 }],
+        logRows: 0,
+      });
+    });
+
+    it('shows the newest error when there are several', () => {
+      const [first, second] = [error(), error()];
+      expect(seqs(placeChips([first, second], side, true).chips.map((c) => c.toast))).toEqual([
+        second.seq,
+      ]);
+    });
+
+    it('puts chips side by side in a bar without the battle log', () => {
+      const [failed, sent, sentAgain] = [error(), success(), success()];
+      const placed = placeChips([failed, sent, sentAgain], chipsOnly, false);
+      expect(placed.logRows).toBe(0);
+      expect(placed.chips.map((c) => [c.toast.seq, c.rows])).toEqual([
+        [failed.seq, 1],
+        [sentAgain.seq, 1],
+      ]);
+    });
+  });
+
+  it('fits two lines of chip text in a row, four in two', () => {
+    expect(chipLines(1)).toBe(2);
+    expect(chipLines(2)).toBe(4);
+    const lines = (rows: 1 | 2) =>
+      chipLines(rows) * MESSAGE_BAR_CHIP_LINE_PX + MESSAGE_BAR_CHIP_TEXT_PAD_PX;
+    expect(lines(1)).toBeLessThanOrEqual(MESSAGE_BAR_ROW_PX - 2 * MESSAGE_BAR_CHIP_BORDER_PX);
+    expect(lines(2)).toBeLessThanOrEqual(2 * MESSAGE_BAR_ROW_PX - 2 * MESSAGE_BAR_CHIP_BORDER_PX);
+  });
+
+  describe('toastExpiresAt', () => {
+    it('keeps an error up longer than a success', () => {
+      expect(toastExpiresAt(success())).toBe(T + TOAST_VISIBLE_MS);
+      expect(toastExpiresAt(error())).toBe(T + TOAST_ERROR_VISIBLE_MS);
+      expect(TOAST_ERROR_VISIBLE_MS).toBeGreaterThan(TOAST_VISIBLE_MS);
+    });
+
+    it('gives a chip let go late a little more time, never less', () => {
+      const sent = success();
+      const late = T + TOAST_VISIBLE_MS + 5_000;
+      expect(toastExpiresAt(sent, late)).toBe(late + TOAST_RESUME_MS);
+      // Let go early: its own time still runs out first.
+      expect(toastExpiresAt(sent, T)).toBe(T + TOAST_VISIBLE_MS);
+    });
+  });
+
+  describe('liveToasts', () => {
+    it('reads each new toast once, in the region for its tone', () => {
+      const sent = success();
+      let live = liveToasts([sent], { success: 0, error: 0 });
+      expect(live.status).toBe(sent);
+      expect(live.alert).toBeNull();
+      const failed = error();
+      live = liveToasts([sent, failed], live.heard);
+      expect([live.status, live.alert]).toEqual([sent, failed]);
+      expect(live.heard).toEqual({ success: sent.seq, error: failed.seq });
+    });
+
+    it('keeps the same heard object while nothing new arrives', () => {
+      const sent = success();
+      const heard = { success: sent.seq, error: 0 };
+      expect(liveToasts([sent], heard).heard).toBe(heard);
+    });
+
+    it('never falls back to an older toast when the newest leaves', () => {
+      const [older, newer] = [error(), error()];
+      const { heard } = liveToasts([older, newer], { success: 0, error: 0 });
+      expect(seqs([liveToasts([older, newer], heard).alert!])).toEqual([newer.seq]);
+      // The newer one dismissed: the older one is not read out again.
+      expect(liveToasts([older], heard).alert).toBeNull();
+    });
   });
 });
 
