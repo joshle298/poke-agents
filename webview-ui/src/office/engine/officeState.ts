@@ -30,6 +30,9 @@ import {
   PROJECTILE_SPEED_PX_PER_SEC,
   STATIC_LAYER_REACH,
   TEAMMATE_CLUSTER_MAX_CHILDREN,
+  TOWN_MEADOW_DELAY_SEC,
+  TOWN_MEADOW_DELAY_ZONED_SEC,
+  TOWN_RETRY_SEC,
   TOWN_SPAWN_GRACE_SEC,
   TOWN_USER_WALK_HOLD_SEC,
   WAITING_BUBBLE_DURATION_SEC,
@@ -38,7 +41,7 @@ import { isAsleep, isDrowsy } from '../asleep.js';
 import { foregroundSprite } from '../floorForeground.js';
 import { floorPatternHasForeground } from '../floorTiles.js';
 import type { AreaRoleTiles } from '../layout/areaRoles.js';
-import { areaRoleTiles, centerClearance, tileKey } from '../layout/areaRoles.js';
+import { areaRoleTiles, centerClearance, isZonedTown, tileKey } from '../layout/areaRoles.js';
 import {
   getAmbientAnimationFrames,
   getAnimationFrames,
@@ -48,6 +51,8 @@ import {
 } from '../layout/furnitureCatalog.js';
 import {
   createDefaultLayout,
+  deskZByTileOf,
+  furnitureInstanceOf,
   getBlockedTiles,
   layoutToFurnitureInstances,
   layoutToSeats,
@@ -108,6 +113,7 @@ import {
   leaveBed,
   NO_REST_FIT,
   pickTownTile,
+  pickWorkTile,
   rowRoom,
   setTownGoal,
   stepTownCharacter,
@@ -116,6 +122,7 @@ import {
   townRoomNeeded,
   townSeatMove,
   townSpawnTile,
+  zonedSeatMove,
 } from './townBehavior.js';
 
 /** Pokémon identity and display facts carried by agentCreated / agentDetails.
@@ -163,6 +170,18 @@ export class OfficeState {
   /** Bumped whenever the static layer is rebuilt (the renderer's cache key). */
   staticLayerVersion = 0;
   private staticUids: ReadonlySet<string> = new Set();
+  private zSortedMemo: {
+    furniture: readonly PlacedFurniture[] | null;
+    staticUids: ReadonlySet<string> | null;
+    list: readonly PlacedFurniture[];
+  } = { furniture: null, staticUids: null, list: [] };
+  /** The z-sorted items' instances, kept while their placed item and type
+   *  stay the same (see furnitureInstances). */
+  private instanceMemo: {
+    placed: readonly PlacedFurniture[] | null;
+    deskZ: ReadonlyMap<string, number>;
+    byUid: Map<string, { source: PlacedFurniture; type: string; inst: FurnitureInstance }>;
+  } = { placed: null, deskZ: new Map(), byUid: new Map() };
   /** Tiles the static layer assumed characters can stand on. */
   private standable: ReadonlySet<string> = new Set();
   /** Tiles outside that assumption a character or pet has stood on or
@@ -190,6 +209,10 @@ export class OfficeState {
     return () => this.selectionListeners.delete(listener);
   }
   cameraFollowId: number | null = null;
+  /** Set when a layout arrives or one of another size replaces it: the next
+   *  frame moves the camera to the layout's home view (townCameraHome: the
+   *  Lab and its work area in a town larger than the window; else centred). */
+  cameraHomePending = false;
   hoveredAgentId: number | null = null;
   hoveredTile: { col: number; row: number } | null = null;
   /** Maps "parentId:toolId" → sub-agent character ID (negative) */
@@ -292,6 +315,8 @@ export class OfficeState {
         ...town.roles.meadow,
         ...town.roles.center,
         ...town.roles.lectern,
+        ...town.roles.lab,
+        ...town.roles.field,
         ...this.strayTiles,
       ];
       for (const seat of this.seats.values()) seeds.push(tileKey(seat.seatCol, seat.seatRow));
@@ -437,7 +462,8 @@ export class OfficeState {
     if (strayed) this.rebuildStaticLayer();
   }
 
-  /** Derive the Meadow / Center tiles and lectern seats from the layout's Area roles. */
+  /** Derive the role tiles and the seats kept for Leads (the lectern, the
+   *  Lab) or for working sessions (the fields) from the layout's Area roles. */
   private rebuildTown(): void {
     const roles = areaRoleTiles(this.layout);
     if (!roles) {
@@ -467,11 +493,18 @@ export class OfficeState {
     const bedTiles = new Set(beds.flatMap((b) => [...b.tiles]));
     const centerTiles = walkableIn(roles.center);
     const lecternSeats = new Set<string>();
+    const labSeats = new Set<string>();
+    const fieldSeats = new Set<string>();
     const seatRoom = new Map<string, number>();
     for (const [uid, seat] of this.seats) {
-      if (roles.lectern.has(tileKey(seat.seatCol, seat.seatRow))) lecternSeats.add(uid);
+      const key = tileKey(seat.seatCol, seat.seatRow);
+      if (roles.lectern.has(key)) lecternSeats.add(uid);
+      if (roles.lab.has(key)) labSeats.add(uid);
+      if (roles.field.has(key)) fieldSeats.add(uid);
       seatRoom.set(uid, rowRoom(this.tileMap, seat.seatCol, seat.seatRow));
     }
+    const zoned = isZonedTown(roles);
+    const walkBehind = this.walkBehindTiles();
     this.town = {
       roles,
       meadowTiles: walkableIn(roles.meadow),
@@ -480,6 +513,15 @@ export class OfficeState {
       bedTiles,
       centerClearance: centerClearance(roles.center),
       lecternSeats,
+      zoned,
+      labSeats,
+      fieldSeats,
+      // A zoned town seats nobody outside its fields by the usual pick: the
+      // Lab's (and the lectern's) seats are for Leads, which the steward seats.
+      reservedSeats: zoned
+        ? new Set([...this.seats.keys()].filter((uid) => !fieldSeats.has(uid)))
+        : lecternSeats,
+      fieldTiles: walkableIn(roles.field).filter((t) => !walkBehind.has(tileKey(t.col, t.row))),
       seatRoom,
       tileMap: this.tileMap,
       blockedTiles: this.blockedTiles,
@@ -659,11 +701,16 @@ export class OfficeState {
     }
   }
 
-  /** Where a character without a seat appears: a free Meadow tile in the
-   *  Pokémon Town, otherwise any walkable tile. Null when nothing is walkable. */
+  /** Where a character without a seat appears: in the Pokémon Town a free
+   *  Meadow tile (in a zoned town a free work tile: a field, else the Meadow),
+   *  otherwise any walkable tile. Null when nothing is walkable. */
   private randomSpawnTile(excludeId?: number): { col: number; row: number } | null {
-    if (this.town && this.town.meadowTiles.length > 0) {
-      return pickTownTile(this.town.meadowTiles, this.occupiedTiles(excludeId ?? Number.NaN));
+    const town = this.town;
+    if (town?.zoned && town.fieldTiles.length + town.meadowTiles.length > 0) {
+      return pickWorkTile(town, this.occupiedTiles(excludeId ?? Number.NaN));
+    }
+    if (town && town.meadowTiles.length > 0) {
+      return pickTownTile(town.meadowTiles, this.occupiedTiles(excludeId ?? Number.NaN));
     }
     if (this.walkableTiles.length === 0) return null;
     return this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)];
@@ -683,6 +730,11 @@ export class OfficeState {
 
   getLayout(): OfficeLayout {
     return this.layout;
+  }
+
+  /** Move the camera to the layout's home view on the next frame. */
+  requestCameraHome(): void {
+    this.cameraHomePending = true;
   }
 
   /** Get the blocked-tile key for a character's own seat, or null */
@@ -796,8 +848,9 @@ export class OfficeState {
     const electronicsTiles = this.buildElectronicsTileSet();
     const freeSeats: string[] = [];
     for (const [uid, seat] of this.seats) {
-      // The lectern's seats are kept for Leads (the town seat steward moves them).
-      if (!seat.assigned && !this.town?.lecternSeats.has(uid)) freeSeats.push(uid);
+      // The lectern's seats are kept for Leads, and in a zoned town everything
+      // outside its fields (the town seat steward seats Leads there).
+      if (!seat.assigned && !this.town?.reservedSeats.has(uid)) freeSeats.push(uid);
     }
     if (freeSeats.length === 0) return null;
 
@@ -902,7 +955,7 @@ export class OfficeState {
       }
     }
     if (!seatId && anchorAt) {
-      seatId = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, this.town?.lecternSeats);
+      seatId = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, this.town?.reservedSeats);
     }
     if (!seatId) {
       seatId = this.findFreeSeat(directoryName);
@@ -1086,7 +1139,12 @@ export class OfficeState {
     if (!teammate || !lead) return;
     const anchorAt = anchorTile(lead, this.seats);
     if (!anchorAt) return;
-    const target = closestFreeSeat(this.seats, anchorAt.col, anchorAt.row, this.town?.lecternSeats);
+    const target = closestFreeSeat(
+      this.seats,
+      anchorAt.col,
+      anchorAt.row,
+      this.town?.reservedSeats,
+    );
     if (!target || target === teammate.seatId) return;
     const targetSeat = this.seats.get(target)!;
     const targetDist =
@@ -1129,37 +1187,102 @@ export class OfficeState {
   /** The town's seat rules for one character (see townSeatMove), plus room
    *  for wide Pokémon: one whose body reaches over the wall beside its desk
    *  moves to a free desk with room. Cheap unless a move is due. */
-  private stewardTownSeat(ch: Character, town: TownWorld): void {
+  private stewardTownSeat(ch: Character, town: TownWorld, dt: number): void {
     if (ch.isSubagent || ch.matrixEffect) return;
+    if (town.zoned) {
+      this.stewardZonedSeat(ch, town, dt);
+      return;
+    }
     const onLectern = ch.seatId !== null && town.lecternSeats.has(ch.seatId);
     const due =
       (ch.isTeamLead === true && town.lecternSeats.size > 0 && !onLectern) ||
       (ch.isTeamLead !== true && onLectern) ||
       (ch.isActive && ch.seatId === null);
     if (!due) {
-      if (ch.seatId !== null && !onLectern) this.giveWideRoom(ch, ch.seatId, town);
+      if (ch.seatId !== null && !onLectern) {
+        this.giveWideRoom(ch, ch.seatId, town, (uid) => !town.lecternSeats.has(uid));
+      }
       return;
     }
-    const holders = new Map<string, Character>();
-    for (const other of this.characters.values()) {
-      if (other.seatId) holders.set(other.seatId, other);
-    }
-    const seats = [...this.seats.keys()].map((uid) => ({ uid, holder: holders.get(uid) ?? null }));
-    const target = townSeatMove(ch, seats, town.lecternSeats, (free) =>
+    const target = townSeatMove(ch, this.seatHolders(), town.lecternSeats, (free) =>
       free.length > 0 ? this.findFreeSeat(ch.directoryName) : null,
     );
     if (target && target !== ch.seatId) this.moveTownSeat(ch, target);
   }
 
-  /** A wide Pokémon at a desk too close to a wall moves to a free desk with room. */
-  private giveWideRoom(ch: Character, seatId: string, town: TownWorld): void {
+  /** Every seat with the character holding it (null when free). */
+  private seatHolders(): Array<{ uid: string; holder: Character | null }> {
+    const holders = new Map<string, Character>();
+    for (const other of this.characters.values()) {
+      if (other.seatId) holders.set(other.seatId, other);
+    }
+    return [...this.seats.keys()].map((uid) => ({ uid, holder: holders.get(uid) ?? null }));
+  }
+
+  /**
+   * The zoned town's seat rules for one character (see zonedSeatMove): a
+   * working Lead in the Lab, everyone else working in a field, or standing
+   * when the fields are full. Cheap unless a move is due; one that found
+   * nothing better looks again after TOWN_RETRY_SEC, not every frame.
+   */
+  private stewardZonedSeat(ch: Character, town: TownWorld, dt: number): void {
+    const seat = ch.seatId;
+    const onLab = seat !== null && town.labSeats.has(seat);
+    const onField = seat !== null && town.fieldSeats.has(seat);
+    const lead = ch.isTeamLead === true;
+    const due = (lead ? ch.isActive && !onLab : onLab) || (ch.isActive && !onField && !onLab);
+    if (!due) {
+      if (seat !== null) {
+        const zone = onLab ? town.labSeats : town.fieldSeats;
+        this.giveWideRoom(ch, seat, town, (uid) => zone.has(uid));
+      }
+      return;
+    }
+    if ((ch.townSeatRetry ?? 0) > 0) {
+      ch.townSeatRetry = (ch.townSeatRetry ?? 0) - dt;
+      return;
+    }
+    const electronics = this.buildElectronicsTileSet();
+    const verdict = zonedSeatMove(
+      ch,
+      this.seatHolders(),
+      { lab: town.labSeats, field: town.fieldSeats },
+      (free) => this.pickFromSeats(free, electronics),
+    );
+    if (verdict.kind === 'move') {
+      if (verdict.uid !== ch.seatId) this.moveTownSeat(ch, verdict.uid);
+    } else if (verdict.kind === 'release') {
+      this.releaseTownSeat(ch);
+    } else {
+      // Nothing to be had (the fields, or the Lab, full of working sessions).
+      ch.townSeatRetry = TOWN_RETRY_SEC;
+    }
+  }
+
+  /** Give up a seat in the town with nowhere else to sit (zonedSeatMove's
+   *  release): a working character then works standing on a free work tile. */
+  private releaseTownSeat(ch: Character): void {
+    if (ch.seatId === null) return;
+    const seat = this.seats.get(ch.seatId);
+    if (seat) seat.assigned = false;
+    ch.seatId = null;
+  }
+
+  /** A wide Pokémon at a seat too close to a wall moves to a free seat with
+   *  room, among those `allowed` for it. */
+  private giveWideRoom(
+    ch: Character,
+    seatId: string,
+    town: TownWorld,
+    allowed: (uid: string) => boolean,
+  ): void {
     const halfW = pokemonGeometryOf(ch)?.bodyHalfW;
     if (halfW === undefined) return;
     const need = townRoomNeeded(halfW);
     if (need <= (town.seatRoom.get(seatId) ?? 0)) return;
     const roomy: string[] = [];
     for (const [uid, seat] of this.seats) {
-      if (seat.assigned || town.lecternSeats.has(uid)) continue;
+      if (seat.assigned || !allowed(uid)) continue;
       if ((town.seatRoom.get(uid) ?? 0) >= need) roomy.push(uid);
     }
     if (roomy.length === 0) return;
@@ -1422,12 +1545,9 @@ export class OfficeState {
     );
 
     // The static layer's items are drawn with the ground, not here.
-    const zSorted =
-      this.staticUids.size === 0
-        ? this.layout.furniture
-        : this.layout.furniture.filter((item) => !this.staticUids.has(item.uid));
+    const zSorted = this.zSortedPlaced();
     if (autoOnTiles.size === 0 && !hasAmbient) {
-      this.furniture = layoutToFurnitureInstances(zSorted);
+      this.furniture = this.furnitureInstances(zSorted, zSorted);
       return;
     }
 
@@ -1460,7 +1580,55 @@ export class OfficeState {
       return item;
     });
 
-    this.furniture = layoutToFurnitureInstances(modifiedFurniture);
+    this.furniture = this.furnitureInstances(zSorted, modifiedFurniture);
+  }
+
+  /** The placed items outside the static layer (drawn z-sorted), the same
+   *  array until the layout or the layer changes. */
+  private zSortedPlaced(): readonly PlacedFurniture[] {
+    const memo = this.zSortedMemo;
+    if (memo.furniture !== this.layout.furniture || memo.staticUids !== this.staticUids) {
+      memo.furniture = this.layout.furniture;
+      memo.staticUids = this.staticUids;
+      memo.list =
+        this.staticUids.size === 0
+          ? this.layout.furniture
+          : this.layout.furniture.filter((item) => !this.staticUids.has(item.uid));
+    }
+    return memo.list;
+  }
+
+  /**
+   * layoutToFurnitureInstances for the z-sorted items, reusing each item's
+   * instance while its placed item and type are the same: this runs every
+   * animation tick (FURNITURE_ANIM_INTERVAL_SEC) and on every status change,
+   * and a large town has hundreds of items. `shown` is `placed` with the
+   * on-states and animation frames of this tick applied, item for item.
+   */
+  private furnitureInstances(
+    placed: readonly PlacedFurniture[],
+    shown: readonly PlacedFurniture[],
+  ): FurnitureInstance[] {
+    const memo = this.instanceMemo;
+    if (memo.placed !== placed) {
+      memo.placed = placed;
+      memo.deskZ = deskZByTileOf(placed);
+      memo.byUid.clear();
+    }
+    const out: FurnitureInstance[] = [];
+    for (let i = 0; i < placed.length; i++) {
+      const item = shown[i];
+      const hit = memo.byUid.get(item.uid);
+      if (hit && hit.source === placed[i] && hit.type === item.type) {
+        out.push(hit.inst);
+        continue;
+      }
+      const inst = furnitureInstanceOf(item, memo.deskZ);
+      if (!inst) continue;
+      memo.byUid.set(item.uid, { source: placed[i], type: item.type, inst });
+      out.push(inst);
+    }
+    return out;
   }
 
   setAgentTool(id: number, tool: string | null): void {
@@ -2083,11 +2251,15 @@ export class OfficeState {
       const holdStill =
         placeholder || asleep || (pokemon && anims !== null && isOneShotPlaying(ch, anims.has));
       // In the Pokémon Town an inactive character heads for its area (Meadow,
-      // Center); everywhere else, and for active agents, the upstream FSM runs.
+      // Center), and in a zoned town a working one with no seat left works
+      // standing on a free work tile; everywhere else, and for seated active
+      // agents, the upstream FSM runs.
       const town = this.town;
-      if (town) this.stewardTownSeat(ch, town);
+      if (town) this.stewardTownSeat(ch, town, dt);
       const goal = town ? townGoalFor(ch, town.roles) : null;
-      if (town || ch.townGoal !== undefined) setTownGoal(ch, goal);
+      if (town || ch.townGoal !== undefined) {
+        setTownGoal(ch, goal, town?.zoned ? TOWN_MEADOW_DELAY_ZONED_SEC : TOWN_MEADOW_DELAY_SEC);
+      }
       if (goal !== 'center') leaveBed(ch);
       const restInPlace =
         goal === null &&

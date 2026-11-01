@@ -1,9 +1,10 @@
 /**
- * The bundled Pokémon Town: it parses, every placed item exists in the real
- * furniture catalog and could have been placed with the editor, the Lab seats
- * enough working sessions, and every seat and every Meadow / Center tile can
- * be walked to from the Meadow — through the buildings' doors, which exist
- * and are the only way in.
+ * The bundled Pokémon Town: it parses, it is about twice the old town's area
+ * (larger than the window at the default zoom), every placed item exists in
+ * the real furniture catalog and could have been placed with the editor, the
+ * Lab seats a handful of Leads and the outdoor work areas everyone else, and
+ * every seat and every Meadow, field and Center tile can be walked to from the
+ * Meadow — through the buildings' doors, which exist and are the only way in.
  *
  * Run with: npm test
  */
@@ -14,7 +15,7 @@ import fs from 'node:fs';
 import { beforeAll, test } from 'vitest';
 
 import { canPlaceFurniture, getSurfaceRiders } from '../src/office/editor/editorActions.js';
-import { areaRoleTiles, tileKey } from '../src/office/layout/areaRoles.js';
+import { areaRoleTiles, tileKey, townCameraHome } from '../src/office/layout/areaRoles.js';
 import { getCatalogEntry } from '../src/office/layout/furnitureCatalog.js';
 import {
   deserializeLayout,
@@ -23,14 +24,24 @@ import {
   layoutToTileMap,
 } from '../src/office/layout/layoutSerializer.js';
 import { isWalkable } from '../src/office/layout/tileMap.js';
-import type { OfficeLayout } from '../src/office/types.js';
-import { TileType } from '../src/office/types.js';
-import { loadBundledCatalog, readBundledLayout, TOWN_LAYOUT_PATH } from './worldFixtures.js';
+import type { OfficeLayout, Seat } from '../src/office/types.js';
+import { Direction, TileType } from '../src/office/types.js';
+import {
+  LEGACY_TOWN_LAYOUT_PATH,
+  loadBundledCatalog,
+  readBundledLayout,
+  TOWN_LAYOUT_PATH,
+} from './worldFixtures.js';
 
 /** Party bar and margins at 1400×900: the office canvas is about 1200 × 900. */
 const CANVAS_AT_1400 = { width: 1200, height: 900 };
 /** Default zoom at devicePixelRatio 1 (ZOOM_DEFAULT_DPR_FACTOR). */
 const DEFAULT_ZOOM = 2;
+/** Tiles the default view shows at 1400×900. */
+const VIEW_TILES = {
+  cols: CANVAS_AT_1400.width / (16 * DEFAULT_ZOOM),
+  rows: CANVAS_AT_1400.height / (16 * DEFAULT_ZOOM),
+};
 
 let town: OfficeLayout;
 
@@ -74,7 +85,7 @@ function walkableMeadowTile(layout: OfficeLayout): { col: number; row: number } 
   throw new Error('no walkable Meadow tile');
 }
 
-test('the town parses as a layout and fits the default zoom next to the party bar', () => {
+test('the town parses, is about twice the old one, and is larger than the default view', () => {
   const raw = fs.readFileSync(TOWN_LAYOUT_PATH, 'utf-8');
   const parsed = deserializeLayout(raw);
   assert.ok(parsed, 'deserializeLayout accepts it');
@@ -82,10 +93,11 @@ test('the town parses as a layout and fits the default zoom next to the party ba
   assert.equal(town.tileColors?.length, town.tiles.length);
   assert.equal(town.areaTiles?.length, town.tiles.length);
   assert.equal(town.carpetTiles?.length, town.tiles.length);
-  assert.ok(town.cols >= 36 && town.cols <= 44, `cols ${town.cols}`);
-  assert.ok(town.rows >= 24 && town.rows <= 30, `rows ${town.rows}`);
-  assert.ok(town.cols * 16 * DEFAULT_ZOOM <= CANVAS_AT_1400.width, 'fits the width');
-  assert.ok(town.rows * 16 * DEFAULT_ZOOM <= CANVAS_AT_1400.height, 'fits the height');
+  const old = readBundledLayout(LEGACY_TOWN_LAYOUT_PATH);
+  const ratio = (town.cols * town.rows) / (old.cols * old.rows);
+  assert.ok(ratio >= 1.8 && ratio <= 2.6, `area ${ratio.toFixed(2)}× the v0.4 town's`);
+  assert.ok(town.cols > VIEW_TILES.cols, 'wider than the default view');
+  assert.ok(town.rows > VIEW_TILES.rows, 'taller than the default view');
   // Shares the classic default's revision, so neither ever resets the other.
   assert.equal(town.layoutRevision, 1);
 });
@@ -104,24 +116,84 @@ test('every placed item exists in the furniture catalog and is where the editor 
   assert.equal(uids.size, town.furniture.length, 'furniture uids are unique');
 });
 
-test('the Lab seats at least 16 working sessions, all outside the Meadow and the Center', () => {
-  const seats = [...layoutToSeats(town.furniture).values()];
-  assert.ok(seats.length >= 16, `${seats.length} seats`);
-  const roles = areaRoleTiles(town)!;
-  for (const seat of seats) {
-    const key = tileKey(seat.seatCol, seat.seatRow);
-    assert.ok(!roles.meadow.has(key) && !roles.center.has(key), `seat ${key} is in the Lab`);
+/** The tile a seat faces (its desk or table). */
+function faced(seat: Seat): string {
+  const d = {
+    [Direction.UP]: [0, -1],
+    [Direction.DOWN]: [0, 1],
+    [Direction.LEFT]: [-1, 0],
+    [Direction.RIGHT]: [1, 0],
+  }[seat.facingDir];
+  return tileKey(seat.seatCol + d[0], seat.seatRow + d[1]);
+}
+
+/** Every tile covered by the placed items of `types`. */
+function tilesOf(layout: OfficeLayout, test: (type: string) => boolean): Set<string> {
+  const out = new Set<string>();
+  for (const f of layout.furniture) {
+    if (!test(f.type)) continue;
+    const entry = getCatalogEntry(f.type)!;
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      for (let dc = 0; dc < entry.footprintW; dc++) out.add(tileKey(f.col + dc, f.row + dr));
+    }
   }
+  return out;
+}
+
+test('the Lab seats a handful of Leads, the work areas everyone else; no seat elsewhere', () => {
+  const roles = areaRoleTiles(town)!;
+  const seats = [...layoutToSeats(town.furniture).values()];
+  const lab = seats.filter((s) => roles.lab.has(tileKey(s.seatCol, s.seatRow)));
+  const field = seats.filter((s) => roles.field.has(tileKey(s.seatCol, s.seatRow)));
+  assert.ok(lab.length >= 6 && lab.length <= 10, `${lab.length} Lab seats`);
+  assert.ok(field.length >= 32, `${field.length} outdoor seats`);
+  assert.equal(lab.length + field.length, seats.length, 'every seat is in the Lab or a field');
+  // Outdoor seats are benches and stumps at tables, never next to each other.
+  const tables = tilesOf(town, (t) => t === 'PICNIC_TABLE' || t === 'LOG_TABLE');
+  const keys = new Set(field.map((s) => tileKey(s.seatCol, s.seatRow)));
+  for (const seat of field) {
+    assert.ok(
+      tables.has(faced(seat)),
+      `outdoor seat ${tileKey(seat.seatCol, seat.seatRow)} faces a table`,
+    );
+    assert.ok(
+      !keys.has(tileKey(seat.seatCol + 1, seat.seatRow)),
+      `no seat right beside ${tileKey(seat.seatCol, seat.seatRow)}`,
+    );
+  }
+  // Every table carries a field terminal; every Lab desk seat faces a PC.
+  for (const t of town.furniture.filter(
+    (f) => f.type === 'PICNIC_TABLE' || f.type === 'LOG_TABLE',
+  )) {
+    const on = town.furniture.filter(
+      (f) =>
+        f.type.startsWith('FIELD_TERMINAL_') &&
+        f.col >= t.col &&
+        f.col < t.col + 3 &&
+        f.row >= t.row &&
+        f.row < t.row + 2,
+    );
+    assert.ok(on.length >= 1, `the table at (${t.col},${t.row}) has a field terminal`);
+  }
+  const pcs = tilesOf(town, (t) => t.startsWith('PC_'));
+  const desks = lab.filter((s) => pcs.has(faced(s)));
+  assert.ok(desks.length >= 6 && desks.length <= 8, `${desks.length} Lab desks with a PC`);
 });
 
-test('the Lab keeps two lectern seats for Leads; the Center has a bed per side wall slot', () => {
+test('the town has a Lab, work areas, a Meadow and a Pokémon Center with 8+ beds', () => {
   const roles = areaRoleTiles(town)!;
-  const seats = [...layoutToSeats(town.furniture).values()];
-  const lectern = seats.filter((s) => roles.lectern.has(tileKey(s.seatCol, s.seatRow)));
-  assert.equal(lectern.length, 2, 'two lectern seats');
-  assert.ok(seats.length - lectern.length >= 16, `${seats.length - lectern.length} desks`);
+  assert.ok(roles.lab.size >= 60, `lab ${roles.lab.size} tiles`);
+  assert.ok(roles.field.size >= 200, `fields ${roles.field.size} tiles`);
+  assert.ok(roles.meadow.size >= 400, `meadow ${roles.meadow.size} tiles`);
+  assert.ok(roles.center.size >= 60, `center ${roles.center.size} tiles`);
+  assert.equal(roles.lectern.size, 0, 'the whole Lab is for Leads: no separate lectern');
+  const byRole = (role: string) => town.areas!.filter((a) => a.role === role).map((a) => a.label);
+  assert.deepEqual(byRole('lab'), ['Lab']);
+  assert.deepEqual(byRole('field'), ['Work Yard', 'Grove']);
+  assert.deepEqual(byRole('meadow'), ['Meadow']);
+  assert.deepEqual(byRole('center'), ['Pokémon Center']);
   const beds = town.furniture.filter((f) => f.type.startsWith('CENTER_BED_'));
-  assert.equal(beds.length, 4);
+  assert.ok(beds.length >= 8, `${beds.length} beds`);
   for (const bed of beds) {
     assert.ok(
       roles.center.has(tileKey(bed.col, bed.row)),
@@ -130,17 +202,24 @@ test('the Lab keeps two lectern seats for Leads; the Center has a bed per side w
   }
 });
 
-test('the town has a Meadow and a Pokémon Center, as Area roles', () => {
-  const roles = areaRoleTiles(town);
-  assert.ok(roles, 'the layout has role areas');
-  assert.ok(roles.meadow.size >= 60, `meadow ${roles.meadow.size} tiles`);
-  assert.ok(roles.center.size >= 12, `center ${roles.center.size} tiles`);
-  const labels = new Map(town.areas!.map((a) => [a.role, a.label]));
-  assert.equal(labels.get('meadow'), 'Meadow');
-  assert.equal(labels.get('center'), 'Pokémon Center');
+test('the camera starts on the Lab and the Work Yard, which fit the default view', () => {
+  const home = townCameraHome(town)!;
+  assert.ok(home, 'a home view');
+  const roles = areaRoleTiles(town)!;
+  const yard = new Set<string>();
+  town.areaTiles!.forEach((label, i) => {
+    if (label === 'Work Yard') yard.add(tileKey(i % town.cols, Math.floor(i / town.cols)));
+  });
+  for (const key of [...roles.lab, ...yard]) {
+    const [col, row] = key.split(',').map(Number);
+    assert.ok(Math.abs(col + 0.5 - home.col) <= VIEW_TILES.cols / 2, `${key} in view`);
+    assert.ok(Math.abs(row + 0.5 - home.row) <= VIEW_TILES.rows / 2, `${key} in view`);
+  }
+  // The classic office has no home: it stays centred.
+  assert.equal(townCameraHome({ cols: 1, areas: [], areaTiles: [] }), null);
 });
 
-test('every seat and every walkable Meadow and Center tile is reachable from the Meadow', () => {
+test('every seat and every walkable role tile is reachable from the Meadow', () => {
   const reached = reachableFrom(town, walkableMeadowTile(town));
   const tileMap = layoutToTileMap(town);
   const blocked = getBlockedTiles(town.furniture);
@@ -158,7 +237,7 @@ test('every seat and every walkable Meadow and Center tile is reachable from the
     );
   }
   const roles = areaRoleTiles(town)!;
-  for (const key of [...roles.meadow, ...roles.center]) {
+  for (const key of [...roles.meadow, ...roles.center, ...roles.field, ...roles.lab]) {
     const [col, row] = key.split(',').map(Number);
     if (!isWalkable(col, row, tileMap, blocked)) continue;
     assert.ok(reached.has(key), `area tile ${key} is reachable`);
@@ -227,12 +306,14 @@ test('the pond garden is fenced: a gate on the street, an opening by the signpos
   const tileMap = layoutToTileMap(town);
   const blocked = getBlockedTiles(town.furniture);
   const open = (col: number, row: number) => isWalkable(col, row, tileMap, blocked);
-  const street = [26, 27, 28, 29, 30, 31, 32, 33, 34].filter((c) => open(c, 17));
-  assert.deepEqual(street, [29, 30], 'the gate, in line with the Center door');
-  const pathSide = [18, 19, 20, 21, 22].filter((r) => open(25, r));
-  assert.deepEqual(pathSide, [19], 'one opening, just under the signpost');
-  const sign = town.furniture.find((f) => f.type === 'SIGNPOST')!;
-  assert.deepEqual([sign.col, sign.row + 1], [25, 18], 'the signpost stands beside it');
+  const street: number[] = [];
+  for (let c = 40; c <= 52; c++) if (open(c, 17)) street.push(c);
+  assert.deepEqual(street, [44, 45], 'the gate, in line with the Center door');
+  const groveSide: number[] = [];
+  for (let r = 18; r <= 33; r++) if (open(39, r)) groveSide.push(r);
+  assert.deepEqual(groveSide, [19], 'one opening, just under the signpost');
+  const sign = town.furniture.find((f) => f.type === 'SIGNPOST' && f.col === 39)!;
+  assert.deepEqual([sign.col, sign.row + 1], [39, 18], 'the signpost stands beside it');
 });
 
 test('tall-grass patches have ragged edges, coloured like the grass, and a shadow below', () => {
@@ -283,23 +364,27 @@ test('tall-grass patches have ragged edges, coloured like the grass, and a shado
   assert.ok((counts.get(TOP) ?? 0) >= 6, `${counts.get(TOP)} top-row tiles`);
   assert.ok(shadows >= 4, `${shadows} shadowed tiles`);
   // The patch and the grass share a hue: an edge tile can match both.
-  const patch = town.tileColors![18 * town.cols + 5]!;
-  assert.ok(TALL.includes(tile(5, 18)), 'inside the patch');
+  const patch = town.tileColors![20 * town.cols + 5]!;
+  assert.ok(TALL.includes(tile(5, 20)), 'inside the patch');
   assert.notDeepEqual(patch, lawn);
   assert.deepEqual([patch.h, patch.s], [lawn.h, lawn.s]);
 });
 
-test('the Center has its own back wall and four beds, each three tiles by two', () => {
+test('the Center has its own back wall and two wards of beds, each three tiles by two', () => {
   const at = (type: string) => town.furniture.filter((f) => f.type === type);
   assert.equal(at('WALL_WINDOW').length, 4, 'two pairs of windows');
   assert.equal(at('CENTER_POSTER').length, 1, 'a poster');
   const wainscot = at('WAINSCOT').map((f) => f.col);
-  assert.deepEqual(wainscot, [26, 27, 28, 29, 30, 31, 32, 33], 'a wainscot the width of the room');
+  assert.deepEqual(
+    wainscot,
+    Array.from({ length: 14 }, (_, i) => 38 + i),
+    'a wainscot the width of the room',
+  );
   for (const bed of town.furniture.filter((f) => f.type.startsWith('CENTER_BED_'))) {
     const entry = getCatalogEntry(bed.type)!;
     assert.deepEqual([entry.footprintW, entry.footprintH, entry.backgroundTiles], [3, 2, 2]);
   }
-  for (const type of ['SPECIMEN_CABINET', 'MICROSCOPE', 'PAPER_STACK']) {
+  for (const type of ['SPECIMEN_CABINET', 'MICROSCOPE', 'PAPER_STACK', 'PROFESSOR_DESK']) {
     assert.ok(at(type).length > 0, `the Lab has a ${type}`);
   }
 });

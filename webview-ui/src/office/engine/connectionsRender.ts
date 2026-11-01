@@ -37,6 +37,10 @@ export interface ConnectionsRenderState {
   themed: boolean;
 }
 
+/** Device-px corners of the current link's lit pixels (reused every frame). */
+const litX: number[] = [];
+const litY: number[] = [];
+
 export function renderLinks(
   ctx: CanvasRenderingContext2D,
   links: LinkSegment[],
@@ -46,30 +50,39 @@ export function renderLinks(
   zoom: number,
 ): void {
   const march = time * LINK_MARCH_PX_PER_SEC;
+  // Pixels off the canvas are skipped: in a town larger than the window a
+  // Lead's links can run far out of view.
+  const viewW = ctx.canvas?.width ?? Infinity;
+  const viewH = ctx.canvas?.height ?? Infinity;
   ctx.save();
   for (const link of links) {
     const { kind, dim } = link;
     const from = linkEnd(link.from);
     const to = linkEnd(link.to);
     const { period, on } = LINK_PATTERNS[kind];
+    litX.length = 0;
+    litY.length = 0;
+    forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
+      if (!isDashLit(step, march, period, on)) return;
+      const px = Math.round(offsetX + x * zoom);
+      const py = Math.round(offsetY + y * zoom);
+      if (px >= viewW || py >= viewH || px + zoom <= 0 || py + 2 * zoom <= 0) return;
+      litX.push(px);
+      litY.push(py);
+    });
+    if (litX.length === 0) continue;
     ctx.globalAlpha = dim ? LINK_DIM_ALPHA : 1;
     // A dark casing one pixel under every lit pixel first, so the line reads
     // on light ground (sand, the Lab's floor) as well as on dark.
-    for (const [color, dy] of [
-      [LINK_CASING_COLOR, 1],
-      [LINK_COLORS[kind], 0],
-    ] as const) {
-      ctx.fillStyle = color;
-      forEachLinePixel(from.x, from.y, to.x, to.y, (x, y, step) => {
-        if (!isDashLit(step, march, period, on)) return;
-        ctx.fillRect(
-          Math.round(offsetX + x * zoom),
-          Math.round(offsetY + (y + dy) * zoom),
-          zoom,
-          zoom,
-        );
-      });
-    }
+    // One path per colour: hundreds of pixel squares in one fill call.
+    ctx.fillStyle = LINK_CASING_COLOR;
+    ctx.beginPath();
+    for (let i = 0; i < litX.length; i++) ctx.rect(litX[i], litY[i] + zoom, zoom, zoom);
+    ctx.fill();
+    ctx.fillStyle = LINK_COLORS[kind];
+    ctx.beginPath();
+    for (let i = 0; i < litX.length; i++) ctx.rect(litX[i], litY[i], zoom, zoom);
+    ctx.fill();
   }
   ctx.restore();
 }

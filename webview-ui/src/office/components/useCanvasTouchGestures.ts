@@ -12,7 +12,9 @@ interface CanvasTouchOptions {
    *  (Touch *drags* don't paint — mobile hides the editor.) */
   enabled: boolean;
   zoom: number;
-  onZoomChange: (zoom: number) => void;
+  onZoomChange: (zoom: number, anchor?: { x: number; y: number }) => void;
+  /** A client point as the zoom's anchor (device px from the canvas centre). */
+  anchorAt?: (clientX: number, clientY: number) => { x: number; y: number } | undefined;
   panRef: { current: { x: number; y: number } };
   clampPan: (x: number, y: number) => { x: number; y: number };
   /** A pan began — the camera stops following anything automatically. */
@@ -114,12 +116,17 @@ export function useCanvasTouchGestures(options: CanvasTouchOptions): void {
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
       if (mode === 'pinch' && e.touches.length >= 2) {
-        const { zoom, onZoomChange } = latest.current;
+        const { zoom, onZoomChange, anchorAt } = latest.current;
         const proposed = Math.round(
           pinchStartZoom * (distance(e.touches[0], e.touches[1]) / pinchStartDist),
         );
         const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, proposed));
-        if (next !== zoom) onZoomChange(next);
+        if (next !== zoom) {
+          // Zoom about the fingers, then pan on from the pan that zoom left.
+          const mid = midpoint(e.touches[0], e.touches[1]);
+          onZoomChange(next, anchorAt?.(mid.clientX, mid.clientY));
+          anchorPan(mid);
+        }
         // Two-finger drag also pans, tracked from the midpoint.
         manualPan(midpoint(e.touches[0], e.touches[1]));
         return;

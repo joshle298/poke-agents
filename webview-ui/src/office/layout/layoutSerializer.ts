@@ -24,7 +24,6 @@ export function layoutToTileMap(layout: OfficeLayout): TileTypeVal[][] {
   return map;
 }
 
-/** Convert placed furniture into renderable FurnitureInstance[] */
 /** A placed item's sprite: its catalog sprite, colorized when the item has a
  *  colour of its own. */
 export function placedSprite(item: PlacedFurniture, sprite: SpriteData): SpriteData {
@@ -37,8 +36,20 @@ export function placedSprite(item: PlacedFurniture, sprite: SpriteData): SpriteD
   );
 }
 
+/** Convert placed furniture into renderable FurnitureInstance[] */
 export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): FurnitureInstance[] {
-  // Pre-compute desk zY per tile so surface items can sort in front of desks
+  const deskZByTile = deskZByTileOf(furniture);
+  const instances: FurnitureInstance[] = [];
+  for (const item of furniture) {
+    const inst = furnitureInstanceOf(item, deskZByTile);
+    if (inst) instances.push(inst);
+  }
+  return instances;
+}
+
+/** Per tile, the sort key of the deepest desk on it, so surface items can
+ *  sort in front of the desk they stand on. */
+export function deskZByTileOf(furniture: readonly PlacedFurniture[]): Map<string, number> {
   const deskZByTile = new Map<string, number>();
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type);
@@ -52,55 +63,58 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       }
     }
   }
+  return deskZByTile;
+}
 
-  const instances: FurnitureInstance[] = [];
-  for (const item of furniture) {
-    const entry = getCatalogEntry(item.type);
-    if (!entry) continue;
-    const x = item.col * TILE_SIZE;
-    const y = item.row * TILE_SIZE;
-    const spriteH = entry.sprite.length;
-    let zY = y + spriteH;
+/** One placed item as the renderer draws it (null when its type is unknown). */
+export function furnitureInstanceOf(
+  item: PlacedFurniture,
+  deskZByTile: ReadonlyMap<string, number>,
+): FurnitureInstance | null {
+  const entry = getCatalogEntry(item.type);
+  if (!entry) return null;
+  const x = item.col * TILE_SIZE;
+  const y = item.row * TILE_SIZE;
+  const spriteH = entry.sprite.length;
+  let zY = y + spriteH;
 
-    // Chair z-sorting: ensure characters sitting on chairs render correctly
-    if (entry.category === 'chairs') {
-      if (entry.orientation === 'back') {
-        // Back-facing chairs render IN FRONT of the seated character
-        // (the chair back visually occludes the character behind it).
-        // Use the bottom footprint row so it sorts after the character
-        // even when the chair has background tiles that push seats down.
-        zY = (item.row + entry.footprintH) * TILE_SIZE + 1;
-      } else {
-        // All other chairs: cap zY to first row bottom so characters
-        // at any seat tile render in front of the chair
-        zY = (item.row + 1) * TILE_SIZE;
-      }
+  // Chair z-sorting: ensure characters sitting on chairs render correctly
+  if (entry.category === 'chairs') {
+    if (entry.orientation === 'back') {
+      // Back-facing chairs render IN FRONT of the seated character
+      // (the chair back visually occludes the character behind it).
+      // Use the bottom footprint row so it sorts after the character
+      // even when the chair has background tiles that push seats down.
+      zY = (item.row + entry.footprintH) * TILE_SIZE + 1;
+    } else {
+      // All other chairs: cap zY to first row bottom so characters
+      // at any seat tile render in front of the chair
+      zY = (item.row + 1) * TILE_SIZE;
     }
-
-    // Surface items render in front of the desk they sit on
-    if (entry.canPlaceOnSurfaces) {
-      for (let dr = 0; dr < entry.footprintH; dr++) {
-        for (let dc = 0; dc < entry.footprintW; dc++) {
-          const deskZ = deskZByTile.get(`${item.col + dc},${item.row + dr}`);
-          if (deskZ !== undefined && deskZ + 0.5 > zY) zY = deskZ + 0.5;
-        }
-      }
-    }
-
-    const sprite = placedSprite(item, entry.sprite);
-
-    // Determine if this instance should be mirrored (side asset used in "left" orientation)
-    let mirrored = false;
-    if (entry.mirrorSide) {
-      const orientInGroup = getOrientationInGroup(item.type);
-      if (orientInGroup === 'left') {
-        mirrored = true;
-      }
-    }
-
-    instances.push({ sprite, x, y, zY, ...(mirrored ? { mirrored: true } : {}) });
   }
-  return instances;
+
+  // Surface items render in front of the desk they sit on
+  if (entry.canPlaceOnSurfaces) {
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      for (let dc = 0; dc < entry.footprintW; dc++) {
+        const deskZ = deskZByTile.get(`${item.col + dc},${item.row + dr}`);
+        if (deskZ !== undefined && deskZ + 0.5 > zY) zY = deskZ + 0.5;
+      }
+    }
+  }
+
+  const sprite = placedSprite(item, entry.sprite);
+
+  // Determine if this instance should be mirrored (side asset used in "left" orientation)
+  let mirrored = false;
+  if (entry.mirrorSide) {
+    const orientInGroup = getOrientationInGroup(item.type);
+    if (orientInGroup === 'left') {
+      mirrored = true;
+    }
+  }
+
+  return { sprite, x, y, zY, ...(mirrored ? { mirrored: true } : {}) };
 }
 
 /** Get all tiles blocked by furniture footprints, optionally excluding a set of tiles.

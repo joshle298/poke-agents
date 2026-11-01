@@ -1,5 +1,20 @@
 # Changelog
 
+## Poke Agents (unreleased)
+
+A bigger town, with the work moved outdoors.
+
+### Features
+
+- **A town twice the size.** The Pokémon Town is now 56×38 tiles, at the same zoom: the Lab and the Pokémon Center along the top, a cobbled Work Yard between them, and south of the main street a larger Meadow with a route through its tall grass, the Grove and the fenced pond garden. The Center has eight beds.
+- **The Lab is for Leads.** A working Lead sits at one of the Lab's desks. Every other working session sits at a picnic table or a log table outdoors, in the Work Yard or the Grove, on a bench or a tree stump, with a field terminal in front of it that lights up while it works. When every outdoor seat is taken, the rest work standing in a work area or the Meadow, and take a seat as one frees up. With no Leads the Lab stays empty. A session resting between turns stays at its seat; one idle for longer still wanders and naps in the Meadow, now in the part nearest it. Fainted ones still rest in the Center, and asleep ones stay put.
+- **Look around a town larger than the window.** Scroll with two fingers or the mouse wheel to move around, drag the ground with the mouse, and pinch or Ctrl/⌘-scroll to zoom: the zoom now stays on the point under the pointer (the zoom buttons keep the middle of the view). The office opens on the Lab and the Work Yard, and the camera stops at the town's edges.
+
+### Changes
+
+- A saved Pokémon Town from an earlier version that was never edited becomes the new town when the office starts, keeping the pets placed in it; the old one is kept as `~/.pixel-agents/layout.json.town-….bak`. A town you edited stays as it is (Layout → Templates → Pokémon Town loads the new one), and the classic office and your own layouts are never touched.
+- The floor, the paths and the forest are drawn once in pieces as they come into view, so a big town costs what the window shows, at any zoom.
+
 ## Poke Agents v0.4.0
 
 Switch model and Change Pokémon in the Pokédex, calmer offices, and a new icon.

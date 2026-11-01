@@ -144,13 +144,18 @@ export interface CarpetTile {
 /**
  * What an Area does beyond Directory mapping. Idle characters wander and nap in
  * the `meadow`; fainted (errored) ones walk to the `center` and rest there until
- * revived; the seats of a `lectern` are kept for Leads. A layout with none of
- * them keeps the upstream behavior.
+ * revived; the seats of a `lectern` are kept for Leads. With a `lab` or a
+ * `field` (the Pokémon Town since v0.5), working Leads sit at the Lab's seats
+ * and every other working session at a seat in a field (an outdoor work area),
+ * or stands and works on a free field or Meadow tile when those are taken. A
+ * layout with none of them keeps the upstream behavior.
  */
 export const AreaRole = {
   MEADOW: 'meadow',
   CENTER: 'center',
   LECTERN: 'lectern',
+  LAB: 'lab',
+  FIELD: 'field',
 } as const;
 export type AreaRole = (typeof AreaRole)[keyof typeof AreaRole];
 
@@ -318,12 +323,15 @@ export interface Character {
    *  the next species' sheets (at most POKEMON_EVOLVE_HOLD_MAX_SEC). */
   evolveHoldSec?: number;
 
-  // -- Town areas (only set in layouts with meadow / center Area roles) --
+  // -- Town areas (only set in layouts with Area roles) --
   /** Where the character is headed this frame (see townBehavior.ts); undefined
    *  when the upstream FSM drives it. */
   townGoal?: TownGoal;
   /** Seconds until the next try at heading toward `townGoal`'s area. */
   townRetryTimer?: number;
+  /** Seconds until a working character that found no better seat for it (a
+   *  zoned town with its fields, or its Lab, full) looks again. */
+  townSeatRetry?: number;
   /** Seconds left in which a status that sends it to the Meadow or the Center
    *  places it there directly (just created); undefined once over. */
   townSpawnGrace?: number;
@@ -333,8 +341,10 @@ export interface Character {
   bedRest?: BedRest;
 }
 
-/** Where an inactive character belongs in a layout with Area roles. */
-export type TownGoal = 'meadow' | 'center' | 'stay';
+/** Where a character belongs in a layout with Area roles: an inactive one in
+ *  the Meadow, the Center or where it is (`stay`); a working one with no seat
+ *  left for it stands and works on a free field or Meadow tile (`work`). */
+export type TownGoal = 'meadow' | 'center' | 'stay' | 'work';
 
 /** A bed in the Pokémon Center, as a character lying in it needs it drawn. */
 export interface BedRest {

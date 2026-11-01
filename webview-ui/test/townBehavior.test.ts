@@ -1,9 +1,12 @@
 /**
- * Area roles and where characters go in the Pokémon Town: working agents sit
- * at the Lab's desks, idle ones walk out to the Meadow and wander only there,
- * asleep ones nap where they lie, fainted ones walk to the Pokémon Center and
- * rest until revived, then go back to their desks. A layout without roles (the
- * classic office) leaves every character to the upstream FSM.
+ * Area roles and where characters go in the Pokémon Town as v0.4 shipped it
+ * (a Lab of desks with a lectern, no `lab` or `field` roles: what a user who
+ * edited that town keeps): working agents sit at the Lab's desks, idle ones
+ * walk out to the Meadow and wander only there, asleep ones nap where they
+ * lie, fainted ones walk to the Pokémon Center and rest until revived, then go
+ * back to their desks. A layout without roles (the classic office) leaves
+ * every character to the upstream FSM. The zoned town (Leads in the Lab,
+ * everyone else outdoors) is in townZones.test.ts.
  *
  * Run with: npm test
  */
@@ -60,9 +63,9 @@ import {
 } from './pokemonFixtures.js';
 import {
   CLASSIC_LAYOUT_PATH,
+  LEGACY_TOWN_LAYOUT_PATH,
   loadBundledCatalog,
   readBundledLayout,
-  TOWN_LAYOUT_PATH,
 } from './worldFixtures.js';
 
 const realRandom = Math.random;
@@ -119,7 +122,7 @@ let town: OfficeLayout;
 
 beforeAll(() => {
   loadBundledCatalog();
-  town = readBundledLayout(TOWN_LAYOUT_PATH);
+  town = readBundledLayout(LEGACY_TOWN_LAYOUT_PATH);
 });
 
 beforeEach(() => {

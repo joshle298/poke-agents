@@ -8,7 +8,7 @@ Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-
 
 ## What It Is
 
-Poke Agents is a visualizer for Conductor. Each cloud session is a Pokémon: it works at a desk while the session runs tools, wanders and naps when the session is idle, faints when it errors, and calls for you when it needs an answer. When one session starts or messages others, the town draws the links between them and the messages they send. It runs as a Mac app or in a browser window next to Conductor.
+Poke Agents is a visualizer for Conductor. Each cloud session is a Pokémon: it works at a table outdoors (a Lead at a desk in the Lab) while the session runs tools, wanders and naps when the session is idle, faints when it errors, and calls for you when it needs an answer. When one session starts or messages others, the town draws the links between them and the messages they send. It runs as a Mac app or in a browser window next to Conductor.
 
 All coding happens in Conductor, with your Conductor settings: models, environment, repositories and agents stay configured there.
 
@@ -21,8 +21,8 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 
 ## Features
 
-- **The town.** Working sessions sit at the desks in the Lab, with Leads at the lectern. Idle ones wander and nap in the Meadow's tall grass and around the pond. Fainted ones lie in the Pokémon Center's beds until they are revived. **Layout → Templates** switches between the town and the classic Pixel Agents office.
-- **A Pokémon per session.** Each visible session is a Pokémon that keeps its species. It works at its desk while the session runs tools, nods along on read tools, and hops when a turn ends.
+- **The town.** Leads work at the desks in the Lab. Every other working session sits at a picnic or log table in the Work Yard or the Grove, with a field terminal in front of it, or works standing nearby when every seat is taken. Idle ones wander and nap in the Meadow's tall grass and around the pond. Fainted ones lie in the Pokémon Center's beds until they are revived. The town is larger than the window: scroll with two fingers or the mouse wheel, or drag the ground, to look around, and pinch or ⌘-scroll to zoom. **Layout → Templates** switches between the town and the classic Pixel Agents office. A town an earlier version saved, unchanged, becomes the new town when the office starts; one you edited stays as it is.
+- **A Pokémon per session.** Each visible session is a Pokémon that keeps its species. It works at its seat while the session runs tools, nods along on read tools, and hops when a turn ends.
 - **Levels and evolution.** `Lv` comes from the session's message count. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it waits for your answer or a permission.
 - **Leads are legendaries.** A session that created other sessions is a Lead and appears as a legendary Pokémon that doesn't evolve. Its new sessions are thrown out of a capsule from where it stands, and a session that leaves is recalled into one.
@@ -284,7 +284,7 @@ Poke Agents keeps its data in `~/.pixel-agents/`, shared with Pixel Agents. None
 | `demo-state.json`       | The demo office's seats (`--demo`), apart from the real office's.                                                                                                    |
 | `standalone-token`      | The office token from the printed URL. `--rotate-token` replaces it.                                                                                                 |
 | `config.json`           | Settings such as the Pokémon theme and sounds.                                                                                                                       |
-| `layout.json`           | The office layout.                                                                                                                                                   |
+| `layout.json`           | The office layout. An earlier, unchanged Pokémon Town replaced by the new one is kept next to it as `layout.json.town-….bak`.                                        |
 | `cache/pmd/`            | Downloaded sprites and portraits.                                                                                                                                    |
 | `cache/cries/`          | Downloaded Pokémon cries.                                                                                                                                            |
 | `cache/music/radio/`    | Downloaded [Poke Agents Radio](#music) tracks, each checked against its pinned SHA-256.                                                                              |
