@@ -97,6 +97,8 @@
     "app:mac": "npm run build:app && cd desktop && npm ci && npm run dist:mac",
     "app:mac:all": "npm run build:app && cd desktop && npm ci && npm run dist:mac:all",
     "app:dev": "npm run build:app && cd desktop && npm ci && npm start",
+    "pokemon:generate": "node scripts/generate-pokemon-catalog.mjs scripts/data/species.json",
+    "pokemon:verify": "tsx scripts/verify-pokemon-assets.ts scripts/data/species.json .context/pokemon-assets-report.json",
     "icons:generate": "node scripts/generate-icons.mjs",
     "start": "node dist/cli.js --open",
     "demo": "node dist/cli.js --demo --open",

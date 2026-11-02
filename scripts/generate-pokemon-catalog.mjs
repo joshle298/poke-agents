@@ -11,9 +11,9 @@
  * reads them from the downloaded AnimData.xml and credits.txt at runtime), and
  * no artwork is ever written: the output is names and numbers.
  *
- * Evolution stages: species.json lists each line's members in evolution order
- * but does not say where a line branches, so branching lines are declared in
- * BRANCHED_LINES below. A line not listed there is linear (stage = position).
+ * Members can declare stage and evolvesFrom to describe branching evolution
+ * paths. Legacy lines retain their original stage-based branch selection;
+ * BRANCHED_LINES supplies stages for older research rosters.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -61,7 +61,12 @@ function member(raw, where) {
 }
 
 function buildCatalog(species) {
-  if (!Array.isArray(species.lines) || !Array.isArray(species.legendaries)) {
+  if (
+    !species ||
+    typeof species !== 'object' ||
+    !Array.isArray(species.lines) ||
+    !Array.isArray(species.legendaries)
+  ) {
     fail('species.json needs "lines" and "legendaries" arrays');
   }
   const seenDex = new Set();
@@ -85,13 +90,36 @@ function buildCatalog(species) {
     if (branched && branched.dex.join(',') !== members.map((m) => m.dex).join(',')) {
       fail(`line ${id}: members changed; update BRANCHED_LINES`);
     }
-    return {
-      id,
-      members: members.map((m, j) => {
-        claim(m.dex, `line ${id}`);
-        return { ...m, stage: branched ? branched.stages[j] : j + 1 };
-      }),
-    };
+    const staged = members.map((m, j) => {
+      claim(m.dex, `line ${id}`);
+      const raw = line.members[j];
+      const stage = raw.stage ?? (branched ? branched.stages[j] : j + 1);
+      if (!Number.isInteger(stage) || stage < 1 || stage > 3) {
+        fail(`line ${id}: bad stage ${stage}`);
+      }
+      const evolvesFrom = raw.evolvesFrom;
+      if (evolvesFrom !== undefined) {
+        const parentIndex = members.findIndex((p) => p.dex === evolvesFrom);
+        if (parentIndex < 0 || parentIndex >= j) {
+          fail(`line ${id}: invalid parent ${evolvesFrom} for ${m.dex}`);
+        }
+        const parentStage =
+          line.members[parentIndex].stage ??
+          (branched ? branched.stages[parentIndex] : parentIndex + 1);
+        if (parentStage !== stage - 1) {
+          fail(`line ${id}: invalid parent ${evolvesFrom} for ${m.dex}`);
+        }
+      }
+      return { ...m, stage, ...(evolvesFrom !== undefined ? { evolvesFrom } : {}) };
+    });
+    if (!staged.some((m) => m.stage === 1)) fail(`line ${id}: no first stage`);
+    if (
+      staged.some((m) => m.evolvesFrom !== undefined) &&
+      staged.some((m) => m.stage > 1 && m.evolvesFrom === undefined)
+    ) {
+      fail(`line ${id}: every evolved member needs a parent`);
+    }
+    return { id, members: staged };
   });
   for (const id of Object.keys(BRANCHED_LINES)) {
     if (!lines.some((line) => line.id === id)) fail(`BRANCHED_LINES names unknown line ${id}`);
@@ -137,6 +165,8 @@ export interface CatalogMember {
   size: PokemonSize;
   /** Evolution stage, 1-based. Branching lines repeat a stage. */
   stage: number;
+  /** Parent dex for explicit evolution paths; absent on legacy stage-based lines. */
+  evolvesFrom?: number;
 }
 
 export interface CatalogLine {
@@ -156,7 +186,7 @@ export interface CatalogLegendary {
 export interface PokemonCatalog {
   lines: readonly CatalogLine[];
   legendaries: readonly CatalogLegendary[];
-  /** Legendaries a Lead can become, in preference order. None is large. */
+  /** Automatic Lead defaults, in preference order. None is large. */
   leadDefaults: readonly number[];
 }
 
@@ -164,7 +194,7 @@ export const POKEMON_CATALOG: PokemonCatalog = ${renderCatalog(catalog)};
 `;
 }
 
-/** One entry per line so the committed file stays short and diffs read per species. */
+/** Render metadata as a TypeScript literal, then format it with the repository config. */
 function renderCatalog({ lines, legendaries, leadDefaults }) {
   const entry = (value) => JSON.stringify(value);
   const renderedLines = lines.map(
@@ -191,7 +221,7 @@ async function main() {
     fail(`cannot read ${input}: ${err instanceof Error ? err.message : String(err)}`);
   }
   const catalog = buildCatalog(species);
-  const source = render(catalog, path.basename(input));
+  const source = render(catalog, path.relative(REPO_ROOT, path.resolve(input)));
   // Format with the repo's Prettier config so the committed file passes format:check.
   const prettier = await import('prettier');
   const config = (await prettier.resolveConfig(output)) ?? {};

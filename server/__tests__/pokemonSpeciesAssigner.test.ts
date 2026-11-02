@@ -6,8 +6,11 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { assignPaletteIfNeeded } from '../src/paletteAssigner.js';
 import {
   assignSpeciesIfNeeded,
+  choiceRefusal,
+  choosePokemon,
   fnv1a,
   levelFor,
+  pokemonPickerCatalog,
   promoteToOrchestrator,
   restoredPokemonFields,
   stableKeyFor,
@@ -17,7 +20,8 @@ import {
 import { POKEMON_CATALOG } from '../src/pokemon/speciesCatalog.js';
 import type { AgentState } from '../src/types.js';
 
-const LINE_COUNT = POKEMON_CATALOG.lines.length;
+const PICKER_LINES = pokemonPickerCatalog().lines;
+const LINE_COUNT = PICKER_LINES.length;
 const LEAD_DEXES = new Set(POKEMON_CATALOG.leadDefaults);
 const SIZE_BY_DEX = new Map(
   [...POKEMON_CATALOG.lines.flatMap((l) => l.members), ...POKEMON_CATALOG.legendaries].map((m) => [
@@ -120,7 +124,7 @@ describe('assignSpeciesIfNeeded', () => {
   it('breaks ties by the key over catalog order', () => {
     const a = agent(1, { sessionId: 'a' });
     assignSpeciesIfNeeded(a, new AgentStateStore());
-    expect(a.pokemonLine).toBe(POKEMON_CATALOG.lines[0xe40c292c % LINE_COUNT].id);
+    expect(a.pokemonLine).toBe(PICKER_LINES[0xe40c292c % LINE_COUNT].id);
     // Different keys spread over the tied lines.
     const picks = new Set(
       Array.from({ length: 20 }, (_, i) => {
@@ -380,5 +384,105 @@ describe('persistence', () => {
       species: a.species,
       shiny: false,
     });
+  });
+});
+
+describe('expanded roster', () => {
+  it('offers 915 species while excluding large species and unreachable descendants', () => {
+    const picker = pokemonPickerCatalog();
+    const members = picker.lines.flatMap((line) => line.members);
+    expect(members.length + picker.legendaries.length).toBe(915);
+    expect(picker.lines).toHaveLength(428);
+    expect(picker.legendaries).toHaveLength(63);
+    for (const line of picker.lines) {
+      const raw = POKEMON_CATALOG.lines.find((candidate) => candidate.id === line.id)!;
+      for (const member of line.members) {
+        expect(SIZE_BY_DEX.get(member.dex)).not.toBe('large');
+        const parent = raw.members.find((candidate) => candidate.dex === member.dex)!.evolvesFrom;
+        if (parent !== undefined) expect(line.members.some((m) => m.dex === parent)).toBe(true);
+      }
+    }
+  });
+
+  it('keeps Wurmple on the same branch when leveling incrementally or directly', () => {
+    const branches = new Set<number>();
+    for (let i = 0; i < 24; i++) {
+      const incremental = agent(i + 1, { sessionId: `wurmple-${i}`, pokemonLine: 'wurmple' });
+      assignSpeciesIfNeeded(incremental, new AgentStateStore());
+      expect(incremental.species).toBe(265);
+      updateLevel(incremental, { messageCount: 900 });
+      const middle = incremental.species!;
+      expect([266, 268]).toContain(middle);
+      branches.add(middle);
+      updateLevel(incremental, { messageCount: 4900 });
+      expect(incremental.species).toBe(middle === 266 ? 267 : 269);
+
+      const direct = agent(i + 1, {
+        sessionId: `wurmple-${i}`,
+        pokemonLine: 'wurmple',
+        details: { messageCount: 4900 },
+      });
+      assignSpeciesIfNeeded(direct, new AgentStateStore());
+      expect(direct.species).toBe(incremental.species);
+    }
+    expect(branches).toEqual(new Set([266, 268]));
+  });
+
+  it.each([
+    [266, 267],
+    [268, 269],
+  ])('restores Wurmple branch %i and evolves to %i', (species, evolved) => {
+    const a = agent(1, restoredPokemonFields({ pokemonLine: 'wurmple', species }));
+    assignSpeciesIfNeeded(a, new AgentStateStore());
+    expect(a.species).toBe(species);
+    updateLevel(a, { messageCount: 4900 });
+    expect(a.species).toBe(evolved);
+  });
+
+  it('keeps both Nincada evolutions terminal', () => {
+    const branches = new Set<number>();
+    for (let i = 0; i < 24; i++) {
+      const a = agent(i + 1, { sessionId: `nincada-${i}`, pokemonLine: 'nincada' });
+      assignSpeciesIfNeeded(a, new AgentStateStore());
+      updateLevel(a, { messageCount: 900 });
+      expect([291, 292]).toContain(a.species);
+      const evolved = a.species!;
+      branches.add(evolved);
+      updateLevel(a, { messageCount: 4900 });
+      expect(a.species).toBe(evolved);
+    }
+    expect(branches).toEqual(new Set([291, 292]));
+  });
+
+  it('allows a Lead to choose and restore an additional legendary', () => {
+    expect(choiceRefusal('raikou', { lead: false })).toBe('Only a Lead can be a legendary.');
+    expect(choiceRefusal('raikou', { lead: true })).toBeNull();
+    const store = new AgentStateStore();
+    const a = agent(1);
+    assignSpeciesIfNeeded(a, store, { orchestrator: true });
+    expect(choosePokemon(a, store, { line: 'raikou' }, { orchestrator: true })).toBe(true);
+    expect(a.species).toBe(243);
+    const restored = agent(1, restoredPokemonFields(a));
+    assignSpeciesIfNeeded(restored, store, { orchestrator: true });
+    updateLevel(restored, { messageCount: 4900 });
+    expect(restored.species).toBe(243);
+  });
+
+  it('preserves the eight automatic Lead defaults', () => {
+    expect(POKEMON_CATALOG.leadDefaults).toEqual([150, 151, 145, 245, 251, 385, 491, 493]);
+  });
+});
+
+describe('legacy evolution choices', () => {
+  it.each([
+    { line: 'eevee', expected: [196, 134, 135, 471, 700, 197, 470, 136] },
+    { line: 'ralts', expected: [282, 475, 282, 475, 282, 475, 282, 475] },
+  ])('preserves session branches for $line', ({ line, expected }) => {
+    for (let i = 0; i < expected.length; i++) {
+      const a = agent(i + 1, { sessionId: `legacy-${i}`, pokemonLine: line });
+      assignSpeciesIfNeeded(a, new AgentStateStore());
+      updateLevel(a, { messageCount: 4900 });
+      expect(a.species).toBe(expected[i]);
+    }
   });
 });

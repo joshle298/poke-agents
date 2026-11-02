@@ -16,6 +16,7 @@ import {
   setPokemonSpritesEnabled,
 } from '../src/pokemon/pokemonAssets.js';
 import { registerPokemonRoutes } from '../src/pokemon/routes.js';
+import { POKEMON_CATALOG } from '../src/pokemon/speciesCatalog.js';
 import type { AgentState } from '../src/types.js';
 import { privilegedHostnames } from '../src/wsAuth.js';
 import {
@@ -29,8 +30,14 @@ import {
 import { addSyntheticSpecies, FakeUpstream, PRIMARY } from './pokemonTestUtils.js';
 
 const HOST = '127.0.0.1:41510';
-/** Caterpie: a valid dex the species catalog never assigns. */
-const OFF_CATALOG_DEX = 10;
+const CATALOG_DEXES = new Set([
+  ...POKEMON_CATALOG.lines.flatMap((line) => line.members.map((member) => member.dex)),
+  ...POKEMON_CATALOG.legendaries.map((member) => member.dex),
+]);
+const OFF_CATALOG_DEX = Array.from({ length: 1025 }, (_, i) => i + 1).find(
+  (dex) => !CATALOG_DEXES.has(dex),
+)!;
+const OFF_CATALOG_PATH = String(OFF_CATALOG_DEX).padStart(4, '0');
 
 let base: string;
 let packDir: string;
@@ -52,7 +59,7 @@ beforeEach(async () => {
   fs.writeFileSync(path.join(base, 'cache', 'secret.ogg'), syntheticOgg('secret'));
   cries = new FakeCryUpstream();
   cries.set('latest', 25, syntheticOgg('pika'), '"e25"');
-  cries.set('latest', OFF_CATALOG_DEX, syntheticOgg('caterpie'));
+  cries.set('latest', OFF_CATALOG_DEX, syntheticOgg('off-catalog'));
   sprites = new FakeUpstream();
   addSyntheticSpecies(sprites, 25);
   theme = true;
@@ -181,12 +188,12 @@ describe('GET /api/pokemon/cry/:dex4', () => {
   });
 
   it('serves only species the catalog can assign or an agent shows', async () => {
-    expect((await get(`/api/pokemon/cry/00${OFF_CATALOG_DEX}`)).statusCode).toBe(404);
+    expect((await get(`/api/pokemon/cry/${OFF_CATALOG_PATH}`)).statusCode).toBe(404);
     expect(cries.calls).toHaveLength(0);
     addAgentWithSpecies(1, OFF_CATALOG_DEX);
-    const res = await get(`/api/pokemon/cry/00${OFF_CATALOG_DEX}`);
+    const res = await get(`/api/pokemon/cry/${OFF_CATALOG_PATH}`);
     expect(res.statusCode).toBe(200);
-    expect(res.rawPayload).toEqual(syntheticOgg('caterpie'));
+    expect(res.rawPayload).toEqual(syntheticOgg('off-catalog'));
   });
 
   it('answers 404 for a cry upstream does not have', async () => {

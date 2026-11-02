@@ -94,6 +94,7 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
   // The last request: a tile or the reset closes the picker once answered;
   // a Shiny toggle keeps it open and shows its value until the office has it.
   const [sent, setSent] = useState<{ at: number; shiny?: boolean } | null>(null);
+  const [query, setQuery] = useState('');
   const sentAt = sent?.at ?? null;
   const now = useNow(CHOICE_TICK_MS, sentAt !== null);
 
@@ -117,7 +118,7 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
   }, [answer, shinyToggle, onClose]);
 
   const isLead = agent?.isTeamLead === true;
-  const entries = useMemo(() => pickerEntries(catalog, isLead), [catalog, isLead]);
+  const entries = useMemo(() => pickerEntries(catalog, isLead, query), [catalog, isLead, query]);
   const currentId = currentEntryId(catalog, agent?.species);
   const portraitRoute = isBrowserRuntime && pokemonTheme;
   const species = findSpecies({ species: speciesMap }, agent?.species, agent?.shiny);
@@ -173,8 +174,20 @@ export function PokemonPickerModal({ agentId, agent, onClose }: PokemonPickerMod
             Reset to automatic
           </Button>
         </div>
+        <input
+          type="search"
+          aria-label="Search Pokémon"
+          placeholder="Name or Pokédex number"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="w-full text-sm py-4 px-8 bg-btn-bg border-2 border-border rounded-none text-text"
+        />
         {!catalog ? (
           <span className="text-xs text-text-muted">Loading…</span>
+        ) : entries.length === 0 ? (
+          <span className="text-xs text-text-muted" role="status">
+            No Pokémon match your search.
+          </span>
         ) : (
           <div className="flex flex-col gap-8 max-h-[min(420px,55vh)] overflow-y-auto pixel-scrollbar pr-2">
             <PickerGrid

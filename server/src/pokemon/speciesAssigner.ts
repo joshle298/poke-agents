@@ -29,7 +29,7 @@
  *   Claude, Cursor and unknown harnesses; without a message count,
  *   1 + floor(sqrt(toolCallCount)). Clamped to 1..100.
  * - Stage 1 below Lv 16, 2 from Lv 16, 3 from Lv 36, bounded by the line.
- *   Where a line branches (Eevee, Kirlia) the key picks the branch. A shown
+ *   Where a line branches the key picks the branch along its evolution path. A shown
  *   species never de-evolves: a restored Charmeleon stays a Charmeleon while
  *   its level is recounted.
  * - Large species are never assigned (they dwarf the office); a line stops
@@ -78,17 +78,26 @@ interface PoolLine {
   /** stages[0] = stage-1 members. Ends before the first stage with no
    *  assignable member, so evolution stops there. */
   stages: CatalogMember[][];
+  explicitPaths: boolean;
 }
 
 function toPoolLine(line: CatalogLine): PoolLine | null {
   const stages: CatalogMember[][] = [];
   const maxStage = Math.max(...line.members.map((m) => m.stage));
   for (let stage = 1; stage <= maxStage; stage++) {
-    const members = line.members.filter((m) => m.stage === stage && m.size !== 'large');
+    const members = line.members.filter(
+      (m) =>
+        m.stage === stage &&
+        m.size !== 'large' &&
+        (m.evolvesFrom === undefined ||
+          stages[stage - 2]?.some((parent) => parent.dex === m.evolvesFrom)),
+    );
     if (members.length === 0) break;
     stages.push(members);
   }
-  return stages.length > 0 ? { id: line.id, stages } : null;
+  return stages.length > 0
+    ? { id: line.id, stages, explicitPaths: line.members.some((m) => m.evolvesFrom !== undefined) }
+    : null;
 }
 
 const POOL_LINES: readonly PoolLine[] = POKEMON_CATALOG.lines
@@ -217,7 +226,21 @@ function speciesForLevel(
   key: string,
 ): number {
   const target = Math.min(stageForLevel(level), line.stages.length);
-  if (stageOf(line, current) >= target) return current as number;
+  const currentStage = stageOf(line, current);
+  if (current !== undefined && currentStage >= target) return current;
+  if (line.explicitPaths) {
+    const first = line.stages[0];
+    let dex =
+      current !== undefined && currentStage > 0
+        ? current
+        : first[fnv1a(`${key}:${line.id}:1`) % first.length].dex;
+    for (let stage = Math.max(2, currentStage + 1); stage <= target; stage++) {
+      const candidates = line.stages[stage - 1].filter((m) => m.evolvesFrom === dex);
+      if (candidates.length === 0) break;
+      dex = candidates[fnv1a(`${key}:${line.id}:${stage}`) % candidates.length].dex;
+    }
+    return dex;
+  }
   const members = line.stages[target - 1];
   return members[fnv1a(`${key}:${line.id}:${target}`) % members.length].dex;
 }
@@ -300,7 +323,7 @@ export function pokemonPickerCatalog(): {
         members.map((m) => ({ dex: m.dex, name: m.name, stage: index + 1 })),
       ),
     })),
-    legendaries: LEAD_POOL.map((l) => ({ id: l.id, dex: l.dex, name: l.name })),
+    legendaries: SHOWABLE_LEGENDARIES.map((l) => ({ id: l.id, dex: l.dex, name: l.name })),
   };
 }
 
@@ -308,7 +331,7 @@ export function pokemonPickerCatalog(): {
  *  for anyone, a Lead legendary for a Lead only. */
 export function choiceRefusal(line: string, opts: { lead: boolean }): string | null {
   if (POOL_LINE_BY_ID.has(line)) return null;
-  if (LEAD_POOL.some((l) => l.id === line)) {
+  if (LEGENDARY_BY_ID.has(line)) {
     return opts.lead ? null : 'Only a Lead can be a legendary.';
   }
   return 'Unknown Pokémon.';
@@ -363,9 +386,8 @@ export function choosePokemon(
       if (!legendary && !line) return false;
       if (agent.level === undefined) agent.level = agentLevel(agent);
       agent.pokemonLine = choice.line;
-      agent.species = legendary
-        ? legendary.dex
-        : speciesForLevel(line as PoolLine, agent.level, undefined, key);
+      if (legendary) agent.species = legendary.dex;
+      else if (line) agent.species = speciesForLevel(line, agent.level, undefined, key);
     }
     if (typeof choice.shiny === 'boolean') agent.shiny = choice.shiny;
     else if (agent.shiny === undefined) agent.shiny = false;

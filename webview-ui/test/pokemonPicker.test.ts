@@ -85,3 +85,41 @@ describe('Change Pokémon picker rules', () => {
     expect(shownShiny(false, null, false)).toBe(false);
   });
 });
+
+describe('Pokémon search', () => {
+  it('matches evolved names case-insensitively and returns their line tile', () => {
+    expect(pickerEntries(CATALOG, false, '  cHaRiZaRd  ').map((entry) => entry.id)).toEqual([
+      'charmander',
+    ]);
+    expect(pickerEntries(CATALOG, false, 'vapor').map((entry) => entry.id)).toEqual(['eevee']);
+    expect(pickerEntries(CATALOG, false, '   ')).toEqual(pickerEntries(CATALOG, false));
+  });
+
+  it('matches exact Pokédex numbers including a hash and leading zeroes', () => {
+    // eslint-disable-next-line pixel-agents/no-inline-colors -- A Pokédex number, not a color.
+    for (const query of ['5', '005', '#005']) {
+      expect(pickerEntries(CATALOG, false, query).map((entry) => entry.id)).toEqual(['charmander']);
+    }
+    expect(pickerEntries(CATALOG, false, '15')).toEqual([]);
+    expect(pickerEntries(CATALOG, false, 'missingno')).toEqual([]);
+  });
+
+  it('limits legendary search results to Leads', () => {
+    expect(pickerEntries(CATALOG, false, 'mew')).toEqual([]);
+    // eslint-disable-next-line pixel-agents/no-inline-colors -- A Pokédex number, not a color.
+    expect(pickerEntries(CATALOG, true, '#150').map((entry) => entry.id)).toEqual(['mewtwo']);
+  });
+
+  it('normalizes accents and punctuation in names', () => {
+    const catalog: PokemonCatalog = {
+      type: 'pokemonCatalog',
+      lines: [
+        { id: 'flabebe', members: [{ dex: 669, name: 'Flabébé', stage: 1 }] },
+        { id: 'mr-mime', members: [{ dex: 122, name: 'Mr. Mime', stage: 1 }] },
+      ],
+      legendaries: [],
+    };
+    expect(pickerEntries(catalog, false, 'flabebe').map((entry) => entry.id)).toEqual(['flabebe']);
+    expect(pickerEntries(catalog, false, 'mr mime').map((entry) => entry.id)).toEqual(['mr-mime']);
+  });
+});

@@ -8,11 +8,20 @@ import { AgentStateStore } from '../src/agentStateStore.js';
 import { PmdCache } from '../src/pokemon/pmdCache.js';
 import { resetLoadedSpecies, setPokemonSpritesEnabled } from '../src/pokemon/pokemonAssets.js';
 import { registerPokemonRoutes } from '../src/pokemon/routes.js';
+import { POKEMON_CATALOG } from '../src/pokemon/speciesCatalog.js';
 import type { AgentState } from '../src/types.js';
 import { privilegedHostnames } from '../src/wsAuth.js';
 import { addSyntheticSpecies, FakeUpstream, FALLBACK, PRIMARY } from './pokemonTestUtils.js';
 
 const HOST = '127.0.0.1:3100';
+const CATALOG_DEXES = new Set([
+  ...POKEMON_CATALOG.lines.flatMap((line) => line.members.map((member) => member.dex)),
+  ...POKEMON_CATALOG.legendaries.map((member) => member.dex),
+]);
+const UNCATALOGED_DEX = Array.from({ length: 1025 }, (_, i) => i + 1).find(
+  (dex) => !CATALOG_DEXES.has(dex),
+)!;
+const UNCATALOGED_PATH = String(UNCATALOGED_DEX).padStart(4, '0');
 
 let base: string;
 let root: string;
@@ -30,7 +39,7 @@ beforeEach(async () => {
   addSyntheticSpecies(upstream, 25);
   addSyntheticSpecies(upstream, 25, true);
   // Not in the species catalog: served only while an agent shows it.
-  addSyntheticSpecies(upstream, 400);
+  addSyntheticSpecies(upstream, UNCATALOGED_DEX);
   theme = true;
   store = new AgentStateStore();
   store.setAdapter({
@@ -124,14 +133,16 @@ describe('GET /api/pokemon', () => {
   });
 
   it('serves only species an agent shows or the catalog can assign', async () => {
-    const res = await get('/api/pokemon/0400/Walk-Anim.png');
+    const res = await get(`/api/pokemon/${UNCATALOGED_PATH}/Walk-Anim.png`);
     expect(res.statusCode).toBe(404);
-    expect(upstream.callsFor('sprite/0400/AnimData.xml')).toHaveLength(0);
+    expect(upstream.callsFor(`sprite/${UNCATALOGED_PATH}/AnimData.xml`)).toHaveLength(0);
     expect(upstream.calls).toHaveLength(0);
 
-    store.set(7, { id: 7, species: 400, shiny: false } as unknown as AgentState);
-    expect((await get('/api/pokemon/0400/Walk-Anim.png')).statusCode).toBe(200);
-    expect((await get('/api/pokemon/0400/portrait/Normal.png')).statusCode).toBe(200);
+    store.set(7, { id: 7, species: UNCATALOGED_DEX, shiny: false } as unknown as AgentState);
+    expect((await get(`/api/pokemon/${UNCATALOGED_PATH}/Walk-Anim.png`)).statusCode).toBe(200);
+    expect((await get(`/api/pokemon/${UNCATALOGED_PATH}/portrait/Normal.png`)).statusCode).toBe(
+      200,
+    );
   });
 
   it('rejects traversal and anything off the allowlist without leaving the cache', async () => {

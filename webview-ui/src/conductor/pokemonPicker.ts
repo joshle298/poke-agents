@@ -23,10 +23,26 @@ export interface PickerEntry {
  * The grid: every line (named after its first stage; a branching stage lists
  * its members with "/"), then the legendaries, for a Lead only.
  */
-export function pickerEntries(catalog: PokemonCatalog | null, isLead: boolean): PickerEntry[] {
+export function pickerEntries(
+  catalog: PokemonCatalog | null,
+  isLead: boolean,
+  query = '',
+): PickerEntry[] {
   if (!catalog) return [];
+  const normalized = (text: string) =>
+    text
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  const search = normalized(query);
+  const dexQuery = /^#?\d+$/.test(query.trim()) ? Number(query.trim().replace(/^#/, '')) : null;
+  const matches = (member: { name: string; dex: number }) =>
+    !search ||
+    (dexQuery !== null ? member.dex === dexQuery : normalized(member.name).includes(search));
   const lines: PickerEntry[] = [];
   for (const line of catalog.lines) {
+    if (!line.members.some(matches)) continue;
     const first = [...line.members].sort((a, b) => a.stage - b.stage)[0];
     if (!first) continue;
     const stages = new Map<number, string[]>();
@@ -38,7 +54,7 @@ export function pickerEntries(catalog: PokemonCatalog | null, isLead: boolean): 
     lines.push({ id: line.id, kind: 'line', dex: first.dex, name: first.name, title });
   }
   if (!isLead) return lines;
-  const legendaries: PickerEntry[] = catalog.legendaries.map((l) => ({
+  const legendaries: PickerEntry[] = catalog.legendaries.filter(matches).map((l) => ({
     id: l.id,
     kind: 'legendary',
     dex: l.dex,
