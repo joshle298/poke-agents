@@ -2,11 +2,11 @@
 
 Watch your [Conductor](https://conductor.build) cloud sessions as Pokémon in a small pixel-art town.
 
-![About eighty Pokémon across the town: the Lab, a full Work Yard and the Pokémon Center along the top, the Meadow, the Grove and the pond below, a fainted Pokémon in a Center bed, and the battle log in the message bar under the map](docs/screenshots/town-2x.png)
+![A short loop of about eighty Pokémon in the town: walkers in the Meadow and on the paths, workers in the Work Yard and the Grove, a fainted Pokémon in a Center bed, and the battle log in the message bar under the map](docs/screenshots/town.gif)
 
 Inspired by [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents).
 
-The opening screenshot fills the town with about eighty synthetic sessions. The others come from the built-in [demo](#demo), which plays a smaller cast.
+The opening loop fills the town with about eighty synthetic sessions, walking, working and resting. The other pictures come from the built-in [demo](#demo), which plays a smaller cast.
 
 ## What It Is
 
