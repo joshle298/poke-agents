@@ -85,14 +85,14 @@ test('no doc calls Poke Agents a fork of Pixel Agents', () => {
   }
 });
 
-test('the upstream credit stays: README names Pablo De Lucca and links Pixel Agents, LICENSE keeps his copyright', () => {
-  assert.ok(
-    README.includes(
-      `inspired by and based on [Pixel Agents](${UPSTREAM_CREDIT}) by Pablo De Lucca`,
-    ),
-    'README opens with the upstream credit',
+test('the README mentions Pixel Agents only in its one-line credit, and LICENSE keeps the copyright', () => {
+  const line = `Inspired by [Pixel Agents](${UPSTREAM_CREDIT}).`;
+  assert.equal(README.split(line).length - 1, 1, 'the inspiration line appears once');
+  assert.equal(
+    README.replace(line, '').includes('Pixel Agents'),
+    false,
+    'no other Pixel Agents mention in the README',
   );
-  assert.match(section(README, '## License'), /Pablo De Lucca/);
   assert.match(read('LICENSE'), /^Copyright \(c\) \d{4} Pablo De Lucca$/m);
 });
 

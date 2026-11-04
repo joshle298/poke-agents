@@ -2,13 +2,17 @@
 
 Watch your [Conductor](https://conductor.build) cloud sessions as Pokémon in a small pixel-art town.
 
-![The town in demo mode, zoomed out: the Lead at a desk in the Lab, workers at the Work Yard's picnic tables with a message orb flying to the Lead, a fainted Pokémon in a Pokémon Center bed, one working in the Grove, and idle ones in the Meadow](docs/screenshots/town-2x.png)
+![About eighty Pokémon across the town: the Lab, a full Work Yard and the Pokémon Center along the top, the Meadow, the Grove and the pond below, a fainted Pokémon in a Center bed, and the battle log in the message bar under the map](docs/screenshots/town-2x.png)
 
-Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, under the [MIT License](LICENSE). The screenshots in this README come from the built-in [demo](#demo), with synthetic sessions.
+Inspired by [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents).
+
+The opening screenshot fills the town with about eighty synthetic sessions. The others come from the built-in [demo](#demo), which plays a smaller cast.
 
 ## What It Is
 
 Poke Agents is a visualizer for Conductor. Each cloud session is a Pokémon: it works at a table outdoors (a Lead at a desk in the Lab) while the session runs tools, wanders and naps when the session is idle, faints when it errors, and calls for you when it needs an answer. When one session starts or messages others, the town draws the links between them and the messages they send. It runs as a Mac app or in a browser window next to Conductor.
+
+The map is the office. Scroll or drag to look around the town, and pinch or ⌘-scroll to zoom. The party bar on the right is every session in view, with its portrait, level, HP and status. The message bar under the map types the battle log and the result of anything you just clicked, and it never covers the town. Click a Pokémon, or its party slot, for the Pokédex: Overview for the session's facts and actions, Chat for the conversation.
 
 All coding happens in Conductor, with your Conductor settings: models, environment, repositories and agents stay configured there.
 
@@ -17,11 +21,11 @@ All coding happens in Conductor, with your Conductor settings: models, environme
 - **What it never does:** start sessions on its own, run agents or code, edit repositories, or store or change your Conductor settings or API key. **Hide**, **Pin** and **Change Pokémon…** only change what Poke Agents shows; Conductor isn't told.
 - **What it stores:** its own view of your sessions under `~/.pixel-agents/` (see [Configuration](#configuration)): the scope, hidden and pinned sessions, seats and each session's Pokémon.
 
-The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is opt-in, `npm start` never turns it on, and the Mac app doesn't offer it. It launches Claude Code in a terminal inside the office and, after you agree in the app, installs hooks in `~/.claude/settings.json`.
+The exception is `--claude`, an opt-in mode for local Claude Code sessions. `npm start` never turns it on, and the Mac app doesn't offer it. It launches Claude Code in a terminal inside the office and, after you agree in the app, installs hooks in `~/.claude/settings.json`.
 
 ## Features
 
-- **The town.** Leads work at the desks in the Lab. Every other working session sits at a picnic or log table in the Work Yard or the Grove, where the field terminals light up while it works, or works standing nearby when every seat is taken. Idle ones wander and nap in the Meadow's tall grass and around the pond. Fainted ones lie in the Pokémon Center's beds until they are revived. The town is larger than the window: scroll with two fingers or the mouse wheel, or drag the ground, to look around, and pinch or ⌘-scroll to zoom. **Layout → Templates** switches between the town and the classic Pixel Agents office. A town an earlier version saved, unchanged, becomes the new town when the office starts; one you edited stays as it is.
+- **The town.** Leads work at the desks in the Lab. Every other working session sits at a picnic or log table in the Work Yard or the Grove, where the field terminals light up while it works, or works standing nearby when every seat is taken. Idle ones wander and nap in the Meadow's tall grass and around the pond. Fainted ones lie in the Pokémon Center's beds until they are revived. The town is larger than the window: scroll with two fingers or the mouse wheel, or drag the ground, to look around, and pinch or ⌘-scroll to zoom. **Layout → Templates** switches between the town and the classic office. A town an earlier version saved, unchanged, becomes the new town when the office starts; one you edited stays as it is.
 - **A Pokémon per session.** Each visible session is a Pokémon that keeps its species. It works at its seat while the session runs tools, nods along on read tools, and hops when a turn ends.
 - **Levels and evolution.** `Lv` comes from the session's message count. A Pokémon evolves at Lv 16 and Lv 36 when its line has later stages.
 - **Status conditions.** `SLP` when a session has been idle for a while, `FNT` when it errors, and `!` when it waits for your answer or a permission.
@@ -41,9 +45,13 @@ The exception is `--claude`, the local Claude Code mode from Pixel Agents. It is
 - **Mac app.** The same office in its own window, with notifications when a session needs you or faints and a Dock badge counting the sessions waiting on you. See [Mac App](#mac-app).
 - **Demo mode.** A scripted office of synthetic sessions, for trying Poke Agents without a Conductor account. See [Demo](#demo).
 
-Turning the Pokémon theme off in Settings brings back the Pixel Agents look. **Layout** opens Pixel Agents' layout editor for floors, walls, furniture and Areas (see [Pixel Agents' README](https://github.com/pixel-agents-hq/pixel-agents#readme) and [docs/external-assets.md](docs/external-assets.md)).
+Turning the Pokémon theme off in Settings brings back the plain office. **Layout** opens the layout editor for floors, walls, furniture and Areas (see [docs/external-assets.md](docs/external-assets.md)).
+
+![The Pokédex Overview for a session waiting on a question: its Pokémon, level and context left, the workspace, agent and model, and Open in Conductor, Switch model, Change Pokémon, Pin, Hide and Archive](docs/screenshots/pokedex-overview.png)
 
 ![The Pokédex's Chat tab on a session waiting on a question, with three options and the reply box](docs/screenshots/pokedex-chat.png)
+
+![Switch model, starting a new session in the same workspace: Claude, Codex or Cursor, a favorite model, effort, and a first message you can edit](docs/screenshots/switch-model.png)
 
 ![The party bar beside the Pokémon Center: FNT on the fainted session, ! on the one waiting for an answer, SLP on the sleeper, and the battle log in the message bar under the town](docs/screenshots/party-and-battle-log.png)
 
@@ -174,7 +182,7 @@ On the first launch the office shows **Connect to Conductor** (see [Sign In](#si
 
 `npm run app:dev` runs the app unpackaged, with **View → Toggle Developer Tools**.
 
-![The app's window in demo mode, captured from the Electron build on Linux, so without the macOS title bar](docs/screenshots/app-window.png)
+![The office in demo mode, the same view the Mac app shows in its own window](docs/screenshots/app-window.png)
 
 ### Command Line
 
@@ -214,7 +222,7 @@ The demo plays a scripted story with synthetic sessions instead of connecting to
 
 Everything in the office works on the demo's sessions, and nothing reaches Conductor: **Open in Conductor** says there is nothing to open. Sprites, cries and radio tracks download as usual. The first round, about five minutes long, plays the same way every time; then the Lead hands out new tasks. `--demo-seed <n>` varies the history and later rounds, and `--demo-speed <x>` plays the story faster or slower. The demo keeps its seats in its own file and never replaces an office that shows your real sessions.
 
-![The demo office a minute in, as it opens on the Lab and the Work Yard: the Lead at a Lab desk, workers at the Work Yard's tables with a message orb in flight, one at a table in the Grove, and an idle one in the tall grass](docs/screenshots/town.png)
+![The demo office as it opens, on the Lab and the Work Yard, with the battle log in the message bar: the Lead at a Lab desk, workers at the picnic tables, one asleep in the tall grass, and the party beside the map](docs/screenshots/town.png)
 
 ## Sign In
 
@@ -256,13 +264,13 @@ While the office shows **Connect to Conductor** it looks for that sign-in every 
 | `--rotate-token`         | off          | Replace the office token. Every URL that carried the old one stops working.                                                                                                                                                                                      |
 | `--no-conductor`         | Conductor on | Don't connect to Conductor.                                                                                                                                                                                                                                      |
 | `--conductor-budget <n>` | `120`        | Most Conductor API requests per minute.                                                                                                                                                                                                                          |
-| `--no-sprites`           | sprites on   | Never download sprites. The office shows the Pixel Agents characters.                                                                                                                                                                                            |
+| `--no-sprites`           | sprites on   | Never download sprites. The office shows the built-in characters.                                                                                                                                                                                                |
 | `--no-sounds`            | sounds on    | Never download cries or radio tracks, or serve the sound pack. Synthesized effects still follow Settings → Sound.                                                                                                                                                |
 | `--no-radio`             | radio on     | Turn off [Poke Agents Radio](#music): the Jukebox lists no radio and downloads no tracks.                                                                                                                                                                        |
 | `--demo`                 | off          | Play the scripted [demo](#demo) with synthetic sessions instead of connecting to Conductor. Not with `--claude`.                                                                                                                                                 |
 | `--demo-seed <n>`        | `42`         | Vary the demo's generated history, replies and later rounds. The first round is the same for every seed. Implies `--demo`.                                                                                                                                       |
 | `--demo-speed <x>`       | `1`          | Demo speed factor, from 0.25 to 20. Implies `--demo`.                                                                                                                                                                                                            |
-| `--claude`               | off          | Also track local Claude Code sessions, as Pixel Agents does: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                                        |
+| `--claude`               | off          | Also track local Claude Code sessions: hooks (after you consent in the app), the embedded terminal and **+ Agent**.                                                                                                                                              |
 | `--no-terminal`          | terminal on  | With `--claude`: no embedded terminal, so agents can be watched but not launched from the browser.                                                                                                                                                               |
 
 | Environment variable           | Effect                                                                         |
@@ -277,7 +285,7 @@ While the office shows **Connect to Conductor** it looks for that sign-in every 
 | `POKE_AGENTS_DEMO_SPEED`       | The demo's speed factor when `--demo-speed` is not given.                      |
 | `POKE_AGENTS_SKIP_BUILD`       | `1` skips building `dist/` during `npm install` or `npm ci`.                   |
 
-Poke Agents keeps its data in `~/.pixel-agents/`, shared with Pixel Agents. None of it is a Conductor setting, and none of it holds the Conductor token:
+Poke Agents keeps its data in `~/.pixel-agents/`. None of it is a Conductor setting, and none of it holds the Conductor token:
 
 | File                    | Contents                                                                                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -349,13 +357,11 @@ Poke Agents is maintained by Josh Le ([@joshle298](https://github.com/joshle298)
 
 Poke Agents is a fan project and is not affiliated with, endorsed, sponsored or approved by Nintendo, The Pokémon Company, Creatures Inc., GAME FREAK inc. or Spike Chunsoft. Pokémon and Pokémon character names are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc.
 
-**Pixel Agents.** Poke Agents is built on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca, used under the MIT License. The classic office, its characters and most of its furniture come from Pixel Agents; its characters are based on [JIK-A-4, Metro City](https://jik-a-4.itch.io/metrocity-free-topdown-character-pack).
-
 **Original art.** The app icon (the catch orb inside a gold C for Conductor), the catch orb sessions are thrown out of, and the town's art (grass, tall grass, paths, trees, the pond, the buildings and the Lab and Pokémon Center furniture) are original to Poke Agents and drawn in code: by `scripts/generate-icons.mjs` and `scripts/generate-world-assets.mjs`, and pixel by pixel in `webview-ui/src/office/sprites/orb.json`.
 
 **Sprites.** When the Pokémon theme is on, the app downloads sprites and portraits from the PMD Sprite Repository ([sprites.pmdcollab.org](https://sprites.pmdcollab.org), [PMDCollab/SpriteCollab](https://github.com/PMDCollab/SpriteCollab)) to a cache on your computer; the app itself ships none. Sprites credited to CHUNSOFT come from the Pokémon Mystery Dungeon games, © Nintendo, Creatures Inc., GAME FREAK inc. and Spike Chunsoft. Community sprites and portraits are © their credited artists and licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/): use them only for non-commercial purposes. **Settings → About & credits** lists the artists for each species in use.
 
-**Screenshots.** The screenshots in `docs/screenshots/` show PMD Sprite Repository sprites and portraits as the app draws them (scaled, and animated in the app): Psyduck (portraits: Morei, Felis-Licht, CHUNSOFT), Lapras (portraits: silverfox88, C_Pariah, CHUNSOFT), Mew (sprites: JFain, CHUNSOFT; portraits: Mojo, G〜, CHUNSOFT), Pichu (sprites: Spikey-Valentine, CHUNSOFT; portraits: C_Pariah, CHUNSOFT), Torchic (CHUNSOFT), Kirlia (sprites: JFain, CHUNSOFT; portraits: PhillipsYoung, CHUNSOFT), Chimchar (CHUNSOFT), Gible (portraits: G〜, JFain, CHUNSOFT) and Riolu (portraits: Fearless-Quit, CHUNSOFT); where only portraits are named, the sprites are CHUNSOFT's. They are used here under CC BY-NC 4.0 in a non-commercial project. Apart from these screenshots, the repository contains no Pokémon artwork.
+**Screenshots.** The screenshots in `docs/screenshots/` show PMD Sprite Repository sprites and portraits as the app draws them (scaled, and animated in the app): Bulbasaur (shiny sprites: ShyStarryRain; shiny portraits: ShyStarryRain), Charmander (shiny sprites: ShyStarryRain; shiny portraits: baronessfaron, Moo), Squirtle (shiny sprites: ShyStarryRain, SilverDeoxys563; shiny portraits: ShyStarryRain), Psyduck (portraits: Morei, Felis-Licht, CHUNSOFT; shiny sprites: ShyStarryRain, anonymous contributor; shiny portraits: silverfox88, Morei), Abra (sprites: Emmuffin, CHUNSOFT; portraits: cosmosully, JFain, CHUNSOFT; shiny sprites: Emmuffin, 3Monika4, Tacocoa; shiny portraits: cosmosully, Noo, Tacocoa), Gastly (portraits: JFain, CHUNSOFT; shiny sprites: ShyStarryRain, El_Pangoro_Parse; shiny portraits: El_Pangoro_Parse, Prismatic), Magikarp (portraits: JemDragons, CHUNSOFT; shiny sprites: Noo, Scizivire; shiny portraits: JemDragons, Tacocoa), Lapras (portraits: silverfox88, C_Pariah, CHUNSOFT; shiny sprites: RaoKurai; shiny portraits: Deeshura, silverfox88, Morei, C_Pariah, RaoKurai), Ditto (sprites: Caitemis, CHUNSOFT; portraits: anonymous contributor, CHUNSOFT; shiny sprites: ShyStarryRain; shiny portraits: ShyStarryRain), Eevee (shiny sprites: baronessfaron; shiny portraits: Morei), Dratini (sprites: JFain, CHUNSOFT; portraits: Gust, CHUNSOFT; shiny sprites: Pencil; shiny portraits: ShyStarryRain, Emmuffin, Lovi), Mew (sprites: JFain, CHUNSOFT; portraits: Mojo, G〜, CHUNSOFT), Chikorita (shiny sprites: lokatts; shiny portraits: Moo), Cyndaquil (shiny sprites: lokatts; shiny portraits: Morei, Moo), Totodile (shiny sprites: Moo; shiny portraits: Moo), Pichu (sprites: Spikey-Valentine, CHUNSOFT; portraits: C_Pariah, CHUNSOFT; shiny sprites: Spikey-Valentine, Lovi; shiny portraits: C_Pariah, Lovi), Togepi (portraits: baronessfaron, JFain, CHUNSOFT; shiny sprites: RaoKurai; shiny portraits: ShyStarryRain, RaoKurai), Mareep (sprites: Emmuffin, CHUNSOFT; portraits: Felis-Licht, CHUNSOFT; shiny sprites: Emmuffin, Anonymous; shiny portraits: silverfox88, Morei, Anonymous), Larvitar (sprites: JFain, CHUNSOFT; portraits: Emmuffin, CHUNSOFT; shiny sprites: JFain, Lovi; shiny portraits: Emmuffin, Lovi), Treecko (shiny sprites: Morei, YoukaiMinori; shiny portraits: RaoKurai), Torchic (shiny sprites: Moo; shiny portraits: Moo), Mudkip (shiny sprites: Anonymous; shiny portraits: Morei, Moo), Ralts (sprites: NeroIntruder, JFain, CHUNSOFT; portraits: baronessfaron, CHUNSOFT; shiny sprites: Morei, Moo; shiny portraits: Morei), Kirlia (sprites: JFain, CHUNSOFT; portraits: PhillipsYoung, CHUNSOFT), Bagon (sprites: JFain, CHUNSOFT; portraits: C_Pariah, CHUNSOFT; shiny sprites: Pokejavi.; shiny portraits: Morei), Beldum (portraits: anonymous contributor, CHUNSOFT; shiny sprites: Audino; shiny portraits: Morei, ShyStarryRain, anonymous contributor, Moo), Turtwig (shiny sprites: Chi; shiny portraits: Chi), Chimchar (shiny sprites: Lovi; shiny portraits: Emmuffin), Piplup (shiny sprites: Lovi; shiny portraits: Lovi), Gible (portraits: G〜, JFain, CHUNSOFT; shiny sprites: Lovi; shiny portraits: Morei, Lovi), Munchlax (shiny sprites: El_Pangoro_Parse; shiny portraits: Lovi) and Riolu (portraits: Fearless-Quit, CHUNSOFT; shiny sprites: Anonymous; shiny portraits: Emboarger, Anonymous); where sprites or portraits are not named, they are CHUNSOFT's. They are used here under CC BY-NC 4.0 in a non-commercial project. Apart from these screenshots, the repository contains no Pokémon artwork.
 
 **Cries.** When sounds are on, the app downloads Pokémon cries from the [PokéAPI cries](https://github.com/PokeAPI/cries) project (collected from Pokémon Showdown, Veekun and The Sounds Resource). Cries are © Nintendo, Creatures Inc. and GAME FREAK inc., fetched at runtime and not redistributed. The other sound effects are original and synthesized in the app.
 
@@ -378,6 +384,6 @@ Poke Agents Radio plays these original tracks, each credited as title — author
 
 ## License
 
-Poke Agents is inspired by and based on [Pixel Agents](https://github.com/pixel-agents-hq/pixel-agents) by Pablo De Lucca: it started from Pixel Agents' code and keeps much of it. Both are available under the [MIT License](LICENSE), which keeps the upstream copyright notice. The MIT License covers the source code only, not the downloaded sprites, portraits, cries or music, or the sprites shown in the screenshots.
+Poke Agents is available under the [MIT License](LICENSE). The MIT License covers the source code only, not the downloaded sprites, portraits, cries or music, or the sprites shown in the screenshots.
 
 If Poke Agents makes your agents more fun to watch, star it on GitHub.
